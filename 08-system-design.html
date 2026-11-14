@@ -1,0 +1,1040 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>8장 대규모 시스템 설계</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="assets/deck.css">
+</head>
+<body>
+<main class="deck" data-chapter="8" data-chapter-title="대규모 시스템 설계">
+
+<!-- ===== Cover ======================================================== -->
+<section class="slide slide--cover">
+  <div class="cover">
+    <div class="cover__main">
+      <p class="cover__chapter"><b>8장</b> 대규모 시스템 설계</p>
+      <h1>서버 한 대가 수백 대가 될 때 무엇이 바뀌는가</h1>
+      <p class="cover__lede">서비스 하나가 사용자 수천에서 수백만으로 자라는 과정을 따라가며, 병목이 생길 때마다 등장하는 캐시, 큐, 분산 락, 장애 격리 패턴을 원리부터 짚습니다.</p>
+      <dl class="cover__meta">
+        <div><dt>선수 지식</dt><dd>2장 L4/L7, 4장 락과 레플리케이션</dd></div>
+        <div><dt>슬라이드</dt><dd>50장</dd></div>
+        <div><dt>예상 학습 시간</dt><dd>150분</dd></div>
+      </dl>
+    </div>
+    <div class="cover__map">
+      <p class="stackmap__cap">아래층부터 위로 쌓아 올라가는 순서입니다. 지금은 8단계입니다.</p>
+      <div class="stackmap" data-current="8"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Part 1 (basic) ============================================== -->
+<section class="slide slide--divider" data-section="서버를 늘린다는 것" data-depth="basic">
+  <p class="divider__no">1부</p>
+  <h2>서비스가 자라면 무엇부터 터지는가</h2>
+  <p class="lede">7장에서 API를 설계하고 지켰다면, 이제 그 API를 찾는 사용자가 백 배로 늘었을 때를 생각합니다. 서버를 늘리는 두 방향과, 늘리기 위해 먼저 갖춰야 할 조건을 봅니다.</p>
+</section>
+
+<section class="slide">
+  <h2>처음에는 서버 한 대로 충분하다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>막 시작한 서비스는 애플리케이션과 DB를 한 서버에 올려도 잘 돌아갑니다. 단순하고, 배포도 쉽고, 비용도 적습니다.</p>
+      <p>사용자가 늘면 CPU와 메모리가 먼저 차고, 이어서 DB 커넥션과 디스크 I/O가 밀립니다. 더 근본적인 문제는 <mark>이 서버 하나가 멈추면 서비스 전체가 멈춘다</mark>는 점입니다. 이런 지점을 <dfn title="Single Point of Failure">단일 장애점(SPOF)</dfn>이라고 부릅니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 420" role="img" aria-labelledby="f3t">
+        <title id="f3t">사용자 요청이 서버 한 대 안의 애플리케이션과 DB로 들어가며, 자원 포화와 단일 장애점이 문제 지점으로 표시된다.</title>
+        <rect class="dg-box" x="20" y="164" width="140" height="64"/>
+        <text x="90" y="196" text-anchor="middle">사용자</text>
+        <path class="dg-arrow dg-arrow--flow" d="M168,196 H272"/>
+        <rect class="dg-zone" x="280" y="40" width="280" height="340"/>
+        <text class="dg-label--sm" x="420" y="70" text-anchor="middle">서버 한 대</text>
+        <rect class="dg-box dg-box--flow" x="310" y="96" width="220" height="64"/>
+        <text x="420" y="128" text-anchor="middle">애플리케이션</text>
+        <path class="dg-arrow" d="M420,168 V236"/>
+        <rect class="dg-box" x="310" y="244" width="220" height="64"/>
+        <text x="420" y="276" text-anchor="middle">DB</text>
+        <circle class="dg-dot dg-dot--key" cx="580" cy="128" r="6"/>
+        <text class="dg-label--sm dg-label--key" x="596" y="128" text-anchor="start">CPU, 메모리 포화</text>
+        <circle class="dg-dot dg-dot--key" cx="580" cy="276" r="6"/>
+        <text class="dg-label--sm dg-label--key" x="596" y="276" text-anchor="start">커넥션, 디스크 I/O</text>
+        <text class="dg-label--key" x="420" y="350" text-anchor="middle">멈추면 전부 멈춤</text>
+      </svg>
+      <figcaption>하나의 서버에 모든 것이 몰려 있으면 자원 한도와 장애 범위가 곧 서비스 전체의 한도가 됩니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>더 큰 서버냐, 더 많은 서버냐</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">항목</th><th scope="col">스케일 업(Scale-Up)</th><th scope="col">스케일 아웃(Scale-Out)</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">방법</th><td>CPU, 메모리를 더 큰 것으로 교체</td><td>같은 서버를 여러 대로 늘림</td></tr>
+        <tr><th scope="row">코드 변경</th><td class="is-flow">거의 없음</td><td>무상태 설계가 전제</td></tr>
+        <tr><th scope="row">한계</th><td class="is-key">하드웨어 상한, 비용 급증</td><td>이론상 수평으로 계속 확장</td></tr>
+        <tr><th scope="row">장애 범위</th><td>여전히 한 대가 SPOF</td><td class="is-flow">한 대가 죽어도 나머지가 처리</td></tr>
+        <tr><th scope="row">새 과제</th><td>교체 중 중단</td><td>분산, 세션, 데이터 일관성</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>실무에서는 둘 중 하나만 고르지 않습니다. 애플리케이션 서버는 스케일 아웃하고, 수평 확장이 어려운 DB는 먼저 스케일 업으로 버티는 조합이 흔합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>스케일 아웃의 전제는 무상태 서버다</h2>
+  <div class="prose">
+    <p>서버를 세 대로 늘리고 로드 밸런서가 요청을 나눠 준다고 해 봅시다. 사용자가 1번 서버에서 로그인했는데 다음 요청이 2번 서버로 가면, 2번 서버 메모리에는 그 사용자의 세션이 없습니다. 로그인이 풀린 것처럼 보입니다. 2장에서 미뤄 둔 바로 그 문제입니다.</p>
+    <p>문제의 뿌리는 서버가 요청과 요청 사이에 기억을 들고 있다는 점입니다. 어떤 요청이 어느 서버로 가도 같은 결과를 내려면 서버 안에 사용자별 상태가 없어야 합니다. 이런 서버를 <dfn title="Stateless">무상태</dfn> 서버라고 합니다.</p>
+    <p>상태를 없앨 수는 없으니, <mark>상태를 서버 밖의 공용 저장소로 옮깁니다</mark>. 세션, 업로드 파일, 캐시가 모두 이 대상입니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>세션을 어디에 둘지 세 가지 선택지</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">방식</th><th scope="col">동작</th><th scope="col">장점</th><th scope="col">단점</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Sticky Session</th><td>LB가 같은 사용자를 같은 서버로</td><td>코드 변경 없음</td><td class="is-key">서버 장애 시 세션 소실, 쏠림</td></tr>
+        <tr><th scope="row">세션 클러스터링</th><td>서버끼리 세션을 복제</td><td>한 대가 죽어도 유지</td><td>서버 수만큼 복제 비용 증가</td></tr>
+        <tr><th scope="row">외부 저장소</th><td>Redis 같은 공용 저장소에 저장</td><td class="is-flow">서버는 완전한 무상태</td><td>저장소 자체의 가용성 필요</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>대부분의 서비스는 세 번째를 고릅니다. Spring이라면 Spring Session이 세션 저장 위치만 Redis로 바꿔 주므로 코드는 거의 그대로입니다. 쿠키와 세션 ID의 동작은 2장, 토큰 방식과의 비교는 7장에서 다뤘습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>로드 밸런서는 무엇을 보고 서버를 고르나</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">알고리즘</th><th scope="col">고르는 기준</th><th scope="col">어울리는 상황</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">라운드 로빈</th><td>순서대로 한 대씩</td><td>서버 사양과 요청 비용이 균일</td></tr>
+        <tr><th scope="row">가중 라운드 로빈</th><td>가중치 비율대로</td><td>서버 사양이 서로 다름</td></tr>
+        <tr><th scope="row">최소 연결</th><td>현재 연결이 가장 적은 서버</td><td class="is-flow">처리 시간 편차가 큰 요청</td></tr>
+        <tr><th scope="row">IP 해시</th><td>클라이언트 IP의 해시값</td><td>같은 클라이언트를 같은 서버로</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>라운드 로빈은 요청 하나하나의 비용이 같다고 가정합니다. 어떤 요청은 10ms, 어떤 요청은 3초가 걸린다면 운 나쁜 서버에 느린 요청이 쌓이므로 최소 연결 방식이 더 고르게 나눕니다. L4와 L7의 차이는 2장에서 다뤘습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>헬스 체크가 죽은 서버를 빼 준다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>로드 밸런서는 주기적으로 각 서버의 헬스 체크 경로(예: <code>/health</code>)를 호출해 봅니다. 정해진 횟수만큼 연속으로 실패하면 그 서버를 분배 대상에서 빼고, 다시 연속으로 성공하면 넣습니다.</p>
+      <p>한 번의 실패로 바로 빼지 않는 이유는 일시적인 지연 때문에 멀쩡한 서버가 들락날락하는 것을 막기 위해서입니다.</p>
+    </div>
+    <div class="slide__body">
+      <aside class="callout callout--key">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>헬스 체크에 DB 확인을 넣을 때는 신중하게</p>
+        <p>DB가 잠깐 느려지면 모든 서버가 동시에 실패로 판정되어 전부 빠질 수 있습니다. "프로세스가 요청을 받을 수 있는가"와 "의존 대상이 건강한가"를 구분해야 합니다.</p>
+      </aside>
+      <aside class="callout callout--note">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>같은 생각이 9장에서 다시 나옵니다</p>
+        <p>Kubernetes의 liveness와 readiness probe가 바로 이 구분입니다.</p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>이 장에서 자라날 서비스의 전체 모습</h2>
+  <div class="slide__body">
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 1400 440" role="img" aria-labelledby="f9t">
+        <title id="f9t">사용자 요청이 로드 밸런서를 거쳐 무상태 앱 서버들로 분배되고, 앱 서버는 Redis 캐시, 메시지 큐, DB Primary를 사용한다. 정적 자원은 CDN이, 비동기 작업은 워커가, 읽기는 Replica가 나눠 맡는다.</title>
+        <rect class="dg-box" x="20" y="60" width="150" height="64"/>
+        <text x="95" y="92" text-anchor="middle">CDN</text>
+        <rect class="dg-box" x="20" y="200" width="150" height="64"/>
+        <text x="95" y="232" text-anchor="middle">사용자</text>
+        <path class="dg-arrow dg-arrow--flow" d="M95,192 V132"/>
+        <text class="dg-label--sm" x="108" y="166" text-anchor="start">정적 자원</text>
+        <rect class="dg-box" x="230" y="200" width="170" height="64"/>
+        <text x="315" y="232" text-anchor="middle">로드 밸런서</text>
+        <path class="dg-arrow dg-arrow--flow" d="M178,232 H222"/>
+        <rect class="dg-zone" x="452" y="84" width="236" height="296"/>
+        <rect class="dg-box dg-box--flow" x="472" y="104" width="196" height="64"/>
+        <text x="570" y="136" text-anchor="middle">앱 서버 1</text>
+        <rect class="dg-box dg-box--flow" x="472" y="200" width="196" height="64"/>
+        <text x="570" y="232" text-anchor="middle">앱 서버 2</text>
+        <rect class="dg-box dg-box--flow" x="472" y="296" width="196" height="64"/>
+        <text x="570" y="328" text-anchor="middle">앱 서버 N</text>
+        <text class="dg-label--sm" x="570" y="408" text-anchor="middle">무상태, 수평 확장</text>
+        <path class="dg-arrow dg-arrow--flow" d="M408,224 L462,140"/>
+        <path class="dg-arrow dg-arrow--flow" d="M408,232 H462"/>
+        <path class="dg-arrow dg-arrow--flow" d="M408,240 L462,324"/>
+        <rect class="dg-box" x="760" y="60" width="210" height="64"/>
+        <text x="865" y="92" text-anchor="middle">Redis 캐시, 세션</text>
+        <rect class="dg-box" x="760" y="200" width="210" height="64"/>
+        <text x="865" y="232" text-anchor="middle">메시지 큐</text>
+        <rect class="dg-box" x="760" y="340" width="210" height="64"/>
+        <text x="865" y="372" text-anchor="middle">DB Primary</text>
+        <path class="dg-arrow" d="M696,150 L752,100"/>
+        <path class="dg-arrow" d="M696,232 H752"/>
+        <path class="dg-arrow" d="M696,314 L752,364"/>
+        <rect class="dg-box" x="1040" y="200" width="170" height="64"/>
+        <text x="1125" y="232" text-anchor="middle">워커</text>
+        <path class="dg-arrow" d="M978,232 H1032"/>
+        <rect class="dg-box" x="1040" y="340" width="170" height="64"/>
+        <text x="1125" y="372" text-anchor="middle">DB Replica</text>
+        <path class="dg-arrow dg-arrow--back" d="M978,372 H1032"/>
+        <rect class="dg-box dg-box--ghost" x="1250" y="340" width="130" height="64"/>
+        <text class="dg-label--muted" x="1315" y="372" text-anchor="middle">샤드</text>
+      </svg>
+      <figcaption>앞으로 나올 구성 요소를 한 그림에 모았습니다. DB 레플리케이션과 샤딩은 4장에서 다뤘으니, 이 장은 그 앞단과 서비스 사이의 문제에 집중합니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ===== Part 2 (core) =============================================== -->
+<section class="slide slide--divider" data-section="캐시와 Redis" data-depth="core">
+  <p class="divider__no">2부</p>
+  <h2>DB를 덜 부르고, 한 번에 하나씩 처리하기</h2>
+  <p class="lede">앱 서버를 늘려도 DB는 하나입니다. 읽기는 캐시로 덜어 내고, 몰리는 쓰기는 원자 연산과 락, 큐로 질서를 세웁니다.</p>
+  <div class="depth-shift" aria-label="깊이 전환: 기초에서 원리로">
+    <span class="depth-shift__step"><span class="depth" data-depth="basic"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>기초</span>
+    <span class="depth-shift__line" aria-hidden="true"></span>
+    <span class="depth-shift__step is-to"><span class="depth" data-depth="core"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>원리</span>
+    <span class="depth-shift__note">여기부터는 캐시, 락, 큐가 내부에서 어떻게 동작하는지 다룹니다.</span>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>캐시는 읽기가 몰리는 곳에서 효과가 크다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>대부분의 서비스는 쓰기보다 읽기가 훨씬 많고, 읽기도 인기 있는 일부 데이터에 몰립니다. 그 일부를 메모리에 두면 DB 왕복 수 ms를 1ms 미만으로 줄이고 DB 부하도 덜어 냅니다.</p>
+      <p>적중률이 90%면 DB로 가는 읽기가 10분의 1로 줄어듭니다. 적중률 1~2%의 차이가 DB 부하에서는 큰 차이가 됩니다.</p>
+    </div>
+    <table class="compare">
+      <thead><tr><th scope="col">항목</th><th scope="col">로컬 캐시</th><th scope="col">글로벌 캐시</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">위치</th><td>앱 서버 메모리</td><td>Redis 등 별도 서버</td></tr>
+        <tr><th scope="row">속도</th><td class="is-flow">네트워크 없음</td><td>네트워크 1회 왕복</td></tr>
+        <tr><th scope="row">서버 간 공유</th><td class="is-key">서버마다 값이 다를 수 있음</td><td>모든 서버가 같은 값</td></tr>
+        <tr><th scope="row">어울리는 데이터</th><td>설정, 코드표</td><td>세션, 자주 바뀌는 데이터</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Cache-Aside: 없으면 DB에서 읽고 채운다</h2>
+  <div class="split split--wide-left">
+    <div class="seq" role="img" aria-label="앱이 캐시를 먼저 조회하고, 없으면 DB에서 읽은 뒤 캐시에 TTL과 함께 저장한다">
+      <div class="seq__head"><span>앱 서버</span><span></span><span>캐시 / DB</span></div>
+      <div class="seq__row seq__row--r">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>GET</b> product:42 (캐시)</span>
+        <span class="seq__state"></span>
+      </div>
+      <div class="seq__row seq__row--l is-key">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>miss</b> 값 없음</span>
+        <span class="seq__state is-key">캐시</span>
+      </div>
+      <div class="seq__row seq__row--r">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>SELECT</b> id=42 (DB)</span>
+        <span class="seq__state">DB</span>
+      </div>
+      <div class="seq__row seq__row--l is-back">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>row</b> 상품 데이터</span>
+        <span class="seq__state"></span>
+      </div>
+      <div class="seq__row seq__row--r">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>SET</b> product:42 EX 600<small>다음 요청부터는 캐시에서 응답</small></span>
+        <span class="seq__state">캐시</span>
+      </div>
+    </div>
+    <div class="prose">
+      <p>애플리케이션이 캐시와 DB를 직접 오가는 방식으로, <dfn title="Look-Aside">Cache-Aside</dfn>라고 합니다. 가장 흔한 기본값입니다.</p>
+      <p>캐시가 죽어도 DB로 읽으면 되므로 장애에 강합니다. 대신 처음 요청은 늘 miss이고, DB를 바꾼 뒤 캐시를 어떻게 맞출지는 직접 정해야 합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>쓰기 전략은 속도와 유실 위험을 맞바꾼다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">전략</th><th scope="col">쓰기 흐름</th><th scope="col">장점</th><th scope="col">위험</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Read-Through</th><td>캐시가 miss 시 DB를 대신 읽음</td><td>앱 코드가 단순</td><td>캐시 계층이 DB 접근을 알아야 함</td></tr>
+        <tr><th scope="row">Write-Through</th><td>캐시와 DB에 동시에 기록</td><td>캐시가 늘 최신</td><td>쓰기마다 두 곳, 지연 증가</td></tr>
+        <tr><th scope="row">Write-Back</th><td>캐시에만 쓰고 나중에 DB로</td><td class="is-flow">쓰기가 매우 빠름</td><td class="is-key">캐시 장애 시 데이터 유실</td></tr>
+        <tr><th scope="row">Write-Around</th><td>DB에만 쓰고 캐시는 비움</td><td>안 읽히는 데이터는 캐시 안 함</td><td>쓴 직후 읽기는 miss</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>Write-Back(Write-Behind)은 조회수, 좋아요 수처럼 조금 잃어도 되는 카운터를 모았다가 한 번에 반영할 때 씁니다. 주문, 결제처럼 잃으면 안 되는 데이터에는 쓰지 않습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>TTL은 안전망이고, 무효화는 삭제로 한다</h2>
+  <div class="prose">
+    <p>캐시는 원본의 복사본이라 언젠가 어긋납니다. <dfn title="Time To Live">TTL</dfn>을 걸어 두면 아무리 잘못돼도 그 시간이 지나면 저절로 원본과 맞춰집니다. 그래서 TTL은 모든 캐시 키에 거는 마지막 안전망입니다.</p>
+    <p>데이터가 바뀌면 캐시를 새 값으로 덮어쓰기보다 <mark>지우는 편이 안전합니다</mark>. 두 요청이 동시에 갱신하면 덮어쓰기 순서가 DB 반영 순서와 뒤바뀔 수 있지만, 삭제는 몇 번을 해도 결과가 같고 다음 읽기가 DB에서 최신 값을 채웁니다.</p>
+    <p>TTL을 짧게 잡으면 정합성이 좋아지는 대신 적중률이 떨어집니다. 데이터마다 "몇 초 낡은 값까지 허용되는가"를 먼저 정하고 그 값을 TTL로 씁니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>삭제해도 낡은 값이 다시 들어올 수 있다</h2>
+  <div class="split split--even">
+    <ol class="steps">
+      <li><b>요청 A 읽기</b><p>캐시 miss라 DB에서 옛 값 v1을 읽습니다.</p></li>
+      <li><b>요청 B 쓰기</b><p>DB를 v2로 갱신하고 캐시 키를 삭제합니다.</p></li>
+      <li class="is-key"><b>요청 A 채우기</b><p>늦게 도착한 A가 v1을 캐시에 SET합니다.</p></li>
+      <li><b>결과</b><p>DB는 v2, 캐시는 v1. TTL이 끝날 때까지 낡은 값이 남습니다.</p></li>
+    </ol>
+    <div class="prose">
+      <p>Cache-Aside에서도 읽기와 쓰기가 엇갈리면 불일치가 생깁니다. 드물지만 트래픽이 많으면 실제로 일어납니다.</p>
+      <p>대응은 TTL을 짧게 두는 것이 기본이고, 쓰기 후 잠시 뒤 한 번 더 지우는 <dfn>지연 이중 삭제</dfn>나 DB 변경 로그(CDC)로 캐시를 지우는 방법이 있습니다. 강한 일관성이 꼭 필요한 데이터는 캐시하지 않는 것도 답입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>캐시가 한꺼번에 비면 DB가 맞는다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">현상</th><th scope="col">무슨 일이 일어나나</th><th scope="col">대응</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">스탬피드</th><td>인기 키 하나가 만료된 순간 수천 요청이 동시에 DB로</td><td class="is-flow">락으로 한 요청만 재계산, 확률적 조기 갱신</td></tr>
+        <tr><th scope="row">관통</th><td>DB에도 없는 키를 계속 조회해 매번 miss</td><td>빈 결과도 짧게 캐시, Bloom Filter</td></tr>
+        <tr><th scope="row">눈사태</th><td>많은 키가 같은 시각에 만료되거나 캐시 서버 다운</td><td>TTL에 무작위 값 더하기, 캐시 이중화</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p><dfn title="Thundering Herd">스탬피드</dfn>의 핵심 해법은 "재계산은 한 명만"입니다. 첫 요청만 락을 잡고 DB를 읽어 채우고, 나머지는 잠깐 기다리거나 직전 값을 받습니다. 만료 직전에 확률적으로 미리 갱신하면 만료 순간 자체를 피할 수 있습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Redis는 싱글 스레드인데 왜 빠른가</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>Redis는 명령 실행을 스레드 하나가 순서대로 처리합니다. 모든 데이터가 메모리에 있어 명령 하나가 마이크로초 단위로 끝나므로, 병목은 CPU가 아니라 네트워크입니다.</p>
+      <p>수많은 클라이언트 연결은 1장에서 본 I/O 멀티플렉싱(epoll) 이벤트 루프로 한 스레드가 감당합니다. 락이 필요 없고 컨텍스트 스위칭도 없습니다.</p>
+    </div>
+    <div class="slide__body">
+      <aside class="callout callout--key">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>느린 명령 하나가 전체를 멈춘다</p>
+        <p><code>KEYS *</code>나 거대한 컬렉션 전체 조회는 그동안 다른 모든 요청을 세웁니다. 운영에서는 <code>SCAN</code>으로 나눠 읽습니다.</p>
+      </aside>
+      <aside class="callout callout--note">
+        <p>싱글 스레드라서 명령 하나는 항상 <mark>원자적</mark>으로 실행됩니다. 뒤에서 볼 재고 차감이 이 성질을 이용합니다. Redis 6.0부터는 네트워크 읽기와 쓰기만 I/O 스레드로 나눌 수 있습니다.</p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>자료구조를 고르면 용도가 정해진다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">자료구조</th><th scope="col">대표 명령</th><th scope="col">쓰임</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">String</th><td>GET, SET, INCR</td><td>캐시 값, 카운터, 분산 락</td></tr>
+        <tr><th scope="row">Hash</th><td>HGET, HSET</td><td>세션, 객체 필드별 저장</td></tr>
+        <tr><th scope="row">List</th><td>LPUSH, BRPOP</td><td>간단한 작업 큐, 최근 목록</td></tr>
+        <tr><th scope="row">Set</th><td>SADD, SISMEMBER</td><td>중복 참여 방지, 태그</td></tr>
+        <tr><th scope="row">Sorted Set</th><td>ZADD, ZRANGE</td><td class="is-flow">랭킹, 대기열 순번</td></tr>
+        <tr><th scope="row">Stream</th><td>XADD, XREADGROUP</td><td>컨슈머 그룹이 있는 로그</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Sorted Set이 Skip List로 구현되는 이유는 3장에서 짚었습니다. 단순 캐시만 필요하면 Memcached도 선택지지만, 자료구조와 영속화가 필요하면 Redis를 씁니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>메모리 저장소도 디스크에 남길 수 있다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">항목</th><th scope="col">RDB 스냅샷</th><th scope="col">AOF</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">방식</th><td>특정 시점 메모리 전체를 파일로</td><td>쓰기 명령을 로그에 계속 추가</td></tr>
+        <tr><th scope="row">유실 범위</th><td class="is-key">마지막 스냅샷 이후 전부</td><td><code>everysec</code> 설정이면 약 1초</td></tr>
+        <tr><th scope="row">재시작 속도</th><td class="is-flow">빠름(파일 로드)</td><td>명령 재실행으로 느림</td></tr>
+        <tr><th scope="row">파일 크기</th><td>압축된 바이너리, 작음</td><td>커짐, 주기적 rewrite로 압축</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>RDB는 fork로 자식 프로세스를 만들어 저장하므로 메모리가 큰 인스턴스에서는 fork 순간과 Copy-on-Write로 메모리 사용이 늘어납니다. 순수 캐시라면 영속화를 끄고, 세션처럼 잃으면 곤란한 데이터라면 AOF를 켭니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>CDN은 정적 자원을 사용자 곁에 둔다</h2>
+  <div class="slide__body">
+    <ol class="flow">
+      <li class="flow__node"><b>사용자 요청</b><span>이미지, JS, CSS</span></li>
+      <li class="flow__node is-flow"><b>가까운 엣지</b><span>캐시에 있으면 즉시 응답</span></li>
+      <li class="flow__node"><b>오리진</b><span>miss일 때만 원본 서버로</span></li>
+      <li class="flow__node"><b>엣지에 저장</b><span>Cache-Control 기준 TTL</span></li>
+    </ol>
+    <div class="prose">
+      <p><dfn title="Content Delivery Network">CDN</dfn>은 세계 곳곳의 엣지 서버에 콘텐츠를 캐시해 두는 네트워크입니다. 물리적 거리가 줄어 RTT가 짧아지고, 오리진은 같은 파일을 반복해서 보낼 필요가 없어집니다.</p>
+      <p>배포로 파일이 바뀌면 이름에 해시를 붙여(<code>app.3f9a.js</code>) 새 URL로 만드는 방식이 무효화 요청보다 확실합니다. AWS 구현인 CloudFront는 10장에서 다룹니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-section="동시성 실무 문제">
+  <h2>선착순 쿠폰 100장에 1만 명이 몰리면</h2>
+  <div class="split split--even">
+    <ol class="steps">
+      <li><b>요청 A 조회</b><p>남은 수량 1을 읽습니다.</p></li>
+      <li><b>요청 B 조회</b><p>A가 쓰기 전에 B도 남은 수량 1을 읽습니다.</p></li>
+      <li><b>A 발급</b><p>1 - 1 = 0으로 갱신하고 쿠폰을 발급합니다.</p></li>
+      <li class="is-key"><b>B 발급</b><p>B도 1 - 1 = 0으로 갱신하고 또 발급합니다. 101장째입니다.</p></li>
+    </ol>
+    <div class="prose">
+      <p>"읽고, 판단하고, 쓰는" 세 단계 사이에 다른 요청이 끼어드는 <dfn title="Race Condition">경쟁 상태</dfn>입니다. 1장의 임계 구역 문제가 서버 여러 대 규모로 다시 나타난 것입니다.</p>
+      <p>서버가 여러 대라 Java의 <code>synchronized</code>로는 막을 수 없습니다. 선택지는 네 가지입니다: DB 락, Redis 원자 연산, 분산 락, 큐로 줄 세우기.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>선택지 1: DB가 직접 순서를 지키게 한다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="SQL"><code><span class="c">-- 조건부 UPDATE: 확인과 차감을 한 문장으로</span>
+<span class="hl"><span class="k">UPDATE</span> coupon_stock
+   <span class="k">SET</span> remaining = remaining - <span class="n">1</span>
+ <span class="k">WHERE</span> coupon_id = <span class="n">42</span> <span class="k">AND</span> remaining &gt; <span class="n">0</span>;</span>
+<span class="c">-- 영향받은 행이 0이면 소진</span>
+
+<span class="c">-- 비관적 락: 읽는 순간부터 잠금</span>
+<span class="k">SELECT</span> remaining <span class="k">FROM</span> coupon_stock
+ <span class="k">WHERE</span> coupon_id = <span class="n">42</span> <span class="k">FOR UPDATE</span>;</code></pre>
+    <div class="prose">
+      <p>가장 단순하고 정확한 방법은 확인과 차감을 하나의 UPDATE로 묶는 것입니다. DB가 행 락으로 한 번에 하나씩 처리합니다. 비관적, 낙관적 락의 원리는 4장에서 다뤘습니다.</p>
+      <p>한계는 처리량입니다. 모든 요청이 같은 행 하나에 줄을 서므로 <mark>핫 로우</mark>가 되고, 대기 중인 트랜잭션이 커넥션 풀을 붙잡습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>선택지 2: Redis의 원자 연산에 맡긴다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="issue.lua"><code><span class="k">local</span> stock, users = KEYS[<span class="n">1</span>], KEYS[<span class="n">2</span>]
+<span class="k">local</span> uid = ARGV[<span class="n">1</span>]
+<span class="k">if</span> redis.call(<span class="s">'SISMEMBER'</span>, users, uid) == <span class="n">1</span>
+<span class="k">then return</span> -<span class="n">1</span> <span class="k">end</span>               <span class="c">-- 이미 받음</span>
+<span class="k">local</span> left = tonumber(redis.call(<span class="s">'GET'</span>, stock))
+<span class="k">if not</span> left <span class="k">or</span> left &lt;= <span class="n">0</span>
+<span class="k">then return</span> <span class="n">0</span> <span class="k">end</span>                <span class="c">-- 소진</span>
+<span class="hl">redis.call(<span class="s">'DECR'</span>, stock)</span>
+<span class="hl">redis.call(<span class="s">'SADD'</span>, users, uid)</span>
+<span class="k">return</span> <span class="n">1</span></code></pre>
+    <div class="prose">
+      <p>Redis는 명령을 하나씩 실행하므로 <code>DECR</code> 하나만으로도 원자적입니다. 중복 참여 확인까지 여러 명령을 묶어야 한다면 Lua 스크립트를 씁니다. 스크립트 전체가 다른 명령의 끼어듦 없이 실행됩니다.</p>
+      <p>초당 수만 건도 처리합니다. 다만 Redis의 수량과 DB의 발급 기록을 따로 맞춰야 하므로, 발급 내역은 뒤에서 볼 큐로 DB에 옮깁니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>선택지 3: 분산 락으로 구간 전체를 잠근다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="Redis / Java"><code><span class="c">-- 획득: 없을 때만, 3초 뒤 자동 만료</span>
+<span class="hl">SET lock:coupon:<span class="n">42</span> &lt;uuid&gt; NX PX <span class="n">3000</span></span>
+<span class="c">-- 해제: 내 값일 때만 지운다 (Lua)</span>
+<span class="k">if</span> redis.call(<span class="s">'GET'</span>, KEYS[<span class="n">1</span>]) == ARGV[<span class="n">1</span>] <span class="k">then</span>
+  <span class="k">return</span> redis.call(<span class="s">'DEL'</span>, KEYS[<span class="n">1</span>])
+<span class="k">end</span>
+
+<span class="c">// Redisson: 대기, 연장, 해제를 대신 처리</span>
+RLock lock = redisson.getLock(<span class="s">"lock:coupon:42"</span>);
+<span class="k">if</span> (lock.tryLock(<span class="n">1</span>, TimeUnit.SECONDS)) {
+  <span class="k">try</span> { issue(); } <span class="k">finally</span> { lock.unlock(); }
+}</code></pre>
+    <div class="prose">
+      <p>여러 단계의 작업(외부 API 호출 포함)을 통째로 한 서버만 실행하게 하려면 <dfn>분산 락</dfn>이 필요합니다. 만료 시간은 락을 쥔 서버가 죽었을 때 영원히 잠기는 것을 막고, uuid 비교는 남의 락을 지우는 실수를 막습니다.</p>
+      <p>Redisson은 Pub/Sub로 락 해제를 기다리고, 작업이 길어지면 watchdog이 만료를 자동 연장합니다(기본 30초).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>만료된 락의 주인이 돌아오면 펜싱 토큰</h2>
+  <div class="slide__body">
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 1400 400" role="img" aria-labelledby="f25t">
+        <title id="f25t">클라이언트 1이 토큰 33으로 락을 얻은 뒤 GC 정지로 멈춘 사이 락이 만료된다. 클라이언트 2가 토큰 34로 락을 얻어 기록하고, 뒤늦게 깨어난 클라이언트 1의 토큰 33 쓰기는 저장소가 거부한다.</title>
+        <text x="20" y="80" text-anchor="start">클라이언트 1</text>
+        <text x="20" y="200" text-anchor="start">클라이언트 2</text>
+        <text x="20" y="320" text-anchor="start">저장소</text>
+        <line class="dg-line dg-line--thin" x1="170" y1="80" x2="1380" y2="80"/>
+        <line class="dg-line dg-line--thin" x1="170" y1="200" x2="1380" y2="200"/>
+        <line class="dg-line dg-line--thin" x1="170" y1="320" x2="1380" y2="320"/>
+        <rect class="dg-box dg-box--flow" x="190" y="52" width="190" height="56"/>
+        <text x="285" y="80" text-anchor="middle">락 획득, 토큰 33</text>
+        <rect class="dg-box dg-box--key" x="400" y="52" width="360" height="56"/>
+        <text class="dg-label--key" x="580" y="80" text-anchor="middle">GC 정지로 멈춤, 그사이 락 만료</text>
+        <line class="dg-line dg-line--thin" x1="780" y1="36" x2="780" y2="360"/>
+        <text class="dg-label--sm dg-label--muted" x="780" y="386" text-anchor="middle">TTL 만료 시점</text>
+        <rect class="dg-box dg-box--flow" x="810" y="172" width="230" height="56"/>
+        <text x="925" y="200" text-anchor="middle">락 획득, 토큰 34</text>
+        <path class="dg-arrow dg-arrow--flow" d="M925,236 V284"/>
+        <rect class="dg-box" x="810" y="292" width="230" height="56"/>
+        <text x="925" y="320" text-anchor="middle">34로 기록, 최대값 34</text>
+        <rect class="dg-box" x="1080" y="52" width="230" height="56"/>
+        <text x="1195" y="80" text-anchor="middle">깨어나 토큰 33 쓰기</text>
+        <path class="dg-arrow dg-arrow--key" d="M1195,116 V284"/>
+        <rect class="dg-box dg-box--key" x="1080" y="292" width="290" height="56"/>
+        <text class="dg-label--key" x="1225" y="320" text-anchor="middle">33 &lt; 34 이므로 거부</text>
+      </svg>
+      <figcaption>락을 얻을 때마다 단조 증가하는 번호를 함께 받고, 저장소는 이미 본 번호보다 작은 쓰기를 거부합니다. 락 서버만으로는 막을 수 없는 경우를 저장소 쪽에서 막는 장치입니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>선택지 4: 줄을 세우고 네 방법을 비교한다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">방법</th><th scope="col">정확성</th><th scope="col">처리량</th><th scope="col">잘 맞는 경우</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">DB 조건부 UPDATE, 락</th><td class="is-flow">트랜잭션으로 보장</td><td>핫 로우에서 낮음</td><td>경쟁이 크지 않은 재고</td></tr>
+        <tr><th scope="row">Redis 원자 연산, Lua</th><td>명령 단위 보장</td><td class="is-flow">매우 높음</td><td>수량 차감, 선착순 판정</td></tr>
+        <tr><th scope="row">분산 락</th><td class="is-key">만료, 장애 시 허점</td><td>락 대기만큼 낮음</td><td>여러 단계를 묶어야 할 때</td></tr>
+        <tr><th scope="row">큐로 직렬화</th><td>한 컨슈머가 순서대로</td><td>비동기, 응답 지연</td><td>즉시 결과가 필요 없는 발급</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>실무에서는 조합합니다. Redis로 선착순 당첨만 빠르게 판정하고, 당첨 기록은 큐에 넣어 DB 저장을 천천히 처리합니다. 큐가 무엇이고 어떻게 동작하는지가 다음 주제입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-section="메시지 큐">
+  <h2>메시지 큐는 보내는 쪽과 받는 쪽을 떼어 놓는다</h2>
+  <div class="slide__body">
+    <ol class="flow">
+      <li class="flow__node"><b>주문 API</b><span>메시지를 넣고 바로 응답</span></li>
+      <li class="flow__node is-flow"><b>메시지 큐</b><span>디스크에 보관, 순서 유지</span></li>
+      <li class="flow__node"><b>컨슈머들</b><span>각자 속도로 꺼내 처리</span></li>
+    </ol>
+    <div class="prose">
+      <p>주문 API가 결제, 알림, 포인트 적립을 모두 동기 호출하면 응답이 가장 느린 작업만큼 늦어지고, 알림 서버가 죽으면 주문도 실패합니다. 메시지 큐를 두면 세 가지를 얻습니다.</p>
+      <p><strong>비동기화</strong>로 응답이 빨라지고, <strong>디커플링</strong>으로 받는 쪽이 죽거나 늘어나도 보내는 쪽은 모르며, <strong>버퍼링</strong>으로 순간 트래픽을 큐에 쌓았다가 DB가 감당할 속도로 소화합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Kafka는 파티션 단위로 쪼개고 줄 세운다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p><dfn title="Topic">토픽</dfn>은 여러 <dfn title="Partition">파티션</dfn>으로 나뉘고, 각 파티션은 끝에 덧붙이기만 하는 로그입니다. 메시지마다 파티션 안의 위치인 <dfn title="Offset">오프셋</dfn>이 붙습니다.</p>
+      <p>한 <dfn title="Consumer Group">컨슈머 그룹</dfn> 안에서 파티션 하나는 컨슈머 하나만 읽습니다. 그래서 <mark>순서는 파티션 안에서만 보장</mark>되고, 컨슈머를 파티션 수보다 늘려도 남는 컨슈머는 놉니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 460" role="img" aria-labelledby="f28t">
+        <title id="f28t">프로듀서가 키의 해시로 토픽의 파티션 0, 1, 2 중 하나에 메시지를 쓰고, 컨슈머 그룹 A의 컨슈머 1이 파티션 0과 1을, 컨슈머 2가 파티션 2를 읽는다.</title>
+        <rect class="dg-box" x="10" y="196" width="130" height="64"/>
+        <text x="75" y="228" text-anchor="middle">프로듀서</text>
+        <text class="dg-label--sm" x="75" y="290" text-anchor="middle">키 해시로 선택</text>
+        <rect class="dg-zone" x="172" y="40" width="356" height="380"/>
+        <text class="dg-label--sm" x="350" y="70" text-anchor="middle">토픽 orders</text>
+        <rect class="dg-box dg-box--flow" x="192" y="96" width="316" height="64"/>
+        <text x="350" y="128" text-anchor="middle">파티션 0: 오프셋 0~8</text>
+        <rect class="dg-box" x="192" y="196" width="316" height="64"/>
+        <text x="350" y="228" text-anchor="middle">파티션 1: 오프셋 0~5</text>
+        <rect class="dg-box" x="192" y="296" width="316" height="64"/>
+        <text x="350" y="328" text-anchor="middle">파티션 2: 오프셋 0~7</text>
+        <path class="dg-arrow dg-arrow--flow" d="M148,220 L184,136"/>
+        <path class="dg-arrow dg-arrow--flow" d="M148,228 H184"/>
+        <path class="dg-arrow dg-arrow--flow" d="M148,236 L184,320"/>
+        <rect class="dg-zone" x="566" y="90" width="186" height="290"/>
+        <text class="dg-label--sm" x="659" y="404" text-anchor="middle">컨슈머 그룹 A</text>
+        <rect class="dg-box" x="584" y="116" width="150" height="64"/>
+        <text x="659" y="148" text-anchor="middle">컨슈머 1</text>
+        <rect class="dg-box" x="584" y="290" width="150" height="64"/>
+        <text x="659" y="322" text-anchor="middle">컨슈머 2</text>
+        <path class="dg-arrow" d="M516,128 H576"/>
+        <path class="dg-arrow" d="M516,228 L576,164"/>
+        <path class="dg-arrow" d="M516,328 L576,322"/>
+      </svg>
+      <figcaption>같은 키(예: 주문 ID)는 같은 파티션으로 가므로, 한 주문의 이벤트끼리는 순서가 지켜집니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Kafka는 로그, RabbitMQ는 우체국에 가깝다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">항목</th><th scope="col">Kafka</th><th scope="col">RabbitMQ</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">모델</th><td>분산 로그, 컨슈머가 당겨 감(pull)</td><td>브로커가 큐에서 밀어 줌(push)</td></tr>
+        <tr><th scope="row">읽은 메시지</th><td class="is-flow">보존 기간 동안 남음, 재처리 가능</td><td>ack 받으면 큐에서 삭제</td></tr>
+        <tr><th scope="row">라우팅</th><td>토픽, 파티션 키 정도</td><td class="is-flow">Exchange로 유연한 라우팅</td></tr>
+        <tr><th scope="row">강점</th><td>대용량 이벤트 스트림, 여러 팀이 구독</td><td>작업 분배, 메시지별 제어</td></tr>
+        <tr><th scope="row">DLQ</th><td>컨슈머 쪽에서 별도 토픽으로 구현</td><td>Dead Letter Exchange 내장</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>같은 이벤트를 여러 서비스가 각자 읽거나 과거부터 다시 읽어야 하면 Kafka, 작업을 일꾼들에게 나눠 주고 개별 메시지의 재시도와 우선순위를 다뤄야 하면 RabbitMQ가 자연스럽습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>전달 보장은 오프셋을 언제 커밋하느냐다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">보장</th><th scope="col">커밋 시점</th><th scope="col">실패하면</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">at-most-once</th><td>처리하기 전에 커밋</td><td>처리 중 죽으면 그 메시지는 유실</td></tr>
+        <tr><th scope="row">at-least-once</th><td>처리한 뒤에 커밋</td><td class="is-key">커밋 전 죽으면 다시 받아 중복 처리</td></tr>
+        <tr><th scope="row">exactly-once</th><td>처리 결과와 커밋을 한 트랜잭션으로</td><td>Kafka 내부끼리만 보장, 외부 DB는 별개</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>네트워크는 "보냈는데 응답이 안 오는" 경우를 늘 만들기 때문에, 유실을 피하려면 재전송을 하고 그 결과 중복이 생깁니다. 그래서 실무 기본값은 <mark>at-least-once + 중복을 견디는 컨슈머</mark>입니다. Kafka는 3.0부터 프로듀서의 중복 전송 방지(idempotent producer)가 기본으로 켜져 있지만, 이는 브로커에 쓰는 구간만 지킵니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>같은 메시지를 두 번 받아도 결과는 한 번</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p><dfn>멱등 컨슈머</dfn>는 메시지마다 고유 ID를 두고, 처리한 ID를 DB에 기록합니다. 처리 결과와 ID 기록을 같은 트랜잭션에 넣고 ID에 유니크 제약을 걸면, 두 번째 메시지는 제약 위반으로 걸러집니다.</p>
+      <p>"잔액을 1000원 늘려라" 대신 "잔액을 5000원으로 만들어라"처럼 결과를 지정하는 메시지도 그 자체로 멱등입니다. 멱등성의 정의는 2장, API의 Idempotency-Key는 7장에서 다뤘습니다.</p>
+    </div>
+    <div class="slide__body">
+      <aside class="callout callout--key">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>독이 든 메시지가 파티션을 막는다</p>
+        <p>형식이 깨진 메시지는 몇 번을 재시도해도 실패합니다. 순서대로 읽는 파티션에서는 그 뒤 메시지 전부가 멈춥니다.</p>
+      </aside>
+      <aside class="callout callout--note">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>재시도 상한 뒤에는 DLQ로</p>
+        <p>정해진 횟수만큼 실패한 메시지는 <dfn title="Dead Letter Queue">DLQ</dfn>로 옮기고 다음 메시지로 넘어갑니다. DLQ에는 알람을 걸고 원인을 고친 뒤 다시 넣습니다.</p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Part 3 (practice) =========================================== -->
+<section class="slide slide--divider" data-section="서비스를 나누고 지키기" data-depth="practice">
+  <p class="divider__no">3부</p>
+  <h2>나누면 빨라지지만, 실패도 나뉘어 퍼진다</h2>
+  <p class="lede">서비스를 쪼개면 트랜잭션도 쪼개지고, 한 서비스의 장애가 네트워크를 타고 번집니다. 그것을 견디는 패턴과, 처음부터 설계를 풀어 가는 순서를 봅니다.</p>
+  <div class="depth-shift" aria-label="깊이 전환: 원리에서 실무로">
+    <span class="depth-shift__step"><span class="depth" data-depth="core"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>원리</span>
+    <span class="depth-shift__line" aria-hidden="true"></span>
+    <span class="depth-shift__step is-to"><span class="depth" data-depth="practice"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>실무</span>
+    <span class="depth-shift__note">설계 판단, 설정 수치, 장애 전파 사례와 용량 추정을 다룹니다.</span>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>MSA는 조직과 배포를 나누는 선택이다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">항목</th><th scope="col">모놀리식</th><th scope="col">MSA</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">배포</th><td>전체를 한 번에</td><td class="is-flow">서비스별 독립 배포</td></tr>
+        <tr><th scope="row">확장</th><td>전체를 통째로 복제</td><td>부하가 큰 서비스만 확장</td></tr>
+        <tr><th scope="row">호출</th><td>메서드 호출, 실패 거의 없음</td><td class="is-key">네트워크 호출, 지연과 실패</td></tr>
+        <tr><th scope="row">데이터</th><td>DB 하나, 트랜잭션 하나</td><td>서비스별 DB, 분산 트랜잭션</td></tr>
+        <tr><th scope="row">운영 부담</th><td>낮음</td><td>추적, 모니터링, 배포 자동화 필수</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>팀이 작으면 잘 나눈 모듈형 모놀리식이 대개 더 낫습니다. 팀이 커져 배포가 서로를 막기 시작할 때, 경계가 분명한 영역부터 떼어 냅니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>2PC는 모두가 동의할 때까지 붙잡는다</h2>
+  <div class="split split--wide-left">
+    <div class="seq" role="img" aria-label="코디네이터가 참여자들에게 준비를 묻고 모두 준비되면 커밋을 지시한다. 그 사이 참여자는 락을 쥔 채 기다린다">
+      <div class="seq__head"><span>코디네이터</span><span></span><span>주문 DB, 재고 DB</span></div>
+      <div class="seq__row seq__row--r">
+        <span class="seq__state">1단계</span>
+        <span class="seq__msg"><b>PREPARE</b> 커밋할 수 있나요?</span>
+        <span class="seq__state"></span>
+      </div>
+      <div class="seq__row seq__row--l is-back">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>YES</b> 준비 완료, 락 유지</span>
+        <span class="seq__state is-key">락 보유</span>
+      </div>
+      <div class="seq__row seq__row--note">
+        <span></span><span class="seq__msg"><span>여기서 코디네이터가 죽으면 참여자는 무한 대기</span></span><span></span>
+      </div>
+      <div class="seq__row seq__row--r">
+        <span class="seq__state">2단계</span>
+        <span class="seq__msg"><b>COMMIT</b> 모두 커밋</span>
+        <span class="seq__state"></span>
+      </div>
+      <div class="seq__row seq__row--l is-back">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>ACK</b> 락 해제</span>
+        <span class="seq__state"></span>
+      </div>
+    </div>
+    <div class="prose">
+      <p><dfn title="Two-Phase Commit">2PC</dfn>는 여러 DB에 걸친 트랜잭션을 원자적으로 만듭니다. 대가는 가장 느린 참여자만큼 모두가 락을 쥐고 기다린다는 것입니다.</p>
+      <p>코디네이터가 단일 장애점이 되고, 메시지 브로커나 외부 API처럼 2PC를 지원하지 않는 참여자도 많습니다. 그래서 MSA에서는 잘 쓰지 않습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Saga는 로컬 트랜잭션과 보상으로 잇는다</h2>
+  <div class="slide__body">
+    <div class="prose">
+      <p><dfn>Saga</dfn>는 큰 트랜잭션을 서비스별 로컬 트랜잭션의 연쇄로 나누고, 중간에 실패하면 이미 끝난 단계를 되돌리는 <dfn>보상 트랜잭션</dfn>을 거꾸로 실행합니다. 예를 들어 결제가 실패하면 "재고 복구", "주문 취소"를 실행합니다. 원자성 대신 최종 일관성을 택한 것입니다(4장 CAP 참조).</p>
+    </div>
+    <table class="compare">
+      <thead><tr><th scope="col">방식</th><th scope="col">흐름 제어</th><th scope="col">장점</th><th scope="col">단점</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">코레오그래피</th><td>각 서비스가 이벤트를 듣고 다음 단계 실행</td><td>중앙 없음, 결합도 낮음</td><td class="is-key">전체 흐름이 코드에 흩어짐</td></tr>
+        <tr><th scope="row">오케스트레이션</th><td>오케스트레이터가 순서대로 명령</td><td class="is-flow">흐름과 보상이 한곳에 보임</td><td>오케스트레이터에 로직 집중</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>DB 저장과 이벤트 발행을 한 트랜잭션으로</h2>
+  <div class="slide__body">
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 1400 340" role="img" aria-labelledby="f36t">
+        <title id="f36t">주문 서비스가 orders 테이블과 outbox 테이블에 하나의 로컬 트랜잭션으로 기록하고, 릴레이가 outbox를 읽어 메시지 브로커로 발행하며, 결제 서비스와 알림 서비스가 구독한다.</title>
+        <rect class="dg-box dg-box--flow" x="20" y="118" width="160" height="64"/>
+        <text x="100" y="150" text-anchor="middle">주문 서비스</text>
+        <rect class="dg-zone" x="220" y="40" width="270" height="240"/>
+        <text class="dg-label--sm" x="355" y="300" text-anchor="middle">하나의 로컬 트랜잭션</text>
+        <rect class="dg-box" x="245" y="66" width="220" height="64"/>
+        <text x="355" y="98" text-anchor="middle">orders 테이블</text>
+        <rect class="dg-box dg-box--solid" x="245" y="180" width="220" height="64"/>
+        <text class="dg-label--on" x="355" y="212" text-anchor="middle">outbox 테이블</text>
+        <path class="dg-arrow dg-arrow--flow" d="M188,140 L237,100"/>
+        <path class="dg-arrow dg-arrow--flow" d="M188,160 L237,206"/>
+        <rect class="dg-box" x="560" y="180" width="200" height="64"/>
+        <text x="660" y="212" text-anchor="middle">릴레이</text>
+        <text class="dg-label--sm" x="660" y="270" text-anchor="middle">폴링 또는 CDC</text>
+        <path class="dg-arrow dg-arrow--flow" d="M473,212 H552"/>
+        <rect class="dg-box" x="830" y="180" width="200" height="64"/>
+        <text x="930" y="212" text-anchor="middle">메시지 브로커</text>
+        <path class="dg-arrow dg-arrow--flow" d="M768,212 H822"/>
+        <rect class="dg-box" x="1110" y="100" width="200" height="64"/>
+        <text x="1210" y="132" text-anchor="middle">결제 서비스</text>
+        <rect class="dg-box" x="1110" y="250" width="200" height="64"/>
+        <text x="1210" y="282" text-anchor="middle">알림 서비스</text>
+        <path class="dg-arrow" d="M1038,204 L1102,140"/>
+        <path class="dg-arrow" d="M1038,220 L1102,276"/>
+      </svg>
+      <figcaption>DB에 저장한 뒤 브로커에 직접 발행하면 둘 중 하나만 성공할 수 있습니다. <strong>Transactional Outbox</strong>는 이벤트를 같은 DB의 outbox 테이블에 함께 커밋하고, 릴레이가 나중에 발행합니다. 발행은 at-least-once이므로 받는 쪽은 멱등이어야 합니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide" data-section="장애 격리">
+  <h2>느린 서비스 하나가 전체를 멈춘다</h2>
+  <div class="slide__body">
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 1400 300" role="img" aria-labelledby="f37t">
+        <title id="f37t">사용자가 주문 서비스를 부르고, 주문 서비스가 결제 서비스를, 결제 서비스가 응답이 30초 걸리는 외부 PG를 부른다. 앞단 서비스들의 스레드가 모두 대기 상태로 고갈된다.</title>
+        <rect class="dg-box" x="20" y="90" width="160" height="64"/>
+        <text x="100" y="122" text-anchor="middle">사용자</text>
+        <path class="dg-arrow dg-arrow--flow" d="M188,122 H282"/>
+        <rect class="dg-box" x="290" y="90" width="230" height="64"/>
+        <text x="405" y="122" text-anchor="middle">주문 서비스</text>
+        <text class="dg-label--sm dg-label--key" x="405" y="190" text-anchor="middle">스레드 200개 모두 대기</text>
+        <path class="dg-arrow dg-arrow--flow" d="M528,122 H622"/>
+        <rect class="dg-box" x="630" y="90" width="230" height="64"/>
+        <text x="745" y="122" text-anchor="middle">결제 서비스</text>
+        <text class="dg-label--sm dg-label--key" x="745" y="190" text-anchor="middle">커넥션, 스레드 고갈</text>
+        <path class="dg-arrow dg-arrow--key" d="M868,122 H962"/>
+        <rect class="dg-box dg-box--key" x="970" y="90" width="260" height="64"/>
+        <text class="dg-label--key" x="1100" y="122" text-anchor="middle">외부 PG 응답 30초</text>
+        <path class="dg-arrow dg-arrow--key dg-arrow--back" d="M1100,220 Q1100,250 1070,250 H130 Q100,250 100,220 V162"/>
+        <text class="dg-label--sm dg-label--key" x="600" y="280" text-anchor="middle">장애가 호출 방향의 반대로 거슬러 올라감</text>
+      </svg>
+      <figcaption>오류가 아니라 <strong>느림</strong>이 더 위험합니다. 실패는 바로 반환되지만, 느린 호출은 스레드와 커넥션을 붙잡은 채 쌓여 앞단까지 고갈시킵니다. 1장에서 본 스레드 풀 고갈이 서비스 사슬을 타고 번지는 <dfn>연쇄 장애</dfn>입니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>타임아웃은 모든 원격 호출에 건다</h2>
+  <div class="prose">
+    <p>첫 번째 방어선은 <dfn>타임아웃</dfn>입니다. 많은 HTTP 클라이언트와 드라이버의 기본값은 무한대이거나 매우 길어서, 설정하지 않으면 느린 의존 대상에 스레드가 묶입니다.</p>
+    <p>타임아웃은 두 가지를 따로 겁니다. <strong>연결 타임아웃</strong>은 TCP 연결 수립까지(보통 1초 안팎), <strong>읽기 타임아웃</strong>은 응답을 기다리는 시간으로, 대상 API의 p99 응답 시간보다 조금 길게 잡습니다.</p>
+    <p>호출이 여러 단계로 이어지면 <mark>바깥 타임아웃이 안쪽보다 길어야</mark> 합니다. 바깥이 먼저 끊으면 안쪽은 아무도 기다리지 않는 일을 계속하며 자원을 씁니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>재시도에는 지수 백오프와 지터를 섞는다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="Retry.java"><code><span class="k">long</span> base = <span class="n">100</span>, cap = <span class="n">10_000</span>;   <span class="c">// ms</span>
+<span class="k">for</span> (<span class="k">int</span> i = <span class="n">0</span>; i &lt; <span class="n">5</span>; i++) {
+  <span class="k">try</span> {
+    <span class="k">return</span> call();
+  } <span class="k">catch</span> (RetryableException e) {
+    <span class="k">long</span> exp = Math.min(cap, base &lt;&lt; i);
+<span class="hl">    sleep(rnd.nextLong(exp + <span class="n">1</span>));  <span class="c">// 0~exp</span></span>
+  }
+}
+<span class="k">throw new</span> GiveUpException();</code></pre>
+    <div class="prose">
+      <p>일시적 오류는 다시 시도하면 성공하지만, 실패한 클라이언트 수천이 같은 간격으로 재시도하면 회복 중인 서버를 다시 쓰러뜨립니다.</p>
+      <p>대기 시간을 100, 200, 400ms처럼 늘리는 <dfn>지수 백오프</dfn>에 무작위 <dfn title="Jitter">지터</dfn>를 섞어 재시도 시각을 흩뜨립니다. 재시도는 멱등한 요청에만, 횟수 상한을 두고 합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>서킷 브레이커는 실패할 호출을 미리 끊는다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>계속 실패하는 대상을 계속 부르는 것은 양쪽 모두에 손해입니다. <dfn title="Circuit Breaker">서킷 브레이커</dfn>는 최근 호출의 실패율이 임계치를 넘으면 회로를 열어, 호출하지 않고 즉시 실패를 반환합니다.</p>
+      <p>일정 시간 뒤 몇 건만 시험 삼아 보내 보고, 성공하면 닫고 실패하면 다시 엽니다. Resilience4j 기본값은 실패율 50%, 열림 대기 60초, 반열림 시험 호출 10건입니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 440" role="img" aria-labelledby="f39t">
+        <title id="f39t">Closed 상태에서 실패율이 임계치를 넘으면 Open으로, 대기 시간이 지나면 Half-Open으로, 시험 호출이 성공하면 Closed로, 다시 실패하면 Open으로 돌아간다.</title>
+        <rect class="dg-box dg-box--flow" x="40" y="60" width="220" height="72"/>
+        <text class="dg-label--lg" x="150" y="96" text-anchor="middle">Closed</text>
+        <rect class="dg-box dg-box--key" x="500" y="60" width="220" height="72"/>
+        <text class="dg-label--lg" x="610" y="96" text-anchor="middle">Open</text>
+        <rect class="dg-box" x="270" y="320" width="220" height="72"/>
+        <text class="dg-label--lg" x="380" y="356" text-anchor="middle">Half-Open</text>
+        <path class="dg-arrow dg-arrow--key" d="M268,96 H492"/>
+        <text class="dg-label--sm" x="380" y="80" text-anchor="middle">실패율 임계치 초과</text>
+        <path class="dg-arrow" d="M610,140 Q610,356 498,356"/>
+        <text class="dg-label--sm" x="620" y="250" text-anchor="start">대기 시간 경과</text>
+        <path class="dg-arrow dg-arrow--flow" d="M262,356 Q150,356 150,140"/>
+        <text class="dg-label--sm dg-label--flow" x="138" y="250" text-anchor="end">시험 성공</text>
+        <path class="dg-arrow dg-arrow--key" d="M440,312 L548,146"/>
+        <text class="dg-label--sm dg-label--key" x="508" y="250" text-anchor="start">다시 실패</text>
+      </svg>
+      <figcaption>열린 동안에는 호출 자체를 하지 않으므로, 실패한 대상이 회복할 시간을 벌어 줍니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>격벽으로 가두고, 대체 응답으로 버틴다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p><dfn title="Bulkhead">벌크헤드</dfn>는 배의 격벽처럼 자원을 나눕니다. 결제 호출용 스레드 풀 20개, 추천 호출용 10개처럼 의존 대상마다 풀을 따로 두면, 추천 서비스가 느려져도 그 10개만 막히고 결제는 계속 돕니다.</p>
+      <p><dfn title="Fallback">폴백</dfn>은 실패했을 때 내보낼 대체 응답입니다. 추천 목록 대신 인기 상품, 실시간 재고 대신 캐시된 값처럼 기능을 낮춰서라도 응답합니다.</p>
+    </div>
+    <ol class="steps">
+      <li><b>타임아웃</b><p>느린 호출이 자원을 붙잡지 못하게 끊습니다.</p></li>
+      <li><b>재시도</b><p>일시적 실패를 백오프와 지터로 흡수합니다.</p></li>
+      <li><b>서킷 브레이커</b><p>지속적 실패는 호출 자체를 차단합니다.</p></li>
+      <li><b>벌크헤드</b><p>한 의존 대상의 장애를 그 풀 안에 가둡니다.</p></li>
+      <li class="is-key"><b>폴백</b><p>결국 실패하면 낮춘 기능으로라도 응답합니다.</p></li>
+    </ol>
+  </div>
+</section>
+
+<section class="slide" data-section="Rate Limiting">
+  <h2>처리율 제한은 받을 만큼만 받는 장치다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">알고리즘</th><th scope="col">동작</th><th scope="col">특징</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Token Bucket</th><td>일정 속도로 토큰이 차고, 요청마다 하나씩 소비</td><td class="is-flow">버스트 허용, 가장 널리 쓰임</td></tr>
+        <tr><th scope="row">Leaky Bucket</th><td>큐에 넣고 일정 속도로만 흘려보냄</td><td>출력이 고르게, 버스트 불가</td></tr>
+        <tr><th scope="row">Fixed Window</th><td>분 단위 칸마다 카운터</td><td class="is-key">경계에서 두 배까지 통과</td></tr>
+        <tr><th scope="row">Sliding Window Log</th><td>요청 시각을 모두 기록해 최근 구간을 셈</td><td>정확, 메모리 많이 씀</td></tr>
+        <tr><th scope="row">Sliding Window Counter</th><td>이전 칸과 현재 칸을 가중 평균</td><td>근사지만 가볍고 정확도 양호</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>Fixed Window는 0분 59초에 100건, 1분 0초에 100건이 들어오면 1초 사이에 200건이 통과합니다. 이 경계 문제를 줄인 것이 두 Sliding Window 방식입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Token Bucket을 여러 서버에서 함께 쓰려면</h2>
+  <div class="split split--even">
+    <ol class="steps">
+      <li><b>버킷 읽기</b><p>Redis에서 남은 토큰 수와 마지막 갱신 시각을 읽습니다.</p></li>
+      <li><b>토큰 채우기</b><p>지난 시간 × 충전 속도만큼 더하되 용량을 넘지 않게 합니다.</p></li>
+      <li><b>판정</b><p>토큰이 1 이상이면 하나 빼고 통과, 아니면 거절합니다.</p></li>
+      <li class="is-key"><b>원자적으로</b><p>세 단계를 Lua 스크립트 하나로 묶어 실행합니다.</p></li>
+    </ol>
+    <div class="prose">
+      <p>서버마다 따로 세면 서버가 10대일 때 한도가 10배가 됩니다. 그래서 카운터를 Redis 같은 공용 저장소에 두고, 읽기와 쓰기 사이에 끼어들지 못하게 Lua로 원자 실행합니다.</p>
+      <p>거절할 때는 <code>429 Too Many Requests</code>와 <code>Retry-After</code> 헤더로 언제 다시 오라고 알려 줍니다. API Gateway의 역할은 7장에서 다뤘고, AWS 구현은 11장에서 다룹니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-section="일관성 해싱">
+  <h2>노드가 늘어도 키 대부분은 제자리에</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>캐시 서버 N대에 <code>hash(key) % N</code>으로 키를 나누면, 서버를 한 대 늘리는 순간 N이 바뀌어 키 대부분이 다른 서버로 갑니다. 캐시가 한꺼번에 비는 눈사태가 됩니다.</p>
+      <p><dfn title="Consistent Hashing">일관성 해싱</dfn>은 노드와 키를 같은 원 위에 놓고, 키는 시계 방향으로 처음 만나는 노드에 둡니다. 노드가 추가되면 <mark>그 노드 바로 앞 구간의 키만</mark> 옮겨 갑니다. 노드마다 가상 노드를 여러 개 두어 쏠림을 줄입니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 480" role="img" aria-labelledby="f43t">
+        <title id="f43t">해시 링 위에 노드 A, B, C가 있고 새 노드 D가 A와 B 사이에 추가된다. A와 D 사이의 키 k1은 B에서 D로 옮겨 가고, k2는 그대로 C에 남는다.</title>
+        <circle class="dg-line" cx="380" cy="240" r="170"/>
+        <rect class="dg-box dg-box--flow" x="332" y="42" width="96" height="56"/>
+        <text x="380" y="70" text-anchor="middle">A</text>
+        <rect class="dg-box dg-box--flow" x="479" y="297" width="96" height="56"/>
+        <text x="527" y="325" text-anchor="middle">B</text>
+        <rect class="dg-box dg-box--flow" x="185" y="297" width="96" height="56"/>
+        <text x="233" y="325" text-anchor="middle">C</text>
+        <circle class="dg-dot" cx="550" cy="240" r="7"/>
+        <rect class="dg-box dg-box--ghost" x="576" y="212" width="110" height="56"/>
+        <text x="631" y="240" text-anchor="middle">D 추가</text>
+        <circle class="dg-dot dg-dot--key" cx="500" cy="120" r="8"/>
+        <text class="dg-label--sm dg-label--key" x="516" y="110" text-anchor="start">k1: B에서 D로</text>
+        <circle class="dg-dot dg-dot--flow" cx="380" cy="410" r="8"/>
+        <text class="dg-label--sm" x="380" y="444" text-anchor="middle">k2: C 그대로</text>
+      </svg>
+      <figcaption>N대에서 한 대를 늘리면 평균적으로 키의 1/(N+1)만 이동합니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide" data-section="설계 실습: URL 단축기">
+  <h2>설계는 요구사항과 숫자에서 시작한다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>지금까지의 도구로 URL 단축기를 설계해 봅니다. 먼저 기능 요구사항(긴 URL을 짧은 코드로, 코드로 접속하면 원래 URL로 이동)과 비기능 요구사항(이동은 빨라야 하고, 링크는 5년간 유지)을 정합니다.</p>
+      <p>다음은 대략의 숫자입니다. 정확할 필요는 없고, <mark>어느 자원이 병목인지</mark> 가리키면 충분합니다.</p>
+    </div>
+    <table class="compare">
+      <thead><tr><th scope="col">항목</th><th scope="col">가정과 계산</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">쓰기</th><td>하루 1천만 건, 약 116건/초</td></tr>
+        <tr><th scope="row">읽기</th><td>쓰기의 100배, 약 1.2만 건/초</td></tr>
+        <tr><th scope="row">5년 누적</th><td>약 183억 건</td></tr>
+        <tr><th scope="row">저장 용량</th><td>건당 500B, 약 9TB</td></tr>
+        <tr><th scope="row">결론</th><td class="is-key">읽기가 압도적, 캐시가 핵심</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>API, ID 생성, 확장을 차례로 정한다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p><strong>API</strong>는 <code>POST /urls</code>로 코드를 만들고 <code>GET /{code}</code>가 리다이렉트합니다. 301은 브라우저가 캐시해 서버 부하가 줄지만 클릭 통계를 못 얻고, 302는 매번 서버를 거칩니다.</p>
+      <p><strong>코드</strong>는 숫자 ID를 Base62(0-9, a-z, A-Z)로 바꿉니다. 7자리면 62<sup>7</sup>, 약 3.5조 개라 183억 건을 넉넉히 담습니다. 해시를 자르면 충돌 검사가 필요하지만 ID 방식은 충돌이 없습니다.</p>
+    </div>
+    <ol class="steps">
+      <li><b>데이터 모델</b><p>code(PK), long_url, created_at. 조인 없는 키-값 조회.</p></li>
+      <li><b>ID 발급</b><p>서버마다 ID 구간을 미리 받아 써서 발급 경합을 없앱니다.</p></li>
+      <li class="is-key"><b>읽기 캐시</b><p>Cache-Aside, 인기 링크는 소수에 몰림.</p></li>
+      <li><b>무상태 서버</b><p>LB 뒤에서 스케일 아웃합니다.</p></li>
+      <li><b>저장소 확장</b><p>code 기준 샤딩, 클릭 통계는 큐로 비동기 집계.</p></li>
+    </ol>
+  </div>
+</section>
+
+<!-- ===== Summary ===================================================== -->
+<section class="slide slide--summary" data-section="정리" data-depth="none">
+  <h2>정리</h2>
+  <ul class="summary">
+    <li><b>스케일 아웃은 무상태 서버에서 시작합니다.</b> 세션 같은 상태를 Redis 같은 공용 저장소로 옮겨야 아무 서버나 요청을 받을 수 있습니다.</li>
+    <li><b>캐시는 TTL로 안전망을 치고 삭제로 무효화합니다.</b> 스탬피드, 관통, 눈사태는 "재계산은 한 명만", 빈 값 캐시, TTL 분산으로 막습니다.</li>
+    <li><b>동시성은 원자성을 어디에 맡기느냐의 문제입니다.</b> DB 한 문장, Redis 명령과 Lua, 분산 락과 펜싱 토큰, 큐 직렬화를 처리량과 정확성으로 고릅니다.</li>
+    <li><b>메시지는 at-least-once로 오고, 컨슈머가 멱등해야 합니다.</b> 서비스를 넘는 정합성은 Saga와 Transactional Outbox로 최종 일관성을 맞춥니다.</li>
+    <li><b>느림이 실패보다 위험합니다.</b> 타임아웃, 백오프와 지터, 서킷 브레이커, 벌크헤드, 폴백으로 장애를 가두고, 처리율 제한으로 받을 만큼만 받습니다.</li>
+  </ul>
+</section>
+
+<!-- ===== Self-check ================================================== -->
+<section class="slide" data-section="부록: 스스로 점검" data-depth="none">
+  <h2>스스로 점검 (1)</h2>
+  <ol class="selfcheck">
+    <li><details><summary>Sticky Session만으로 세션 문제를 풀면 무엇이 남나요?</summary>
+      <div class="answer"><p>서버 한 대가 죽으면 그 서버의 세션이 모두 사라지고, 특정 서버에 사용자가 쏠립니다. 서버를 줄이거나 배포할 때도 세션이 끊깁니다.</p></div></details></li>
+    <li><details><summary>DB를 갱신한 뒤 캐시를 새 값으로 덮어쓰지 않고 지우는 이유는?</summary>
+      <div class="answer"><p>동시에 두 쓰기가 일어나면 캐시 덮어쓰기 순서가 DB 반영 순서와 뒤바뀌어 낡은 값이 남을 수 있습니다. 삭제는 순서와 관계없이 다음 읽기가 최신 값을 채웁니다.</p></div></details></li>
+    <li><details><summary>모든 캐시 키에 TTL 600초를 똑같이 주면 어떤 일이 생길 수 있나요?</summary>
+      <div class="answer"><p>한꺼번에 채운 키들이 같은 순간 만료되어 DB로 요청이 몰리는 눈사태가 납니다. TTL에 무작위 값을 더해 만료 시각을 흩뜨립니다.</p></div></details></li>
+    <li><details><summary>Redis로 분산 락을 잡을 때 만료 시간과 고유 값이 각각 필요한 이유는?</summary>
+      <div class="answer"><p>만료 시간이 없으면 락을 쥔 서버가 죽었을 때 영원히 잠깁니다. 고유 값이 없으면 내 락이 만료된 뒤 남이 잡은 락을 내가 지울 수 있습니다.</p></div></details></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <h2>스스로 점검 (2)</h2>
+  <ol class="selfcheck">
+    <li><details><summary>파티션이 4개인 토픽에 컨슈머 6개를 같은 그룹으로 붙이면?</summary>
+      <div class="answer"><p>파티션 하나는 그룹 안에서 컨슈머 하나만 읽으므로 2개는 놉니다. 처리량을 늘리려면 파티션 수를 먼저 늘려야 합니다.</p></div></details></li>
+    <li><details><summary>주문 저장 후 Kafka에 직접 발행하는 코드는 어디서 깨지나요?</summary>
+      <div class="answer"><p>DB 커밋 후 발행 전에 서버가 죽으면 이벤트가 사라지고, 발행 후 커밋이 실패하면 없는 주문의 이벤트가 나갑니다. Outbox로 같은 트랜잭션에 묶어 해결합니다.</p></div></details></li>
+    <li><details><summary>재시도 간격을 1초로 고정하면 장애 복구 때 무엇이 문제인가요?</summary>
+      <div class="answer"><p>실패한 클라이언트들이 같은 박자로 동시에 재시도해 회복 중인 서버에 다시 폭주합니다. 지수 백오프와 지터로 시각을 흩뜨립니다.</p></div></details></li>
+    <li><details><summary>Fixed Window로 분당 100건을 제한할 때 최악의 경우 몇 건이 통과하나요?</summary>
+      <div class="answer"><p>창의 경계 앞뒤 1초 사이에 이전 창 100건과 다음 창 100건, 최대 200건이 통과합니다. Sliding Window로 줄입니다.</p></div></details></li>
+    <li><details><summary>캐시 서버를 % N 방식으로 나누다가 한 대를 늘리면 왜 위험한가요?</summary>
+      <div class="answer"><p>N이 바뀌면서 키 대부분의 위치가 바뀌어 사실상 캐시 전체가 비고 DB로 몰립니다. 일관성 해싱은 일부 구간만 옮깁니다.</p></div></details></li>
+  </ol>
+</section>
+
+<!-- ===== Next chapter ================================================ -->
+<section class="slide" data-section="다음 단계" data-depth="none">
+  <h2>다음으로 올라갈 층</h2>
+  <div class="slide__body">
+    <p class="lede">설계도의 상자 하나하나는 결국 어떤 Linux 서버 위의 프로세스입니다. 다음 장에서는 그 프로세스를 컨테이너로 포장하고, 중단 없이 배포하고, 문제가 생기면 명령어로 들여다보는 방법으로 넘어갑니다.</p>
+    <div class="nav-pair">
+      <a class="next" href="09-linux-container-deploy.html">
+        <span class="next__text">
+          <span class="next__label">다음 장</span>
+          <span class="next__title">9장 Linux, 컨테이너, 배포</span>
+          <span class="next__desc">Docker와 Kubernetes, 무중단 배포 전략과 Graceful Shutdown</span>
+        </span>
+        <div class="stackmap stackmap--mini" data-current="9"></div>
+      </a>
+      <a class="next next--prev" href="07-api-security.html">
+        <span class="next__text">
+          <span class="next__label">이전 장</span>
+          <span class="next__title">7장 웹 API 설계와 보안</span>
+        </span>
+      </a>
+    </div>
+    <p class="small"><a href="index.html">전체 학습 지도로 돌아가기</a></p>
+  </div>
+</section>
+
+</main>
+<script src="assets/deck.js"></script>
+</body>
+</html>

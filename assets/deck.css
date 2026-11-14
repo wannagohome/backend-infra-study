@@ -1,0 +1,929 @@
+/* ==========================================================================
+   백엔드 & 인프라 학습 슬라이드 — deck.css
+   Concept: "datasheet / engineering schematic"
+   - cool paper surface, navy ink, two signal colors:
+       flow (blue)  = request / data flow, informational emphasis
+       key  (amber) = key points, warnings, things to remember
+   - one bold element: the stack map. Everything else stays quiet.
+   Writer guide: _design/COMPONENTS.md
+   ========================================================================== */
+
+/* ---------- 1. Tokens ---------------------------------------------------- */
+:root {
+  color-scheme: light;
+
+  /* surfaces & ink */
+  --bg: #DCE3EB;          /* letterbox around the stage */
+  --paper: #F6F8FB;       /* slide surface: cool paper white */
+  --panel: #FFFFFF;       /* raised surface: tables, code, figures */
+  --ink: #13243D;         /* navy ink: body text */
+  --ink-2: #44546B;       /* secondary text */
+  --ink-3: #6B7A8F;       /* tertiary: captions, chrome */
+  --rule: #C9D3DF;        /* hairlines */
+  --rule-soft: #E2E8EF;   /* table zebra, subtle fills */
+
+  /* signal: flow (request / data) */
+  --flow: #0B63B0;
+  --flow-ink: #0A4F8C;    /* flow-colored text on paper (AA) */
+  --flow-wash: #E3EEF9;
+  --flow-line: #9DC0E3;
+  --on-flow: #FFFFFF;
+
+  /* signal: key (key point / warning) */
+  --key: #C27400;
+  --key-ink: #8A5200;
+  --key-wash: #FFF1D1;
+  --key-line: #E8BE72;
+  --on-key: #1E1400;
+
+  /* code */
+  --code-bg: #EEF2F7;
+  --code-ink: #1B2B44;
+  --code-comment: #6B7A8F;
+  --code-keyword: #0A4F8C;
+  --code-string: #7A4A00;
+  --code-number: #8A2F6B;
+  --code-hl: #FFF1D1;
+
+  /* type */
+  --font-sans: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* stage-scale type (stage is 1600 x 900 px; scaled to fit) */
+  --fs-cover: 84px;
+  --fs-h2: 46px;
+  --fs-h3: 30px;
+  --fs-lede: 30px;
+  --fs-body: 26px;
+  --fs-small: 21px;
+  --fs-code: 21px;
+  --fs-chrome: 15px;
+  --lh-body: 1.7;
+  --lh-tight: 1.3;
+
+  /* stage-scale spacing */
+  --pad-x: 96px;
+  --pad-top: 72px;
+  --pad-bottom: 64px;
+  --gap: 56px;
+  --gap-sm: 24px;
+  --radius: 6px;          /* only for panels; stack map uses 2px, chips 999px */
+
+  --hud-h: 48px;
+  --t-fast: 160ms;
+}
+
+/* dark: navy night, not neutral black */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #070D17;
+    --paper: #0F1A2B;
+    --panel: #142236;
+    --ink: #DCE5F0;
+    --ink-2: #A9B8CB;
+    --ink-3: #7F90A6;
+    --rule: #2B3D57;
+    --rule-soft: #1A2A40;
+    --flow: #4DA8EC;
+    --flow-ink: #7EC0F2;
+    --flow-wash: #12304F;
+    --flow-line: #2F6A9E;
+    --on-flow: #06121F;
+    --key: #F0B24A;
+    --key-ink: #F5C778;
+    --key-wash: #3A2B0E;
+    --key-line: #8A6420;
+    --on-key: #1E1400;
+    --code-bg: #0B1524;
+    --code-ink: #D6E0EC;
+    --code-comment: #7F90A6;
+    --code-keyword: #7EC0F2;
+    --code-string: #F5C778;
+    --code-number: #E59BCB;
+    --code-hl: #33270F;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #070D17;
+  --paper: #0F1A2B;
+  --panel: #142236;
+  --ink: #DCE5F0;
+  --ink-2: #A9B8CB;
+  --ink-3: #7F90A6;
+  --rule: #2B3D57;
+  --rule-soft: #1A2A40;
+  --flow: #4DA8EC;
+  --flow-ink: #7EC0F2;
+  --flow-wash: #12304F;
+  --flow-line: #2F6A9E;
+  --on-flow: #06121F;
+  --key: #F0B24A;
+  --key-ink: #F5C778;
+  --key-wash: #3A2B0E;
+  --key-line: #8A6420;
+  --on-key: #1E1400;
+  --code-bg: #0B1524;
+  --code-ink: #D6E0EC;
+  --code-comment: #7F90A6;
+  --code-keyword: #7EC0F2;
+  --code-string: #F5C778;
+  --code-number: #E59BCB;
+  --code-hl: #33270F;
+}
+
+/* ---------- 2. Base ------------------------------------------------------ */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }   /* no iOS landscape text inflation */
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  word-break: keep-all;          /* Korean: break at spaces, not mid-word */
+  overflow-wrap: break-word;
+}
+a { color: var(--flow-ink); text-underline-offset: 0.18em; text-decoration-thickness: 1px; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 3px solid var(--flow); outline-offset: 3px; border-radius: 2px; }
+.visually-hidden {
+  position: absolute !important; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+/* ---------- 3. Stage & engine layout ------------------------------------ */
+/* deck.js wraps every .slide in .frame and puts all frames inside .stage */
+/* safe-area insets (viewport-fit=cover): keep chrome clear of notch and home indicator */
+:root {
+  --safe-t: env(safe-area-inset-top, 0px); --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px); --safe-l: env(safe-area-inset-left, 0px);
+}
+.deck { position: fixed; inset: 0 0 calc(var(--hud-h) + var(--safe-b)) 0; overflow: hidden; }
+.stage {
+  position: absolute; left: 50%; top: 50%;
+  width: 1600px; height: 900px;
+  transform-origin: 0 0;
+  /* transform set by deck.js: translate(-50%,-50%) via left/top math + scale */
+}
+.frame {
+  position: absolute; inset: 0;
+  visibility: hidden; opacity: 0;
+  transition: opacity var(--t-fast) ease, visibility 0s linear var(--t-fast);
+}
+.frame.is-active {
+  visibility: visible; opacity: 1;
+  transition: opacity var(--t-fast) ease, visibility 0s;
+}
+
+.slide {
+  position: relative;
+  width: 1600px; height: 900px;
+  overflow: hidden;
+  background: var(--paper);
+  color: var(--ink);
+  padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
+  display: flex; flex-direction: column;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+}
+/* schematic registration marks: quiet corner ticks on every slide */
+.slide::before, .slide::after {
+  content: ""; position: absolute; width: 18px; height: 18px;
+  border-color: var(--rule); border-style: solid; pointer-events: none;
+}
+.slide::before { top: 28px; left: 28px; border-width: 1px 0 0 1px; }
+.slide::after { bottom: 28px; right: 28px; border-width: 0 1px 1px 0; }
+
+/* slide title */
+.slide > h2, .slide__title {
+  margin: 0 0 40px;
+  font-size: var(--fs-h2);
+  line-height: var(--lh-tight);
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  max-width: 30em;
+}
+.slide h3 {
+  margin: 0 0 12px; font-size: var(--fs-h3); line-height: var(--lh-tight); font-weight: 600;
+}
+.slide__body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--gap-sm); }
+.slide__foot { margin-top: auto; padding-top: 16px; font-size: var(--fs-small); color: var(--ink-3); }
+
+/* ---------- 4. HUD (progress, counter, section, depth, controls) -------- */
+.hud {
+  position: fixed; left: 0; right: 0; bottom: 0; height: calc(var(--hud-h) + var(--safe-b));
+  display: flex; align-items: center; gap: 20px;
+  padding: 0 calc(16px + var(--safe-r)) var(--safe-b) calc(20px + var(--safe-l));
+  font-size: var(--fs-chrome); color: var(--ink-2);
+  background: var(--paper);
+  border-top: 1px solid var(--rule);
+  z-index: 20;
+}
+.hud__progress {
+  position: fixed; left: 0; top: var(--safe-t); height: 3px; width: 100%;
+  background: transparent; z-index: 21; pointer-events: none;
+}
+.hud__progress > span {
+  display: block; height: 100%; width: 0; background: var(--flow);
+  transition: width var(--t-fast) ease;
+}
+.hud__where { display: flex; align-items: baseline; gap: 14px; min-width: 0; flex: 1; }
+.hud__chapter { color: var(--ink); font-weight: 600; white-space: nowrap; }
+.hud__section {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink-2);
+  padding-left: 14px; border-left: 1px solid var(--rule);
+}
+.hud__count { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--ink-2); }
+.hud__count b { color: var(--ink); font-weight: 600; }
+.hud__btns { display: flex; gap: 4px; }
+.hud__btn {
+  appearance: none; border: 1px solid transparent; background: transparent; color: var(--ink-2);
+  height: 32px; min-width: 32px; padding: 0 8px; border-radius: 4px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  font: inherit; touch-action: manipulation;
+}
+.hud__btn:hover { background: var(--rule-soft); color: var(--ink); }
+.hud__btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.hud__btn[disabled] { opacity: 0.35; cursor: default; background: transparent; }
+
+/* depth meter: 3 ticks + label (기초 / 원리 / 실무) */
+.depth {
+  display: inline-flex; align-items: center; gap: 8px; white-space: nowrap;
+  color: var(--ink-2);
+}
+.depth__ticks { display: inline-flex; gap: 3px; align-items: flex-end; }
+.depth__ticks i {
+  display: block; width: 5px; border-radius: 1px; background: var(--rule);
+}
+.depth__ticks i:nth-child(1) { height: 7px; }
+.depth__ticks i:nth-child(2) { height: 10px; }
+.depth__ticks i:nth-child(3) { height: 13px; }
+.depth[data-depth="basic"] .depth__ticks i:nth-child(-n+1),
+.depth[data-depth="core"] .depth__ticks i:nth-child(-n+2),
+.depth[data-depth="practice"] .depth__ticks i:nth-child(-n+3) { background: var(--flow); }
+.depth:not([data-depth]) { visibility: hidden; }
+
+/* edge click zones */
+.edge {
+  position: fixed; top: 0; bottom: calc(var(--hud-h) + var(--safe-b)); width: 56px; z-index: 10;
+  border: 0; background: transparent; cursor: pointer; padding: 0;
+  display: flex; align-items: center; justify-content: center; color: var(--ink-3);
+  opacity: 0; transition: opacity var(--t-fast);
+}
+.edge:hover, .edge:focus-visible { opacity: 1; }
+.edge--prev { left: 0; }
+.edge--next { right: 0; }
+.edge svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 1.75; }
+
+/* touch screens: the edge zones are invisible without hover and would sit on top of
+   links/details near the slide edge, so drop them; swipe + visible HUD buttons instead.
+   Bottom-bar controls get >= 44px targets; hover tints don't stick after a tap. */
+@media (hover: none), (pointer: coarse) {
+  .edge { display: none; }
+  .hud__btn { height: 44px; min-width: 44px; }
+  .hud__btns { gap: 2px; }
+  .hud__btn:hover { background: transparent; color: var(--ink-2); }
+  .selfcheck summary:hover { background: transparent; }
+  .is-overview .frame:hover { outline: 1px solid var(--rule); }
+  .is-overview .frame.is-active { outline: 3px solid var(--flow); }
+}
+summary, .next, .stackmap__layer a { touch-action: manipulation; }
+
+/* ---------- 5. Overview grid -------------------------------------------- */
+.is-overview .deck { overflow-y: auto; inset: 0 0 calc(var(--hud-h) + var(--safe-b)) 0; }
+.is-overview .stage {
+  position: static; transform: none !important; width: auto; height: auto;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(288px, 1fr));
+  gap: 28px 20px; padding: 32px;
+}
+.is-overview .frame {
+  position: relative; inset: auto; visibility: visible; opacity: 1; transition: none;
+  aspect-ratio: 16 / 9; cursor: pointer; border-radius: 3px;
+  outline: 1px solid var(--rule); container-type: inline-size;
+  margin-bottom: 30px;
+}
+.is-overview .frame .slide {
+  position: absolute; left: 0; top: 0;
+  transform: scale(var(--thumb-scale, 0.18)); transform-origin: 0 0;
+  pointer-events: none;
+}
+.is-overview .frame-clip { position: absolute; inset: 0; overflow: hidden; border-radius: 3px; }
+.is-overview .frame:hover { outline: 2px solid var(--flow-line); }
+.is-overview .frame.is-active { outline: 3px solid var(--flow); }
+.frame__cap { display: none; }
+.is-overview .frame__cap {
+  display: flex; gap: 10px; align-items: center;
+  position: absolute; left: 0; right: 0; top: calc(100% + 8px);
+  font-size: 13px; color: var(--ink-2); line-height: 1.3;
+}
+.frame__cap b { font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 600; }
+.frame__cap .frame__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.is-overview .edge { display: none; }
+
+/* ---------- 6. Typography components ----------------------------------- */
+.prose { max-width: 38em; }          /* ~38–40 Korean chars per line */
+.prose > * { margin: 0; }
+.prose > * + * { margin-top: 0.75em; }
+.prose ul, .prose ol { padding-left: 1.2em; }
+.prose li + li { margin-top: 0.35em; }
+.prose ul li::marker { color: var(--ink-3); }
+.prose ol li::marker { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.lede { font-size: var(--fs-lede); line-height: 1.6; color: var(--ink-2); max-width: 34em; margin: 0; }
+.small { font-size: var(--fs-small); color: var(--ink-2); }
+
+.slide strong { font-weight: 600; color: var(--ink); }
+.slide mark {
+  background: linear-gradient(transparent 58%, var(--key-wash) 58%);
+  color: inherit; padding: 0 0.08em;
+  box-shadow: inset 0 -2px 0 var(--key-line);
+}
+.slide dfn { font-style: normal; font-weight: 600; color: var(--flow-ink); }
+.slide dfn[title]::after { content: " (" attr(title) ")"; font-weight: 400; color: var(--ink-3); font-size: 0.85em; }
+.slide :not(pre) > code {
+  font-family: var(--font-mono); font-size: 0.86em;
+  background: var(--code-bg); color: var(--code-ink);
+  padding: 0.08em 0.32em; border-radius: 3px; border: 1px solid var(--rule-soft);
+  word-break: normal; overflow-wrap: anywhere;
+}
+
+/* ---------- 7. Layout helpers ------------------------------------------- */
+.split {
+  flex: 1; min-height: 0;
+  display: grid; grid-template-columns: 5fr 6fr; gap: var(--gap); align-items: start;
+}
+.split--even { grid-template-columns: 1fr 1fr; }
+.split--wide-left { grid-template-columns: 7fr 5fr; }
+.split--center { align-items: center; }
+.split > * { min-width: 0; }
+
+/* ---------- 8. Cover ------------------------------------------------------ */
+.slide--cover { padding: 0; flex-direction: row; }
+.cover {
+  flex: 1; display: grid; grid-template-columns: 1fr 520px; height: 100%;
+}
+.cover__main {
+  padding: 120px 88px 88px 112px;
+  display: flex; flex-direction: column;
+}
+.cover__chapter {
+  font-size: 24px; color: var(--ink-2); margin: 0 0 28px; font-weight: 500;
+  display: flex; gap: 14px; align-items: baseline;
+}
+.cover__chapter b {
+  font-weight: 600; color: var(--flow-ink); font-variant-numeric: tabular-nums;
+}
+.cover h1 {
+  font-size: var(--fs-cover); line-height: 1.15; font-weight: 700;
+  letter-spacing: -0.025em; margin: 0 0 36px; max-width: 11em;
+}
+.cover__lede { font-size: var(--fs-lede); line-height: 1.6; color: var(--ink-2); margin: 0; max-width: 24em; }
+.cover__meta {
+  margin-top: auto; display: flex; gap: 36px; font-size: 19px; color: var(--ink-3);
+}
+.cover__meta dt { color: var(--ink-3); }
+.cover__meta dd { margin: 2px 0 0; color: var(--ink); font-weight: 500; }
+.cover__map {
+  border-left: 1px solid var(--rule);
+  background: var(--panel);
+  padding: 72px 64px 64px 56px;
+  display: flex; flex-direction: column; justify-content: flex-end;
+}
+
+/* ---------- 9. Stack map (the bold element) ----------------------------- */
+/* Logical order is bottom → top: first <li> is the foundation (hardware/OS). */
+.stackmap { --sm-h: 46px; --sm-gap: 6px; --sm-step: 2.6%; position: relative; }
+.stackmap__cap {
+  font-size: 17px; color: var(--ink-3); margin: 0 0 18px; line-height: 1.5;
+}
+.stackmap__list {
+  list-style: none; margin: 0; padding: 0 0 0 34px;
+  display: flex; flex-direction: column-reverse; gap: var(--sm-gap);
+  position: relative;
+}
+/* rising rail on the left: drawn per layer so it can change state */
+.stackmap__layer {
+  --w: calc(100% - var(--i, 0) * var(--sm-step));
+  position: relative;
+  width: var(--w);
+  min-height: var(--sm-h);
+  display: flex; align-items: center; gap: 14px;
+  padding: 0 16px;
+  border-radius: 2px;
+  font-size: 18px; line-height: 1.25;
+  color: var(--ink-3);
+  border: 1px dashed var(--rule);
+  background: transparent;
+  transition: background 300ms ease, color 300ms ease, border-color 300ms ease;
+  transition-delay: calc(var(--i, 0) * 70ms);
+}
+.stackmap__layer::before {             /* rail segment */
+  content: ""; position: absolute; left: -22px; width: 2px;
+  top: calc(var(--sm-gap) / -2); bottom: calc(var(--sm-gap) / -2);
+  background: repeating-linear-gradient(to bottom, var(--rule) 0 5px, transparent 5px 9px);
+}
+.stackmap__layer::after {              /* node on the rail */
+  content: ""; position: absolute; left: -27px; top: 50%; width: 12px; height: 12px;
+  margin-top: -6px; border-radius: 50%;
+  background: var(--panel); border: 2px solid var(--rule);
+}
+.stackmap__no {
+  font-variant-numeric: tabular-nums; font-weight: 600; min-width: 1.4em; color: inherit; opacity: 0.8;
+}
+.stackmap__name { flex: 1; }
+.stackmap__tag { display: none; }
+
+/* layers already climbed */
+.stackmap__layer.is-below {
+  border: 1px solid transparent; background: var(--flow-wash); color: var(--ink-2);
+}
+.stackmap__layer.is-below::before { background: var(--flow); }
+.stackmap__layer.is-below::after { border-color: var(--flow); background: var(--flow); }
+/* this chapter */
+.stackmap__layer.is-current {
+  width: calc(var(--w) + 28px); margin-right: -28px;
+  min-height: calc(var(--sm-h) + 14px);
+  border: 1px solid var(--flow); background: var(--flow); color: var(--on-flow);
+  font-size: 20px; font-weight: 600;
+}
+.stackmap__layer.is-current .stackmap__no { opacity: 1; }
+.stackmap__layer.is-current::before {
+  background: var(--flow); bottom: 50%;
+}
+.stackmap__layer.is-current::after {
+  width: 16px; height: 16px; left: -29px; margin-top: -8px;
+  background: var(--paper); border: 4px solid var(--flow);
+  box-shadow: 0 0 0 5px var(--flow-wash);
+}
+.stackmap__layer.is-current .stackmap__tag {
+  display: inline; font-size: 15px; font-weight: 500;
+  padding: 2px 10px; border-radius: 999px;
+  background: var(--on-flow); color: var(--flow-ink);
+}
+/* link layers (index usage) */
+.stackmap__layer a { color: inherit; text-decoration: none; display: flex; align-items: center; gap: 14px; flex: 1; align-self: stretch; }
+.stackmap__layer a:hover .stackmap__name { text-decoration: underline; text-underline-offset: 0.2em; }
+.stackmap__desc { display: none; }
+
+/* entrance: layers fill bottom → current when the cover becomes active */
+.frame:not(.is-active) .stackmap__layer.is-below,
+.frame:not(.is-active) .stackmap__layer.is-current {
+  background: transparent; color: var(--ink-3); border: 1px dashed var(--rule);
+  transition-delay: 0s;
+}
+.is-overview .stackmap__layer, .is-scroll .stackmap__layer { transition: none !important; }
+.is-overview .frame:not(.is-active) .stackmap__layer.is-below,
+.is-scroll .frame:not(.is-active) .stackmap__layer.is-below { background: var(--flow-wash); color: var(--ink-2); border: 1px solid transparent; }
+.is-overview .frame:not(.is-active) .stackmap__layer.is-current,
+.is-scroll .frame:not(.is-active) .stackmap__layer.is-current { background: var(--flow); color: var(--on-flow); border: 1px solid var(--flow); }
+
+/* index variant: bigger, links, descriptions, standalone page use */
+.stackmap--index { --sm-h: 64px; --sm-gap: 8px; --sm-step: 1.6%; }
+.stackmap--index .stackmap__layer { font-size: 19px; color: var(--ink); border: 1px solid var(--rule); background: var(--panel); }
+.stackmap--index .stackmap__layer::before { background: var(--flow-line); }
+.stackmap--index .stackmap__layer::after { border-color: var(--flow); }
+.stackmap--index .stackmap__desc { display: block; font-size: 15px; color: var(--ink-3); font-weight: 400; margin-left: auto; text-align: right; }
+.stackmap--index .stackmap__layer:hover { border-color: var(--flow); background: var(--flow-wash); }
+.stackmap--index .stackmap__layer.is-below { background: var(--flow-wash); border-color: transparent; }
+.stackmap--index .stackmap__layer.is-current { background: var(--flow); color: var(--on-flow); border-color: var(--flow); }
+.stackmap--index .stackmap__layer.is-current .stackmap__desc { color: var(--on-flow); opacity: 0.85; }
+
+/* mini variant: 11 thin bars, used in next-chapter block */
+.stackmap--mini { --sm-h: 5px; --sm-gap: 3px; --sm-step: 4%; width: 64px; }
+.stackmap--mini .stackmap__list { padding: 0; }
+.stackmap--mini .stackmap__layer { padding: 0; min-height: 5px; height: 5px; border: 0; background: var(--rule); font-size: 0; }
+.stackmap--mini .stackmap__layer::before, .stackmap--mini .stackmap__layer::after { display: none; }
+.stackmap--mini .stackmap__layer > * { display: none !important; }
+.stackmap--mini .stackmap__layer.is-below { background: var(--flow-line); }
+.stackmap--mini .stackmap__layer.is-current { background: var(--flow); width: calc(var(--w) + 10px); margin-right: -10px; min-height: 7px; height: 7px; border: 0; }
+
+/* ---------- 10. Section divider ----------------------------------------- */
+.slide--divider { justify-content: center; padding-left: 176px; }
+.divider__no {
+  font-size: 24px; color: var(--ink-3); margin: 0 0 20px; font-variant-numeric: tabular-nums;
+  display: flex; align-items: center; gap: 16px;
+}
+.divider__no::after { content: ""; width: 64px; height: 1px; background: var(--rule); }
+.slide--divider h2 {
+  font-size: 68px; line-height: 1.2; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 28px; max-width: 16em;
+}
+.slide--divider .lede { max-width: 30em; }
+/* depth transition marker on a divider */
+.depth-shift {
+  margin-top: 56px; display: flex; align-items: center; gap: 18px;
+  font-size: 20px; color: var(--ink-2);
+}
+.depth-shift__step { display: inline-flex; align-items: center; gap: 10px; color: var(--ink-3); }
+.depth-shift__step.is-to { color: var(--ink); font-weight: 600; }
+.depth-shift__step .depth__ticks i { width: 7px; }
+.depth-shift__step .depth__ticks i:nth-child(1) { height: 10px; }
+.depth-shift__step .depth__ticks i:nth-child(2) { height: 15px; }
+.depth-shift__step .depth__ticks i:nth-child(3) { height: 20px; }
+.depth-shift__line { width: 56px; height: 2px; background: var(--rule); position: relative; }
+.depth-shift__line::after {
+  content: ""; position: absolute; right: -1px; top: -4px;
+  border: 5px solid transparent; border-left: 8px solid var(--rule); border-right: 0;
+}
+.depth-shift__note { margin-left: 12px; padding-left: 18px; border-left: 1px solid var(--rule); color: var(--ink-2); max-width: 26em; line-height: 1.5; }
+
+/* ---------- 11. Figure + SVG diagram primitives -------------------------- */
+.figure {
+  margin: 0; min-width: 0;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.figure svg { display: block; width: 100%; height: auto; overflow: visible; }
+.figure figcaption, .figcap {
+  font-size: var(--fs-small); color: var(--ink-3); line-height: 1.55;
+}
+.figure--panel { background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius); padding: 28px 32px; }
+
+svg.dg { font-family: var(--font-sans); }
+.dg text { fill: var(--ink); font-size: 18px; dominant-baseline: middle; }
+.dg .dg-label { fill: var(--ink); font-size: 18px; }
+.dg .dg-label--sm { fill: var(--ink-2); font-size: 15px; }
+.dg .dg-label--lg { fill: var(--ink); font-size: 22px; font-weight: 600; }
+.dg .dg-label--flow { fill: var(--flow-ink); }
+.dg .dg-label--key { fill: var(--key-ink); font-weight: 600; }
+.dg .dg-label--muted { fill: var(--ink-3); }
+.dg .dg-label--on { fill: var(--on-flow); }
+.dg .dg-mono { font-family: var(--font-mono); font-size: 16px; }   /* only for literal code/values */
+
+.dg .dg-box { fill: var(--panel); stroke: var(--ink-2); stroke-width: 2; rx: 4; }
+.dg .dg-box--flow { fill: var(--flow-wash); stroke: var(--flow); }
+.dg .dg-box--solid { fill: var(--flow); stroke: var(--flow); }
+.dg .dg-box--key { fill: var(--key-wash); stroke: var(--key); }
+.dg .dg-box--muted { fill: var(--rule-soft); stroke: var(--rule); }
+.dg .dg-box--ghost { fill: none; stroke: var(--rule); stroke-dasharray: 6 5; }
+.dg .dg-zone { fill: none; stroke: var(--rule); stroke-width: 1.5; stroke-dasharray: 2 5; stroke-linecap: round; rx: 10; }
+
+.dg .dg-line { stroke: var(--ink-2); stroke-width: 2; fill: none; }
+.dg .dg-line--thin { stroke: var(--rule); stroke-width: 1.5; }
+.dg .dg-lane { stroke: var(--rule); stroke-width: 2; stroke-dasharray: 6 6; fill: none; }
+.dg .dg-arrow { stroke: var(--ink-2); stroke-width: 2; fill: none; marker-end: url(#dg-arr); }
+.dg .dg-arrow--flow { stroke: var(--flow); stroke-width: 2.5; marker-end: url(#dg-arr-flow); }
+.dg .dg-arrow--key { stroke: var(--key); stroke-width: 2.5; marker-end: url(#dg-arr-key); }
+.dg .dg-arrow--back { stroke-dasharray: 7 5; }
+.dg .dg-arrow--both { marker-start: url(#dg-arr-start); }
+.dg .dg-arrow--flow.dg-arrow--both { marker-start: url(#dg-arr-flow-start); }
+.dg .dg-dot { fill: var(--ink-2); }
+.dg .dg-dot--flow { fill: var(--flow); }
+.dg .dg-dot--key { fill: var(--key); }
+.dg .dg-fill-flow { fill: var(--flow); }
+.dg .dg-fill-key { fill: var(--key); }
+.dg .dg-fill-paper { fill: var(--paper); }
+/* marker defs injected by deck.js */
+.dg-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+.dg-defs .m-ink { fill: var(--ink-2); }
+.dg-defs .m-flow { fill: var(--flow); }
+.dg-defs .m-key { fill: var(--key); }
+
+/* legend under a figure */
+.legend { display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: 17px; color: var(--ink-2); margin: 0; padding: 0; list-style: none; }
+.legend li { display: inline-flex; align-items: center; gap: 8px; }
+.legend i { display: inline-block; width: 22px; height: 0; border-top: 3px solid var(--ink-2); }
+.legend .is-flow i { border-color: var(--flow); }
+.legend .is-key i { border-color: var(--key); }
+.legend .is-dash i { border-top-style: dashed; }
+
+/* ---------- 12. Comparison table --------------------------------------- */
+.compare {
+  width: 100%; border-collapse: collapse; font-size: 22px; line-height: 1.5;
+  background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius);
+  overflow: hidden;
+}
+.compare caption { caption-side: bottom; text-align: left; padding-top: 14px; font-size: var(--fs-small); color: var(--ink-3); }
+.compare th, .compare td { padding: 14px 22px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--rule-soft); }
+.compare thead th {
+  font-size: 20px; font-weight: 600; color: var(--ink); background: var(--rule-soft);
+  border-bottom: 1px solid var(--rule);
+}
+.compare tbody th { font-weight: 600; color: var(--ink-2); width: 22%; white-space: nowrap; }
+.compare tbody tr:last-child > * { border-bottom: 0; }
+.compare td.is-flow { color: var(--flow-ink); font-weight: 600; }
+.compare td.is-key { background: var(--key-wash); color: var(--key-ink); font-weight: 600; }
+.compare .num { font-variant-numeric: tabular-nums; }
+
+/* ---------- 13. Step flow (HTML-only sequences) ------------------------- */
+/* 13a. .flow — horizontal pipeline of stages */
+.flow { display: flex; align-items: stretch; gap: 0; margin: 0; padding: 0; list-style: none; }
+.flow__node {
+  flex: 1; min-width: 0; position: relative;
+  padding: 18px 20px; background: var(--panel); border: 2px solid var(--ink-2); border-radius: 4px;
+  font-size: 21px; line-height: 1.45;
+}
+.flow__node b { display: block; font-weight: 600; color: var(--ink); margin-bottom: 4px; font-size: 22px; }
+.flow__node span { color: var(--ink-2); font-size: 18px; display: block; }
+.flow__node + .flow__node { margin-left: 44px; }
+.flow__node + .flow__node::before {     /* connector */
+  content: ""; position: absolute; left: -44px; top: 50%; width: 36px; height: 2.5px; background: var(--flow);
+}
+.flow__node + .flow__node::after {      /* arrowhead */
+  content: ""; position: absolute; left: -12px; top: 50%; transform: translateY(-50%) translateY(1px);
+  border: 7px solid transparent; border-left: 10px solid var(--flow); border-right: 0;
+}
+.flow__node.is-flow { border-color: var(--flow); background: var(--flow-wash); }
+.flow__node.is-key { border-color: var(--key); background: var(--key-wash); }
+
+/* 13b. .steps — vertical ordered steps with prose (true sequences only) */
+.steps { list-style: none; margin: 0; padding: 0; counter-reset: step; display: flex; flex-direction: column; }
+.steps > li {
+  counter-increment: step; position: relative; padding: 0 0 22px 64px; min-height: 44px;
+}
+.steps > li::before {
+  content: counter(step); position: absolute; left: 0; top: 2px;
+  width: 38px; height: 38px; border-radius: 50%;
+  border: 2px solid var(--flow); color: var(--flow-ink); background: var(--paper);
+  font-size: 19px; font-weight: 600; display: flex; align-items: center; justify-content: center;
+  font-variant-numeric: tabular-nums; z-index: 1;
+}
+.steps > li::after {
+  content: ""; position: absolute; left: 19px; top: 42px; bottom: 2px; width: 2px; background: var(--flow-line);
+}
+.steps > li:last-child { padding-bottom: 0; }
+.steps > li:last-child::after { display: none; }
+.steps > li.is-key::before { border-color: var(--key); color: var(--key-ink); background: var(--key-wash); }
+.steps b { font-weight: 600; display: block; line-height: 1.4; margin-bottom: 2px; }
+.steps p { margin: 0; color: var(--ink-2); font-size: 22px; line-height: 1.6; }
+
+/* 13c. .seq — two-actor sequence (handshakes, request/response) */
+.seq { --seq-side: 190px; font-size: 20px; line-height: 1.35; }
+.seq__head, .seq__row {
+  display: grid; grid-template-columns: var(--seq-side) 1fr var(--seq-side);
+}
+.seq__head > * {
+  text-align: center; font-weight: 600; font-size: 21px; padding: 10px 0;
+  border: 2px solid var(--ink-2); border-radius: 4px; background: var(--panel);
+  margin: 0 22px;
+}
+.seq__head > :nth-child(2) { visibility: hidden; border: 0; }
+.seq__row > * { padding: 10px 0; }
+.seq__state {           /* actor state beside the lifeline */
+  font-size: 16px; color: var(--ink-3); align-self: center; text-align: right; padding-right: 16px;
+}
+.seq__row > .seq__state:last-child { text-align: left; padding-left: 16px; padding-right: 0; }
+.seq__state.is-key { color: var(--key-ink); font-weight: 600; }
+.seq__msg {
+  position: relative; text-align: center; padding: 12px 18px 22px;
+  border-left: 2px dashed var(--rule); border-right: 2px dashed var(--rule);
+}
+.seq__head + .seq__row .seq__msg { padding-top: 22px; }
+.seq__msg b { font-weight: 600; color: var(--ink); }
+.seq__msg small { display: block; font-size: 16px; color: var(--ink-3); margin-top: 18px; }
+.seq__msg::before {    /* message line */
+  content: ""; position: absolute; left: 0; right: 0; bottom: 14px; height: 2.5px; background: var(--flow);
+}
+.seq__msg:has(small)::before { bottom: auto; top: calc(100% - 46px); }
+.seq__msg::after {     /* arrowhead */
+  content: ""; position: absolute; bottom: 14px; transform: translateY(50%) translateY(1px);
+  border: 7px solid transparent;
+}
+.seq__msg:has(small)::after { bottom: auto; top: calc(100% - 46px); transform: translateY(-50%) translateY(1px); }
+.seq__row--r .seq__msg::after { right: 0; border-left: 11px solid var(--flow); border-right: 0; }
+.seq__row--l .seq__msg::after { left: 0; border-right: 11px solid var(--flow); border-left: 0; }
+.seq__row.is-key .seq__msg::before { background: var(--key); }
+.seq__row--r.is-key .seq__msg::after { border-left-color: var(--key); }
+.seq__row--l.is-key .seq__msg::after { border-right-color: var(--key); }
+.seq__row.is-back .seq__msg::before { background: repeating-linear-gradient(to right, var(--flow) 0 8px, transparent 8px 13px); }
+.seq__row--note .seq__msg::before, .seq__row--note .seq__msg::after { display: none; }
+.seq__row--note .seq__msg { color: var(--ink-2); font-size: 17px; padding: 6px 18px 10px; }
+.seq__row--note .seq__msg span { background: var(--paper); padding: 2px 10px; border: 1px solid var(--rule); border-radius: 3px; display: inline-block; }
+
+/* ---------- 14. Callout ------------------------------------------------- */
+.callout {
+  margin: 0; padding: 18px 26px 20px;
+  border-left: 4px solid var(--ink-2); background: var(--panel);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  font-size: 22px; line-height: 1.65; max-width: 44em;
+}
+.callout > * { margin: 0; }
+.callout > * + * { margin-top: 8px; }
+.callout__title { font-weight: 600; font-size: 21px; color: var(--ink); display: flex; align-items: center; gap: 10px; }
+.callout__title svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.callout--key { border-left-color: var(--key); background: var(--key-wash); }
+.callout--key .callout__title { color: var(--key-ink); }
+.callout--note { border-left-color: var(--flow); background: var(--flow-wash); }
+.callout--note .callout__title { color: var(--flow-ink); }
+
+/* ---------- 15. Code ---------------------------------------------------- */
+.code {
+  margin: 0; position: relative;
+  background: var(--code-bg); color: var(--code-ink);
+  border: 1px solid var(--rule); border-radius: var(--radius);
+  font-family: var(--font-mono); font-size: var(--fs-code); line-height: 1.6;
+  padding: 22px 26px; overflow: auto; tab-size: 2;
+  word-break: normal; overflow-wrap: normal; white-space: pre;
+}
+.code code { font-family: inherit; display: block; }
+.code[data-file] { padding-top: 58px; }
+.code[data-file]::before {
+  content: attr(data-file);
+  position: absolute; left: 0; right: 0; top: 0; padding: 8px 26px;
+  font-family: var(--font-sans); font-size: 16px; color: var(--ink-3);
+  border-bottom: 1px solid var(--rule); background: var(--panel);
+}
+.code .c { color: var(--code-comment); font-style: italic; }
+.code .k { color: var(--code-keyword); font-weight: 500; }
+.code .s { color: var(--code-string); }
+.code .n { color: var(--code-number); }
+.code .hl { display: inline-block; width: calc(100% + 52px); margin: 0 -26px; padding: 0 22px; background: var(--code-hl); border-left: 4px solid var(--key); }
+.code .dim { opacity: 0.55; }
+.code .prompt { color: var(--ink-3); user-select: none; }
+
+/* ---------- 16. Summary ------------------------------------------------- */
+.summary { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0; max-width: 46em; }
+.summary > li {
+  padding: 18px 0 18px 40px; position: relative; border-top: 1px solid var(--rule);
+  font-size: 24px; line-height: 1.6;
+}
+.summary > li:last-child { border-bottom: 1px solid var(--rule); }
+.summary > li::before {          /* check tick */
+  content: ""; position: absolute; left: 4px; top: 30px; width: 14px; height: 8px;
+  border-left: 3px solid var(--flow); border-bottom: 3px solid var(--flow); transform: rotate(-45deg);
+}
+.summary b { font-weight: 600; }
+
+/* ---------- 17. Self-check appendix ------------------------------------ */
+.selfcheck { margin: 0; padding: 0; list-style: none; counter-reset: q; display: flex; flex-direction: column; gap: 12px; max-width: 52em; }
+.selfcheck > li { counter-increment: q; }
+.selfcheck details {
+  border: 1px solid var(--rule); border-radius: var(--radius); background: var(--panel);
+}
+.selfcheck summary {
+  list-style: none; cursor: pointer; padding: 14px 22px 14px 64px; position: relative;
+  font-size: 22px; line-height: 1.5; font-weight: 500;
+}
+.selfcheck summary::-webkit-details-marker { display: none; }
+.selfcheck summary::before {
+  content: "Q" counter(q); position: absolute; left: 22px; top: 15px;
+  font-size: 17px; font-weight: 600; color: var(--flow-ink); font-variant-numeric: tabular-nums;
+}
+.selfcheck summary::after {
+  content: "답 보기"; float: right; margin-left: 16px; font-size: 16px; color: var(--ink-3); font-weight: 400; padding-top: 3px;
+}
+.selfcheck details[open] summary::after { content: "접기"; }
+.selfcheck summary:hover { background: var(--rule-soft); }
+.selfcheck .answer { padding: 4px 22px 18px 64px; font-size: 20px; line-height: 1.65; color: var(--ink-2); }
+.selfcheck .answer > * { margin: 0; }
+.selfcheck .answer > * + * { margin-top: 8px; }
+
+/* ---------- 18. Next chapter ------------------------------------------- */
+.next {
+  display: flex; align-items: center; gap: 32px;
+  padding: 26px 32px; border: 1px solid var(--rule); border-radius: var(--radius);
+  background: var(--panel); color: var(--ink); text-decoration: none; max-width: 760px;
+}
+.next:hover { border-color: var(--flow); text-decoration: none; }
+.next:hover .next__title { text-decoration: underline; text-underline-offset: 0.2em; text-decoration-thickness: 2px; }
+.next__text { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.next__label { font-size: 18px; color: var(--ink-3); }
+.next__title { font-size: 30px; font-weight: 600; line-height: 1.3; }
+.next__desc { font-size: 19px; color: var(--ink-2); line-height: 1.5; margin-top: 4px; }
+.next--prev { max-width: 520px; padding: 18px 24px; }
+.next--prev .next__title { font-size: 22px; }
+.nav-pair { display: flex; gap: 20px; align-items: stretch; flex-wrap: wrap; }
+
+/* ---------- 19. Small / short screens: vertical scroll layout ---------- */
+/* deck.js adds .is-scroll on <html> when the scaled stage would make body text
+   smaller than ~14px or the viewport is shorter than 560px (phones in either
+   orientation, small tablets in portrait). Re-evaluated on resize/rotation. */
+.is-scroll {
+  --fs-cover: 34px; --fs-h2: 25px; --fs-h3: 20px; --fs-lede: 18px; --fs-body: 17px;
+  --fs-small: 14.5px; --fs-code: 14px; --pad-x: 16px; --pad-top: 32px; --pad-bottom: 36px;
+  --gap: 24px; --gap-sm: 16px;
+}
+.is-scroll body { background: var(--bg); }
+.is-scroll .deck { position: static; overflow: visible; padding-bottom: calc(var(--hud-h) + var(--safe-b)); }
+.is-scroll .stage { position: static; width: auto; height: auto; transform: none !important; }
+.is-scroll .frame {
+  position: relative; visibility: visible; opacity: 1; transition: none;
+  background: var(--paper); margin-bottom: 10px;          /* --bg band separates slides */
+  scroll-margin-top: var(--safe-t);
+}
+.is-scroll .frame:last-child { margin-bottom: 0; }
+.is-scroll .slide {
+  width: auto; height: auto; min-height: 0; overflow: visible;
+  max-width: 880px; margin: 0 auto;
+  padding-left: calc(var(--pad-x) + var(--safe-l)); padding-right: calc(var(--pad-x) + var(--safe-r));
+}
+@media (min-width: 600px) {
+  .is-scroll {
+    --fs-cover: 44px; --fs-h2: 30px; --fs-h3: 22px; --fs-lede: 20px; --fs-body: 18px;
+    --fs-small: 15px; --fs-code: 14.5px; --pad-x: 36px; --pad-top: 44px; --pad-bottom: 44px;
+  }
+}
+.is-scroll .slide::before, .is-scroll .slide::after { display: none; }
+.is-scroll .slide > h2, .is-scroll .slide__title { margin-bottom: 20px; }
+.is-scroll .edge, .is-scroll .hud__btn[data-act="overview"], .is-scroll .hud__btn[data-act="fullscreen"] { display: none; }
+.is-scroll .hud { gap: 10px; padding: 0 calc(8px + var(--safe-r)) var(--safe-b) calc(16px + var(--safe-l)); }
+.is-scroll .hud__chapter { display: none; }
+.is-scroll .hud__section { border: 0; padding: 0; }
+.is-scroll .hud__btn[data-act="prev"], .is-scroll .hud__btn[data-act="next"] { display: none; }
+.is-scroll .split, .is-scroll .split--even, .is-scroll .split--wide-left { display: flex; flex-direction: column; align-items: stretch; gap: var(--gap); }
+.is-scroll .slide__body { align-items: stretch; }
+/* diagrams: never shrink below the width at which labels stay >= ~10px
+   (deck.js sets --dg-min-w per svg.dg); the figure scrolls sideways instead,
+   with edge shadows hinting that more is off-screen */
+.is-scroll .figure {
+  --sc-bg: var(--paper);
+  overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain;
+  background:
+    linear-gradient(to right, var(--sc-bg) 30%, transparent) left center / 28px 100% no-repeat local,
+    linear-gradient(to left, var(--sc-bg) 30%, transparent) right center / 28px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgba(19, 36, 61, 0.22), transparent) left center / 12px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgba(19, 36, 61, 0.22), transparent) right center / 12px 100% no-repeat scroll;
+}
+.is-scroll .figure--panel { --sc-bg: var(--panel); background-color: var(--panel); }
+.is-scroll .figure > svg { min-width: 520px; }
+.is-scroll .figure svg.dg { min-width: var(--dg-min-w, 520px); }
+.is-scroll .figure figcaption, .is-scroll .figure .figcap, .is-scroll .figure .legend { position: sticky; left: 0; }
+.is-scroll .figure--panel { padding: 16px; }
+.is-scroll .cover { display: flex; flex-direction: column; }
+.is-scroll .cover__main { padding: 40px calc(var(--pad-x) + var(--safe-r)) 28px calc(var(--pad-x) + var(--safe-l)); }
+.is-scroll .cover__chapter { font-size: 15px; margin-bottom: 14px; }
+.is-scroll .cover h1 { margin-bottom: 18px; }
+.is-scroll .cover__meta { margin-top: 28px; gap: 24px; font-size: 15px; flex-wrap: wrap; }
+.is-scroll .cover__map { border-left: 0; border-top: 1px solid var(--rule); padding: 28px calc(var(--pad-x) + var(--safe-r)) 32px calc(var(--pad-x) + var(--safe-l)); }
+.is-scroll .stackmap { --sm-h: 34px; --sm-gap: 4px; }
+.is-scroll .stackmap__layer { font-size: 14.5px; gap: 10px; padding: 0 12px; }
+.is-scroll .stackmap__layer.is-current { font-size: 15.5px; width: var(--w); margin-right: 0; min-height: 42px; }
+.is-scroll .stackmap__cap { font-size: 14px; }
+.is-scroll .stackmap__layer.is-current .stackmap__tag { font-size: 12px; }
+.is-scroll .slide--divider { padding-left: var(--pad-x); padding-top: 56px; padding-bottom: 56px; }
+.is-scroll .slide--divider h2 { font-size: 30px; }
+.is-scroll .divider__no { font-size: 15px; }
+.is-scroll .depth-shift { margin-top: 28px; flex-wrap: wrap; font-size: 15px; gap: 12px; }
+.is-scroll .depth-shift__note { margin-left: 0; padding-left: 0; border-left: 0; flex-basis: 100%; }
+.is-scroll .compare-wrap { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; flex: none; min-width: 0; }
+.is-scroll .compare { font-size: 15px; }
+.is-scroll .compare th, .is-scroll .compare td { padding: 9px 10px; }
+.is-scroll .compare thead th { font-size: 14.5px; }
+.is-scroll .compare tbody th { white-space: normal; }
+.is-scroll .flow { flex-direction: column; }
+.is-scroll .flow__node { font-size: 16px; padding: 12px 14px; }
+.is-scroll .flow__node b { font-size: 17px; }
+.is-scroll .flow__node span { font-size: 15px; }
+.is-scroll .flow__node + .flow__node { margin-left: 0; margin-top: 28px; }
+.is-scroll .flow__node + .flow__node::before { left: 50%; top: -26px; width: 2.5px; height: 20px; }
+.is-scroll .flow__node + .flow__node::after { left: 50%; top: -9px; transform: translateX(-50%) translateX(1px); border: 6px solid transparent; border-top: 9px solid var(--flow); border-bottom: 0; }
+.is-scroll .steps > li { padding-left: 48px; padding-bottom: 16px; }
+.is-scroll .steps > li::before { width: 30px; height: 30px; font-size: 15px; }
+.is-scroll .steps > li::after { left: 15px; top: 34px; }
+.is-scroll .steps p { font-size: 16px; }
+.is-scroll .seq { --seq-side: 88px; font-size: 14px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.is-scroll .seq__head > * { font-size: 13px; margin: 0 2px; padding: 6px 0; white-space: nowrap; }
+.is-scroll .seq__state { font-size: 11px; padding-right: 5px; letter-spacing: -0.01em; }
+.is-scroll .seq__row > .seq__state:last-child { padding-left: 6px; }
+.is-scroll .seq__msg { padding: 8px 6px 20px; }
+.is-scroll .seq__msg small { font-size: 12px; }
+.is-scroll .callout { font-size: 16px; padding: 12px 16px 14px; }
+.is-scroll .callout__title { font-size: 16px; }
+.is-scroll .code { padding: 14px 14px; overscroll-behavior-x: contain; }
+.is-scroll .code[data-file] { padding-top: 44px; }
+.is-scroll .code[data-file]::before { padding: 6px 14px; font-size: 13px; }
+.is-scroll .code .hl { width: calc(100% + 28px); margin: 0 -14px; padding: 0 10px; }
+.is-scroll .summary > li { font-size: 16.5px; padding: 12px 0 12px 32px; }
+.is-scroll .summary > li::before { top: 19px; width: 11px; height: 6px; }
+.is-scroll .selfcheck summary { font-size: 16px; padding: 12px 14px 12px 48px; min-height: 44px; }
+.is-scroll .selfcheck summary::before { left: 14px; top: 13px; font-size: 14px; }
+.is-scroll .selfcheck summary::after { font-size: 13px; }
+.is-scroll .selfcheck .answer { font-size: 16px; padding: 2px 14px 14px 48px; }
+.is-scroll .next { padding: 16px; gap: 16px; }
+.is-scroll .next__title { font-size: 19px; }
+.is-scroll .next__label, .is-scroll .next__desc { font-size: 15px; }
+.is-scroll .legend { font-size: 14px; }
+
+/* ---------- 19b. Writer aid: overflow warning (stage mode only) -------- */
+.slide.is-overflowing { box-shadow: inset 0 -6px 0 var(--key); }
+.slide.is-overflowing::after {
+  content: "내용이 슬라이드 높이를 넘칩니다. 나누거나 줄이세요."; width: auto; height: auto;
+  border: 0; right: 24px; bottom: 14px; padding: 4px 12px; border-radius: 3px;
+  background: var(--key); color: var(--on-key); font-size: 15px; line-height: 1.4; z-index: 5;
+}
+.is-scroll .slide.is-overflowing, .is-overview .slide.is-overflowing { box-shadow: none; }
+.is-scroll .slide.is-overflowing::after, .is-overview .slide.is-overflowing::after { display: none; }
+
+/* ---------- 20. Motion & print ----------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
+
+@media print {
+  @page { size: 1600px 900px; margin: 0; }
+  html, body { background: var(--paper) !important; }
+  .hud, .hud__progress, .edge { display: none !important; }
+  .deck, .stage { position: static !important; transform: none !important; width: 1600px !important; height: auto !important; overflow: visible !important; inset: auto !important; }
+  .frame { position: relative !important; visibility: visible !important; opacity: 1 !important; break-after: page; page-break-after: always; width: 1600px; height: 900px; }
+  .frame:last-child { break-after: auto; page-break-after: auto; }
+  .frame__cap { display: none !important; }
+  .slide { width: 1600px !important; height: 900px !important; overflow: hidden !important; }
+  .frame .stackmap__layer { transition: none !important; }
+  .frame:not(.is-active) .stackmap__layer.is-below { background: var(--flow-wash); color: var(--ink-2); border: 1px solid transparent; }
+  .frame:not(.is-active) .stackmap__layer.is-current { background: var(--flow); color: var(--on-flow); border: 1px solid var(--flow); }
+  .slide.is-overflowing { box-shadow: none; }
+  .slide.is-overflowing::after { display: none; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+.is-scroll .seq__row--note .seq__msg { font-size: 12.5px; }

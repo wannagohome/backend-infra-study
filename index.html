@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>백엔드와 인프라(AWS) 학습 지도</title>
+<meta name="description" content="CS 기초에서 AWS 운영까지, 11개 장으로 쌓아 올리는 백엔드와 인프라 학습 슬라이드">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="assets/deck.css">
+<style>
+  /* ---- index page only: reuses deck.css tokens ---- */
+  body {
+    background: var(--paper); line-height: 1.65; min-height: 100dvh;
+    padding: 0 var(--safe-r) var(--safe-b) var(--safe-l);   /* viewport-fit=cover: clear notch / home indicator */
+  }
+  .ix {
+    max-width: 1280px; margin: 0 auto;
+    padding: 56px 48px 72px;
+    display: grid; grid-template-columns: minmax(0, 23rem) minmax(0, 1fr);
+    gap: 32px 72px; align-items: start;
+  }
+  .ix__aside { position: sticky; top: 40px; }
+
+  .ix__bar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  .ix__title {
+    margin: 0; font-size: 2.6rem; line-height: 1.2; font-weight: 700; letter-spacing: -0.02em;
+  }
+  .ix__title span { display: block; font-weight: 500; color: var(--ink-2); font-size: 0.62em; letter-spacing: -0.01em; margin-top: 6px; }
+  .ix__theme {
+    flex: none; display: inline-grid; place-items: center;
+    width: 40px; height: 40px; margin-top: 4px;
+    border: 1px solid var(--rule); border-radius: var(--radius);
+    background: var(--panel); color: var(--ink-2); cursor: pointer;
+  }
+  .ix__theme:hover { color: var(--ink); border-color: var(--flow); }
+  @media (pointer: coarse) { .ix__theme { width: 44px; height: 44px; margin-top: 0; } }
+  .ix__theme svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.75; }
+
+  .ix__intro { margin: 28px 0 0; color: var(--ink-2); font-size: 1.0625rem; max-width: 34em; }
+  .ix__intro p { margin: 0 0 14px; }
+
+  /* depth arc: 기초 → 원리 → 실무 */
+  .ix__arc {
+    list-style: none; margin: 22px 0 0; padding: 16px 0 0; border-top: 1px solid var(--rule);
+    display: grid; gap: 10px; font-size: 0.95rem;
+  }
+  .ix__arc li { display: grid; grid-template-columns: 4.5rem 1fr; align-items: baseline; gap: 12px; color: var(--ink-2); }
+  .ix__arc .depth { color: var(--ink); font-weight: 600; }
+
+  .ix__use { margin-top: 32px; padding-top: 18px; border-top: 1px solid var(--rule); }
+  .ix__use h2 { margin: 0 0 12px; font-size: 1rem; font-weight: 600; }
+  .ix__keys { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 9px 14px; font-size: 0.95rem; color: var(--ink-2); }
+  .ix__keys dt { display: flex; gap: 4px; align-items: flex-start; }
+  .ix__keys dd { margin: 0; align-self: center; }
+  kbd {
+    font-family: var(--font-mono); font-size: 0.8rem; line-height: 1;
+    min-width: 1.9em; padding: 5px 7px; text-align: center;
+    border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 4px;
+    background: var(--panel); color: var(--ink);
+  }
+  .ix__note { margin: 14px 0 0; font-size: 0.9rem; color: var(--ink-3); }
+
+  /* ---- stack map ---- */
+  .ix__map h2 { margin: 6px 0 4px; font-size: 1.15rem; font-weight: 600; }
+  .ix__map .stackmap__cap { font-size: 0.95rem; margin-bottom: 22px; }
+  .ix__map .stackmap--index { --sm-h: 84px; --sm-gap: 10px; --sm-step: 1.4%; }
+  .ix__map .stackmap--index .stackmap__layer { padding: 0; }
+  .ix__map .stackmap__layer a {
+    display: grid; align-items: center;
+    grid-template-columns: 2.2rem minmax(0, 1fr) auto;
+    grid-template-areas: "no name desc" "no topics topics";
+    gap: 2px 14px; padding: 14px 18px;
+  }
+  .ix__map .stackmap__no { grid-area: no; align-self: start; padding-top: 1px; font-size: 1.05rem; }
+  .ix__map .stackmap__name { grid-area: name; font-size: 1.15rem; font-weight: 600; }
+  .ix__map .stackmap--index .stackmap__desc { grid-area: desc; font-size: 0.9rem; color: var(--ink-2); }
+  .ix__topics { grid-area: topics; font-size: 0.9rem; line-height: 1.55; color: var(--ink-3); }
+  .ix__map .stackmap__layer:hover .ix__topics { color: var(--ink-2); }
+  .ix__map .stackmap__layer a:focus-visible { outline-offset: 2px; }
+
+  .ix__foot { margin: 22px 0 0 34px; font-size: 0.9rem; color: var(--ink-3); }
+
+  @media (max-width: 1080px) {
+    .ix { grid-template-columns: 1fr; padding: 40px 32px 56px; }
+    .ix__aside { position: static; }
+    .ix__intro { max-width: 40em; }
+  }
+  @media (max-width: 680px) {
+    .ix { padding: 28px 16px 48px; gap: 28px; }
+    .ix__title { font-size: 2rem; }
+    .ix__map .stackmap--index { --sm-step: 0%; }
+    .ix__map .stackmap__list { padding-left: 28px; }
+    .ix__map .stackmap__layer::before { left: -18px; }
+    .ix__map .stackmap__layer::after { left: -23px; }
+    .ix__map .stackmap__layer a {
+      grid-template-columns: 1.8rem minmax(0, 1fr);
+      grid-template-areas: "no name" "no desc" "no topics";
+      gap: 3px 10px; padding: 12px 14px;
+    }
+    .ix__map .stackmap--index .stackmap__desc { margin-left: 0; text-align: left; }
+    .ix__map .stackmap__name { font-size: 1.05rem; }
+    .ix__foot { margin-left: 28px; }
+  }
+</style>
+</head>
+<body>
+<div class="ix">
+  <header class="ix__aside">
+    <div class="ix__bar">
+      <h1 class="ix__title">백엔드와 인프라<span>CS 기초에서 AWS 운영까지</span></h1>
+      <button class="ix__theme" type="button" aria-label="밝기 테마 전환" title="테마 전환 (T)" onclick="window.DECK_TOGGLE_THEME &amp;&amp; window.DECK_TOGGLE_THEME()">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg>
+      </button>
+    </div>
+
+    <div class="ix__intro">
+      <p>서버 한 대가 요청을 처리하는 데 필요한 지식을 열한 개 장으로 정리한 슬라이드입니다. 운영체제와 네트워크에서 출발해 데이터베이스, Java와 Spring, 시스템 설계, 컨테이너를 거쳐 AWS 운영까지 아래층부터 차례로 쌓아 올립니다.</p>
+      <p>각 장은 같은 순서로 깊어집니다.</p>
+    </div>
+    <ul class="ix__arc">
+      <li><span class="depth" data-depth="basic"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span>기초</span><span>이게 무엇이고 왜 필요한가</span></li>
+      <li><span class="depth" data-depth="core"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span>원리</span><span>내부에서 어떻게 동작하고 왜 그렇게 설계됐나</span></li>
+      <li><span class="depth" data-depth="practice"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span>실무</span><span>운영 환경에서의 판단, 튜닝, 장애 사례</span></li>
+    </ul>
+
+    <section class="ix__use" aria-labelledby="use-h">
+      <h2 id="use-h">슬라이드 보는 법</h2>
+      <dl class="ix__keys">
+        <dt><kbd>←</kbd><kbd>→</kbd></dt><dd>이전, 다음 슬라이드</dd>
+        <dt><kbd>O</kbd></dt><dd>전체 슬라이드 한눈에 보기</dd>
+        <dt><kbd>T</kbd></dt><dd>밝은 테마와 어두운 테마 전환 (이 페이지에서도 동작)</dd>
+        <dt><kbd>F</kbd></dt><dd>전체 화면</dd>
+      </dl>
+      <p class="ix__note">좁은 화면에서는 슬라이드가 세로로 이어져 스크롤로 읽을 수 있습니다. 슬라이드 오른쪽 아래의 눈금은 지금 읽는 깊이를 나타냅니다.</p>
+    </section>
+  </header>
+
+  <main class="ix__map">
+    <h2 id="map-h">학습 지도</h2>
+    <p class="stackmap__cap">아래층부터 위로 읽는 순서입니다. 층을 누르면 그 장이 열립니다.</p>
+    <nav class="stackmap stackmap--index" data-links aria-label="학습 지도"></nav>
+    <p class="ix__foot">앞 장에서 다룬 개념은 뒤 장에서 다시 설명하지 않고 해당 장으로 연결합니다.</p>
+  </main>
+</div>
+
+<script src="assets/deck.js"></script>
+<script>
+  /* key topics per chapter (from _research/OUTLINE.md); names, files and one-line
+     descriptions come from STACK in assets/deck.js */
+  (function () {
+    var TOPICS = {
+      1: "가상 메모리와 페이징, 컨텍스트 스위칭, 데드락, epoll과 이벤트 루프",
+      2: "3-way handshake, TLS 핸드셰이크, 쿠키와 세션, URL 입력 후 일어나는 일",
+      3: "해시 충돌 처리, 균형 트리와 B-Tree, 힙, LRU 캐시 구현",
+      4: "B+Tree 인덱스, 실행 계획, MVCC와 락, 커넥션 풀, CAP",
+      5: "클래스 로더와 JIT, G1과 ZGC, HashMap 내부, Virtual Thread",
+      6: "프록시와 @Transactional, N+1 문제, OSIV, 디자인 패턴",
+      7: "JWT와 OAuth 2.0, CORS, XSS와 CSRF, 멱등성 키",
+      8: "캐시 전략과 Redis, Kafka, Saga와 Outbox, 서킷 브레이커",
+      9: "namespace와 cgroup, 무중단 배포 전략, Graceful Shutdown",
+      10: "VPC 설계, 보안 그룹과 NACL, Multi-AZ, Route 53, CloudFront",
+      11: "Lambda와 ECS, SQS와 SNS, SLI와 SLO, 재해 복구, Well-Architected"
+    };
+    var map = document.querySelector(".stackmap--index");
+    if (!map) return;
+    if (!map.querySelector(".stackmap__list") && window.DECK_RENDER_STACKMAPS) window.DECK_RENDER_STACKMAPS(map.parentNode);
+    var layers = map.querySelectorAll(".stackmap__layer");
+    Array.prototype.forEach.call(layers, function (li, i) {
+      var a = li.querySelector("a");
+      var no = window.DECK_STACK ? window.DECK_STACK[i].no : i + 1;
+      if (!a || !TOPICS[no]) return;
+      var t = document.createElement("span");
+      t.className = "ix__topics";
+      t.textContent = TOPICS[no];
+      a.appendChild(t);
+    });
+  })();
+</script>
+</body>
+</html>

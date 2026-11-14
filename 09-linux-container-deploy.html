@@ -1,0 +1,1063 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>9장 Linux, 컨테이너, 배포</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="assets/deck.css">
+</head>
+<body>
+<main class="deck" data-chapter="9" data-chapter-title="Linux, 컨테이너, 배포">
+
+<!-- ===== Cover ===== -->
+<section class="slide slide--cover">
+  <div class="cover">
+    <div class="cover__main">
+      <p class="cover__chapter"><b>9장</b> Linux, 컨테이너, 배포</p>
+      <h1>코드는 어떻게 멈추지 않고 서버에 올라가는가</h1>
+      <p class="cover__lede">리눅스 서버 한 대에서 시작해 컨테이너로 포장하고, Kubernetes로 여러 대를 운영하고, 무중단으로 새 버전을 교체하는 과정을 따라갑니다.</p>
+      <dl class="cover__meta">
+        <div><dt>선수 지식</dt><dd>1장 프로세스와 파일 디스크립터, 8장 무상태 서버</dd></div>
+        <div><dt>슬라이드</dt><dd>49장</dd></div>
+        <div><dt>예상 학습 시간</dt><dd>130분</dd></div>
+      </dl>
+    </div>
+    <div class="cover__map">
+      <p class="stackmap__cap">아래층부터 위로 쌓아 올라가는 순서입니다. 지금은 9단계입니다.</p>
+      <div class="stackmap" data-current="9"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Part 1: basic ===== -->
+<section class="slide slide--divider" data-section="서버와 컨테이너" data-depth="basic">
+  <p class="divider__no">1부</p>
+  <h2>설계는 어딘가에서 돌아가야 한다</h2>
+  <p class="lede">8장에서 그린 무상태 서버와 캐시, 큐는 결국 리눅스 위의 프로세스입니다. 서버 한 대를 다루는 법에서 시작해 컨테이너라는 포장 단위까지 올라갑니다.</p>
+</section>
+
+<section class="slide">
+  <h2>코드에서 운영까지는 다섯 층을 지난다</h2>
+  <div class="slide__body">
+    <ol class="flow">
+      <li class="flow__node"><b>Linux 서버</b><span>프로세스, 권한, 로그</span></li>
+      <li class="flow__node"><b>컨테이너</b><span>실행 환경째 포장</span></li>
+      <li class="flow__node"><b>Kubernetes</b><span>여러 대를 선언적으로 운영</span></li>
+      <li class="flow__node"><b>CI/CD</b><span>빌드부터 배포까지 자동화</span></li>
+      <li class="flow__node is-flow"><b>배포 전략</b><span>멈추지 않고 교체</span></li>
+    </ol>
+    <div class="prose">
+      <p>각 층은 아래층의 불편을 해결하려고 생겼습니다. 서버마다 설치 환경이 달라서 <strong>컨테이너</strong>가, 컨테이너가 수백 개로 늘어서 <strong>오케스트레이션</strong>이, 사람이 배포하다 실수해서 <strong>CI/CD</strong>가 등장했습니다.</p>
+      <p>마지막 층인 무중단 배포는 앞의 모든 층이 협력해야 가능합니다. 이 장의 실무 파트가 그 협력을 다룹니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>디렉터리마다 맡은 역할이 정해져 있다</h2>
+  <div class="slide__body">
+    <p class="lede">리눅스는 FHS(Filesystem Hierarchy Standard)라는 관례로 파일 위치를 정합니다. 처음 들어간 서버에서도 어디를 볼지 알 수 있는 이유입니다.</p>
+    <table class="compare">
+      <thead><tr><th scope="col">경로</th><th scope="col">담는 것</th><th scope="col">운영에서 보는 이유</th></tr></thead>
+      <tbody>
+        <tr><th scope="row"><code>/etc</code></th><td>시스템과 서비스 설정 파일</td><td>nginx, systemd 설정 확인</td></tr>
+        <tr><th scope="row"><code>/var/log</code></th><td>로그 같은 자주 바뀌는 데이터</td><td class="is-key">가득 차면 쓰기 실패 장애</td></tr>
+        <tr><th scope="row"><code>/proc</code></th><td>커널이 만든 가상 파일</td><td>프로세스와 커널 상태 조회</td></tr>
+        <tr><th scope="row"><code>/usr</code>, <code>/opt</code></th><td>설치된 프로그램</td><td>직접 배포한 앱은 보통 /opt</td></tr>
+        <tr><th scope="row"><code>/tmp</code></th><td>임시 파일</td><td>재부팅 때 지워질 수 있음</td></tr>
+      </tbody>
+    </table>
+    <p class="small"><code>/proc</code>은 디스크에 없는 파일입니다. 1장의 "모든 것은 파일" 원칙이 커널 상태 조회에까지 적용된 예입니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>권한은 소유자, 그룹, 나머지의 rwx다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>ls -lh /opt/api
+-rw-r----- 1 app app  51M Nov 14 10:02 app.jar
+<span class="hl">-rw------- 1 app app  812 Nov 14 10:02 db.env</span>
+drwxr-x--- 2 app app 4.0K Nov 14 10:05 logs
+
+<span class="prompt">$ </span>chmod 600 db.env    <span class="c"># rw- --- ---</span>
+<span class="prompt">$ </span>chown -R app:app /opt/api</code></pre>
+    <div class="prose">
+      <p>맨 앞 글자는 종류(<code>d</code>는 디렉터리)이고, 뒤 아홉 글자가 소유자, 그룹, 나머지 순서의 읽기(r=4), 쓰기(w=2), 실행(x=1) 권한입니다. 숫자는 이를 더한 값이라 <code>640</code>은 rw-, r--, ---입니다.</p>
+      <p>디렉터리의 x는 "안으로 들어갈 수 있음"을 뜻합니다. 앱은 <mark>전용 계정으로 실행하고 비밀 파일은 600</mark>으로 두는 것이 기본입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>시그널은 프로세스에 보내는 짧은 통지다</h2>
+  <div class="slide__body">
+    <p class="lede">프로세스 자체는 1장에서 다뤘습니다. 여기서는 운영자가 프로세스에 말을 거는 방법인 <dfn title="signal">시그널</dfn>을 봅니다.</p>
+    <table class="compare">
+      <thead><tr><th scope="col">시그널</th><th scope="col">번호</th><th scope="col">보내는 상황</th><th scope="col">프로세스가 잡을 수 있나</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">SIGTERM</th><td class="num">15</td><td><code>kill</code> 기본값, 정상 종료 요청</td><td class="is-flow">잡아서 정리 후 종료</td></tr>
+        <tr><th scope="row">SIGKILL</th><td class="num">9</td><td><code>kill -9</code>, 유예 시간 초과</td><td class="is-key">불가, 커널이 즉시 제거</td></tr>
+        <tr><th scope="row">SIGINT</th><td class="num">2</td><td>터미널에서 Ctrl+C</td><td>가능</td></tr>
+        <tr><th scope="row">SIGHUP</th><td class="num">1</td><td>설정 다시 읽기 관례(nginx)</td><td>가능</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>SIGTERM은 "정리하고 나가 달라"는 부탁이고 SIGKILL은 강제 철거입니다. 이 차이가 3부의 Graceful Shutdown 전체를 떠받칩니다. 시그널로 죽은 프로세스의 종료 코드는 <code>128 + 번호</code>라서 SIGKILL이면 137입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>systemd가 서버의 프로세스를 지킨다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="/etc/systemd/system/api.service"><code>[Unit]
+Description=Order API
+After=network.target
+
+[Service]
+User=app
+ExecStart=/usr/bin/java -jar /opt/api/app.jar
+<span class="hl">Restart=on-failure</span>
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
+
+<span class="prompt">$ </span>sudo systemctl enable --now api
+<span class="prompt">$ </span>journalctl -u api -f</code></pre>
+    <div class="prose">
+      <p><code>nohup java -jar &amp;</code>로 띄운 프로세스는 죽어도 아무도 다시 살리지 않습니다. <dfn>systemd</dfn>는 부팅 때 PID 1로 시작해 서비스를 띄우고, 죽으면 재시작하고, 로그를 journald로 모읍니다.</p>
+      <p><code>systemctl stop</code>은 SIGTERM을 보내고 <code>TimeoutStopSec</code>이 지나면 SIGKILL을 보냅니다. 뒤에 나올 Docker와 Kubernetes도 같은 2단계 종료를 씁니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>VM은 하드웨어를, 컨테이너는 OS를 나눈다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>"내 PC에선 되는데 서버에선 안 된다"는 문제는 실행 환경 차이에서 옵니다. 두 기술 모두 환경을 통째로 묶어 옮기지만, 어디를 나누는지가 다릅니다.</p>
+      <p><dfn title="Virtual Machine">VM</dfn>은 하이퍼바이저가 가상 하드웨어를 만들고 그 위에 게스트 OS를 통째로 올립니다. <dfn>컨테이너</dfn>는 <mark>호스트 커널을 공유</mark>하고 프로세스만 격리합니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 420" role="img" aria-labelledby="f9vm">
+        <title id="f9vm">왼쪽 VM 구조는 하드웨어 위 하이퍼바이저와 VM마다 게스트 OS가 있고, 오른쪽 컨테이너 구조는 하드웨어 위 하나의 호스트 커널을 여러 컨테이너가 공유한다.</title>
+        <text class="dg-label--sm" x="190" y="20" text-anchor="middle">VM</text>
+        <rect class="dg-zone" x="26" y="40" width="156" height="156"/>
+        <rect class="dg-zone" x="198" y="40" width="156" height="156"/>
+        <rect class="dg-box" x="34" y="52" width="140" height="60"/>
+        <text x="104" y="82" text-anchor="middle">앱 A</text>
+        <rect class="dg-box dg-box--key" x="34" y="124" width="140" height="60"/>
+        <text x="104" y="154" text-anchor="middle">게스트 OS</text>
+        <rect class="dg-box" x="206" y="52" width="140" height="60"/>
+        <text x="276" y="82" text-anchor="middle">앱 B</text>
+        <rect class="dg-box dg-box--key" x="206" y="124" width="140" height="60"/>
+        <text x="276" y="154" text-anchor="middle">게스트 OS</text>
+        <rect class="dg-box" x="26" y="212" width="328" height="60"/>
+        <text x="190" y="242" text-anchor="middle">하이퍼바이저</text>
+        <rect class="dg-box dg-box--muted" x="26" y="284" width="328" height="60"/>
+        <text class="dg-label--muted" x="190" y="314" text-anchor="middle">하드웨어</text>
+        <text class="dg-label--key" x="190" y="376" text-anchor="middle">VM마다 커널 전체</text>
+
+        <text class="dg-label--sm" x="570" y="20" text-anchor="middle">컨테이너</text>
+        <rect class="dg-zone" x="406" y="40" width="156" height="156"/>
+        <rect class="dg-zone" x="578" y="40" width="156" height="156"/>
+        <rect class="dg-box" x="414" y="52" width="140" height="60"/>
+        <text x="484" y="82" text-anchor="middle">앱 C</text>
+        <rect class="dg-box dg-box--muted" x="414" y="124" width="140" height="60"/>
+        <text class="dg-label--muted" x="484" y="154" text-anchor="middle">라이브러리</text>
+        <rect class="dg-box" x="586" y="52" width="140" height="60"/>
+        <text x="656" y="82" text-anchor="middle">앱 D</text>
+        <rect class="dg-box dg-box--muted" x="586" y="124" width="140" height="60"/>
+        <text class="dg-label--muted" x="656" y="154" text-anchor="middle">라이브러리</text>
+        <rect class="dg-box dg-box--flow" x="406" y="212" width="328" height="60"/>
+        <text class="dg-label--lg" x="570" y="242" text-anchor="middle">호스트 커널 (공유)</text>
+        <rect class="dg-box dg-box--muted" x="406" y="284" width="328" height="60"/>
+        <text class="dg-label--muted" x="570" y="314" text-anchor="middle">하드웨어</text>
+        <text class="dg-label--flow" x="570" y="376" text-anchor="middle">컨테이너는 격리된 프로세스</text>
+      </svg>
+      <figcaption>점선 상자가 격리 단위입니다. VM은 커널까지 따로 갖고, 컨테이너는 커널 하나를 나눠 씁니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>커널을 공유하면 가볍지만 경계는 얇아진다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">항목</th><th scope="col">VM</th><th scope="col">컨테이너</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">격리 단위</th><td>가상 하드웨어 + 게스트 OS</td><td>프로세스 (namespace, cgroup)</td></tr>
+        <tr><th scope="row">시작 시간</th><td>OS 부팅, 수십 초 이상</td><td class="is-flow">프로세스 시작, 보통 1초 안팎</td></tr>
+        <tr><th scope="row">이미지 크기</th><td>GB 단위</td><td>수십~수백 MB</td></tr>
+        <tr><th scope="row">다른 OS 실행</th><td>가능 (리눅스 위 윈도우)</td><td>호스트 커널과 같은 계열만</td></tr>
+        <tr><th scope="row">보안 경계</th><td class="is-flow">하이퍼바이저, 두꺼움</td><td class="is-key">커널 취약점이 곧 탈출 경로</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>그래서 실무에서는 둘을 겹쳐 씁니다. 클라우드의 VM(EC2) 위에 컨테이너 여러 개를 올리는 구성이 가장 흔합니다. macOS에서 Docker를 쓸 때도 내부적으로 작은 리눅스 VM이 돌고 있습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>이미지는 설계도, 컨테이너는 실행 중인 사본</h2>
+  <div class="slide__body">
+    <ol class="flow">
+      <li class="flow__node"><b>Dockerfile</b><span>환경을 코드로 기술</span></li>
+      <li class="flow__node"><b>이미지</b><span><code>docker build</code></span></li>
+      <li class="flow__node"><b>레지스트리</b><span><code>docker push</code></span></li>
+      <li class="flow__node is-flow"><b>컨테이너</b><span><code>docker run</code></span></li>
+    </ol>
+    <div class="prose">
+      <p><dfn>이미지</dfn>는 앱과 런타임, 라이브러리를 묶은 읽기 전용 파일 묶음이고, <dfn>컨테이너</dfn>는 그 이미지로 띄운 프로세스입니다. 클래스와 인스턴스의 관계와 비슷해서 이미지 하나로 컨테이너를 여러 개 띄웁니다.</p>
+      <p>이미지는 Docker Hub, GHCR, ECR 같은 <dfn title="registry">레지스트리</dfn>에 올려 공유합니다. 태그는 <code>latest</code> 대신 <mark>커밋 SHA처럼 바뀌지 않는 값</mark>을 써야 어떤 코드가 돌고 있는지 추적됩니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Compose는 여러 컨테이너를 한 파일로 띄운다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="compose.yaml"><code>services:
+  api:
+    build: .
+    ports: [<span class="s">"8080:8080"</span>]
+    environment:
+<span class="hl">      DB_URL: jdbc:mysql://db:3306/app</span>
+    depends_on:
+      db: { condition: service_healthy }
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: app
+      MYSQL_ROOT_PASSWORD: local-only
+    healthcheck:
+      test: [<span class="s">"CMD"</span>, <span class="s">"mysqladmin"</span>, <span class="s">"ping"</span>]</code></pre>
+    <div class="prose">
+      <p>앱 하나에도 DB, Redis가 따라붙습니다. <dfn>Docker Compose</dfn>는 이 묶음을 YAML 하나로 선언하고 <code>docker compose up</code> 한 번으로 띄웁니다.</p>
+      <p>Compose는 서비스끼리 같은 네트워크에 두고 서비스 이름을 DNS로 풀어 줍니다. 그래서 주소가 <code>db:3306</code>입니다. 다만 한 호스트용이라 운영의 여러 서버 관리는 Kubernetes가 맡습니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Part 2: core ===== -->
+<section class="slide slide--divider" data-section="격리와 오케스트레이션의 원리" data-depth="core">
+  <p class="divider__no">2부</p>
+  <h2>컨테이너는 커널 기능의 조합이다</h2>
+  <p class="lede">컨테이너라는 커널 객체는 따로 없습니다. namespace, cgroup, 계층형 파일 시스템을 조합한 결과이고, Kubernetes는 그 위에서 "원하는 상태"를 유지하는 제어 루프입니다.</p>
+  <div class="depth-shift" aria-label="깊이 전환: 기초에서 원리로">
+    <span class="depth-shift__step"><span class="depth" data-depth="basic"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>기초</span>
+    <span class="depth-shift__line" aria-hidden="true"></span>
+    <span class="depth-shift__step is-to"><span class="depth" data-depth="core"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>원리</span>
+    <span class="depth-shift__note">여기부터는 커널 격리 기능과 Kubernetes 내부 동작을 다룹니다.</span>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>namespace는 보이는 범위를, cgroup은 쓰는 양을</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p><dfn>namespace</dfn>는 프로세스가 볼 수 있는 자원의 범위를 나눕니다. PID, 네트워크, 마운트, 호스트 이름(UTS), IPC, 사용자 namespace가 대표적입니다. 그래서 컨테이너 안의 java는 자신을 PID 1로 봅니다.</p>
+      <p><dfn title="control group">cgroup</dfn>은 프로세스 묶음이 쓸 CPU와 메모리의 상한을 정합니다. <mark>격리는 namespace, 제한은 cgroup</mark>입니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 440" role="img" aria-labelledby="f9ns">
+        <title id="f9ns">두 컨테이너가 각자 PID, 네트워크, 파일 시스템 namespace와 cgroup 제한을 가진 채 하나의 호스트 커널 위에서 실행된다.</title>
+        <rect class="dg-zone" x="20" y="20" width="340" height="300"/>
+        <text class="dg-label--sm" x="190" y="44" text-anchor="middle">컨테이너 A</text>
+        <rect class="dg-box dg-box--flow" x="44" y="62" width="292" height="68"/>
+        <text x="190" y="86" text-anchor="middle">PID 1: java</text>
+        <text class="dg-label--sm" x="190" y="112" text-anchor="middle">호스트에서는 PID 4211</text>
+        <rect class="dg-box" x="44" y="142" width="292" height="56"/>
+        <text x="190" y="170" text-anchor="middle">자기만의 eth0, 포트</text>
+        <rect class="dg-box" x="44" y="210" width="292" height="56"/>
+        <text x="190" y="238" text-anchor="middle">자기만의 / 파일 시스템</text>
+        <text class="dg-label--key" x="190" y="296" text-anchor="middle">cgroup: CPU 1, 메모리 1GiB</text>
+
+        <rect class="dg-zone" x="400" y="20" width="340" height="300"/>
+        <text class="dg-label--sm" x="570" y="44" text-anchor="middle">컨테이너 B</text>
+        <rect class="dg-box dg-box--flow" x="424" y="62" width="292" height="68"/>
+        <text x="570" y="86" text-anchor="middle">PID 1: node</text>
+        <text class="dg-label--sm" x="570" y="112" text-anchor="middle">호스트에서는 PID 5307</text>
+        <rect class="dg-box" x="424" y="142" width="292" height="56"/>
+        <text x="570" y="170" text-anchor="middle">자기만의 eth0, 포트</text>
+        <rect class="dg-box" x="424" y="210" width="292" height="56"/>
+        <text x="570" y="238" text-anchor="middle">자기만의 / 파일 시스템</text>
+        <text class="dg-label--key" x="570" y="296" text-anchor="middle">cgroup: CPU 0.5, 메모리 512MiB</text>
+
+        <line class="dg-arrow" x1="190" y1="324" x2="190" y2="356"/>
+        <line class="dg-arrow" x1="570" y1="324" x2="570" y2="356"/>
+        <rect class="dg-box dg-box--solid" x="20" y="364" width="720" height="60"/>
+        <text class="dg-label--on" x="380" y="394" text-anchor="middle">하나의 호스트 리눅스 커널</text>
+      </svg>
+      <figcaption>두 컨테이너는 서로를 보지 못하지만 호스트에서 <code>ps</code>를 치면 평범한 프로세스로 보입니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>메모리 상한을 넘으면 커널이 프로세스를 죽인다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>cgroup의 메모리 상한에 닿으면 커널의 OOM Killer가 그 cgroup 안의 프로세스를 SIGKILL로 제거합니다. 종료 코드 137, Kubernetes에서는 <code>OOMKilled</code>로 보입니다. 앱 로그에는 아무것도 남지 않는다는 점이 함정입니다.</p>
+      <p>CPU 상한은 다르게 동작합니다. 넘는다고 죽지 않고 <strong>스로틀링</strong>되어 다음 주기까지 멈춥니다. 응답 지연이 들쭉날쭉한데 CPU 사용률이 낮아 보인다면 이것을 의심합니다.</p>
+    </div>
+    <div class="slide__body">
+      <aside class="callout callout--key">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>JVM 힙 + 그 밖의 메모리 &lt; 상한</p>
+        <p>컨테이너 메모리는 힙만이 아닙니다. 메타스페이스, 스레드 스택, 다이렉트 버퍼까지 더해야 하므로 힙을 상한의 50~75% 정도로 둡니다(JVM 메모리 구조는 5장).</p>
+      </aside>
+      <aside class="callout callout--note">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>JVM은 컨테이너 상한을 인식합니다</p>
+        <p>최신 JVM은 cgroup 상한을 읽어 힙 기본값을 정합니다. 기본 최대 힙은 상한의 25%라 <code>-XX:MaxRAMPercentage</code>로 조정합니다.</p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>이미지는 읽기 전용 레이어의 겹침이다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>Dockerfile의 <code>FROM</code>, <code>COPY</code>, <code>RUN</code> 같은 명령 하나하나가 파일 변경분을 담은 <dfn title="layer">레이어</dfn>가 됩니다. overlay2 같은 유니언 파일 시스템이 이를 겹쳐 하나의 디렉터리처럼 보여 줍니다.</p>
+      <p>컨테이너를 띄우면 맨 위에 얇은 쓰기 레이어만 추가됩니다. 아래 파일을 고치면 그때 위로 복사해 수정하는 <mark>Copy-on-Write</mark>라서, 같은 이미지의 컨테이너 100개가 아래 레이어를 공유합니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 460" role="img" aria-labelledby="f9ly">
+        <title id="f9ly">베이스 이미지, 의존성, 앱 JAR 레이어가 아래부터 쌓인 읽기 전용 이미지 위에, 컨테이너마다 얇은 쓰기 레이어가 올라간다.</title>
+        <text class="dg-label--sm" x="270" y="30" text-anchor="middle">컨테이너마다 쓰기 레이어 (Copy-on-Write)</text>
+        <rect class="dg-box dg-box--flow" x="40" y="52" width="220" height="60"/>
+        <text x="150" y="82" text-anchor="middle">쓰기 레이어 1</text>
+        <rect class="dg-box dg-box--flow" x="280" y="52" width="220" height="60"/>
+        <text x="390" y="82" text-anchor="middle">쓰기 레이어 2</text>
+        <line class="dg-arrow" x1="150" y1="116" x2="150" y2="168"/>
+        <line class="dg-arrow" x1="390" y1="116" x2="390" y2="168"/>
+        <text class="dg-label--sm" x="270" y="150" text-anchor="middle">같은 이미지를 공유</text>
+        <rect class="dg-zone" x="28" y="176" width="484" height="264"/>
+        <text class="dg-label--sm" x="270" y="198" text-anchor="middle">이미지 (읽기 전용)</text>
+        <rect class="dg-box" x="40" y="216" width="460" height="60"/>
+        <text x="270" y="246" text-anchor="middle">앱 JAR</text>
+        <rect class="dg-box" x="40" y="288" width="460" height="60"/>
+        <text x="270" y="318" text-anchor="middle">의존성 라이브러리</text>
+        <rect class="dg-box dg-box--muted" x="40" y="360" width="460" height="60"/>
+        <text class="dg-label--muted" x="270" y="390" text-anchor="middle">베이스 이미지 (OS + JRE)</text>
+        <text class="dg-mono" x="540" y="246" text-anchor="start">COPY app.jar</text>
+        <text class="dg-mono" x="540" y="318" text-anchor="start">RUN gradle …</text>
+        <text class="dg-mono" x="540" y="390" text-anchor="start">FROM …-jre</text>
+      </svg>
+      <figcaption>자주 바뀌는 것일수록 위 레이어에 둡니다. 다음 슬라이드에서 그 이유를 봅니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>레이어 캐시는 명령 순서가 결정한다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="Dockerfile"><code><span class="c"># 나쁜 순서: 코드 한 줄에도 의존성 재설치</span>
+COPY . .
+<span class="dim">RUN ./gradlew bootJar</span>
+
+<span class="c"># 좋은 순서: 잘 안 바뀌는 것부터</span>
+COPY build.gradle settings.gradle ./
+<span class="hl">RUN ./gradlew dependencies</span>
+COPY src ./src
+RUN ./gradlew bootJar</code></pre>
+    <div class="prose">
+      <p>Docker는 명령과 입력 파일이 이전 빌드와 같으면 그 레이어를 재사용합니다. 하지만 <mark>한 레이어가 바뀌면 그 아래 모든 명령이 다시 실행</mark>됩니다.</p>
+      <p>그래서 빌드 설정만 먼저 복사해 의존성을 받고, 자주 바뀌는 소스는 나중에 복사합니다. 코드만 고친 빌드는 의존성 다운로드를 건너뛰어 수 분이 수십 초로 줄어듭니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>멀티 스테이지로 빌드 도구를 버린다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="Dockerfile"><code><span class="c"># 1단계: 빌드 (JDK, Gradle 포함)</span>
+<span class="hl">FROM eclipse-temurin:21-jdk AS build</span>
+WORKDIR /src
+COPY gradlew settings.gradle build.gradle ./
+COPY gradle ./gradle
+RUN ./gradlew dependencies --no-daemon
+COPY src ./src
+RUN ./gradlew bootJar --no-daemon
+
+<span class="c"># 2단계: 실행 (JRE만)</span>
+FROM eclipse-temurin:21-jre
+WORKDIR /app
+<span class="hl">COPY --from=build /src/build/libs/*.jar app.jar</span>
+USER 1000
+ENTRYPOINT [<span class="s">"java"</span>, <span class="s">"-jar"</span>, <span class="s">"app.jar"</span>]</code></pre>
+    <div class="prose">
+      <p>빌드에는 JDK와 Gradle, 소스가 필요하지만 실행에는 JRE와 JAR만 있으면 됩니다. <dfn title="multi-stage build">멀티 스테이지 빌드</dfn>는 앞 단계에서 만든 결과물만 마지막 단계로 복사합니다.</p>
+      <p>최종 이미지가 작아져 배포가 빨라지고, 컴파일러나 소스 같은 공격 표면도 사라집니다. <code>USER</code>로 root가 아닌 계정을 지정하는 것도 같은 이유입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>PID 1이 시그널을 받아야 정상 종료된다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="Dockerfile"><code><span class="c"># shell form: /bin/sh -c 가 PID 1이 되어</span>
+<span class="c"># SIGTERM이 java까지 가지 않을 수 있음</span>
+<span class="dim">CMD java -jar app.jar</span>
+
+<span class="c"># exec form: java가 직접 PID 1</span>
+<span class="hl">ENTRYPOINT ["java", "-jar", "app.jar"]</span>
+
+<span class="c"># 스크립트로 시작해야 한다면 마지막에 exec</span>
+exec java $JAVA_OPTS -jar app.jar</code></pre>
+    <div class="prose">
+      <p><code>docker stop</code>은 컨테이너의 PID 1에 SIGTERM을 보내고, 기본 10초 뒤 SIGKILL을 보냅니다. 셸이 PID 1이면 시그널이 자식인 java에 전달되지 않을 수 있어 매번 10초를 기다렸다가 강제 종료됩니다.</p>
+      <p>exec form으로 앱을 직접 PID 1로 두거나, 좀비 프로세스 정리까지 필요하면 tini 같은 작은 init(<code>docker run --init</code>)을 씁니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>컨테이너가 수백 개면 사람이 관리할 수 없다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>서버 20대에 컨테이너 300개가 돈다고 해 봅시다. 어느 서버에 여유가 있는지, 죽은 컨테이너를 어디서 다시 띄울지, 새 컨테이너의 IP를 로드 밸런서에 어떻게 알릴지 매번 사람이 판단할 수는 없습니다.</p>
+      <p><dfn title="orchestration">오케스트레이션</dfn>은 이 일을 자동화합니다. 핵심은 명령형("3개 띄워")이 아니라 <mark>선언형("항상 3개가 떠 있어야 한다")</mark>이라는 점입니다.</p>
+    </div>
+    <ul class="summary">
+      <li><b>배치(스케줄링)</b> 자원이 남는 노드를 골라 컨테이너를 놓습니다.</li>
+      <li><b>자가 치유</b> 죽거나 응답 없는 컨테이너를 교체합니다.</li>
+      <li><b>서비스 발견</b> 계속 바뀌는 IP 앞에 고정 주소를 둡니다.</li>
+      <li><b>확장과 배포</b> 개수를 늘리고 새 버전으로 점진 교체합니다.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Kubernetes는 두뇌와 손발로 나뉜다</h2>
+  <div class="slide__body">
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 1400 440" role="img" aria-labelledby="f9k8">
+        <title id="f9k8">Control Plane에는 API Server, etcd, Scheduler, Controller Manager가 있고, Worker Node에는 kubelet, kube-proxy, 컨테이너 런타임, Pod가 있다. kubelet은 API Server와 통신한다.</title>
+        <rect class="dg-zone" x="20" y="20" width="540" height="400"/>
+        <text class="dg-label--lg" x="290" y="52" text-anchor="middle">Control Plane</text>
+        <rect class="dg-box dg-box--solid" x="50" y="80" width="480" height="68"/>
+        <text class="dg-label--on" x="290" y="104" text-anchor="middle">API Server</text>
+        <text class="dg-label--on dg-label--sm" x="290" y="128" text-anchor="middle">모든 요청과 조회의 단일 입구</text>
+        <rect class="dg-box" x="50" y="200" width="210" height="68"/>
+        <text x="155" y="224" text-anchor="middle">etcd</text>
+        <text class="dg-label--sm" x="155" y="248" text-anchor="middle">클러스터 상태 저장소</text>
+        <rect class="dg-box" x="320" y="200" width="210" height="68"/>
+        <text x="425" y="224" text-anchor="middle">Scheduler</text>
+        <text class="dg-label--sm" x="425" y="248" text-anchor="middle">Pod를 놓을 노드 결정</text>
+        <rect class="dg-box" x="50" y="320" width="480" height="68"/>
+        <text x="290" y="344" text-anchor="middle">Controller Manager</text>
+        <text class="dg-label--sm" x="290" y="368" text-anchor="middle">원하는 상태와 실제 상태를 맞추는 루프들</text>
+        <line class="dg-arrow dg-arrow--both" x1="155" y1="156" x2="155" y2="192"/>
+        <line class="dg-arrow dg-arrow--both" x1="425" y1="156" x2="425" y2="192"/>
+        <line class="dg-arrow dg-arrow--both" x1="290" y1="156" x2="290" y2="312"/>
+
+        <path class="dg-arrow dg-arrow--flow dg-arrow--both" d="M538,114 H652"/>
+        <rect class="dg-fill-paper" x="556" y="128" width="78" height="30"/>
+        <text class="dg-label--sm" x="595" y="143" text-anchor="middle">watch</text>
+
+        <rect class="dg-zone" x="640" y="20" width="420" height="400"/>
+        <text class="dg-label--lg" x="850" y="52" text-anchor="middle">Worker Node</text>
+        <rect class="dg-box dg-box--flow" x="670" y="80" width="360" height="68"/>
+        <text x="850" y="104" text-anchor="middle">kubelet</text>
+        <text class="dg-label--sm" x="850" y="128" text-anchor="middle">Pod를 띄우고 프로브로 상태 보고</text>
+        <rect class="dg-box" x="670" y="160" width="360" height="60"/>
+        <text x="850" y="190" text-anchor="middle">kube-proxy (Service 라우팅 규칙)</text>
+        <rect class="dg-box" x="670" y="232" width="360" height="60"/>
+        <text x="850" y="262" text-anchor="middle">컨테이너 런타임 (containerd)</text>
+        <rect class="dg-box dg-box--muted" x="670" y="316" width="170" height="72"/>
+        <text x="755" y="352" text-anchor="middle">Pod</text>
+        <rect class="dg-box dg-box--muted" x="860" y="316" width="170" height="72"/>
+        <text x="945" y="352" text-anchor="middle">Pod</text>
+
+        <rect class="dg-box dg-box--ghost" x="1090" y="80" width="290" height="308"/>
+        <text class="dg-label--muted" x="1235" y="222" text-anchor="middle">Worker Node 2 … N</text>
+        <text class="dg-label--sm" x="1235" y="252" text-anchor="middle">같은 구성 반복</text>
+      </svg>
+      <figcaption>Control Plane은 결정만 하고, 실제로 컨테이너를 띄우는 것은 각 노드의 kubelet입니다. 모든 구성 요소는 서로 직접 말하지 않고 API Server를 거칩니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>apply 한 번이 Pod가 되기까지</h2>
+  <div class="split split--even">
+    <ol class="steps">
+      <li><b>kubectl apply</b><p>YAML을 API Server에 보내고, API Server는 검증 후 etcd에 저장합니다.</p></li>
+      <li><b>Deployment 컨트롤러</b><p>"3개 필요, 0개 있음"을 보고 ReplicaSet과 Pod 객체를 만듭니다.</p></li>
+      <li><b>Scheduler</b><p>노드가 정해지지 않은 Pod에 자원이 맞는 노드를 기록합니다.</p></li>
+      <li class="is-key"><b>kubelet</b><p>자기 노드에 배정된 Pod를 보고 런타임에 컨테이너 실행을 지시합니다.</p></li>
+    </ol>
+    <div class="prose">
+      <p>누구도 다음 단계를 직접 호출하지 않습니다. 각 구성 요소가 API Server를 지켜보다가 자기 몫의 차이를 발견하면 움직입니다. 이것을 <dfn title="reconciliation loop">조정 루프</dfn>라고 합니다.</p>
+      <p>노드가 죽어 Pod가 2개로 줄면 같은 루프가 차이를 보고 하나를 새로 만듭니다. <mark>자가 치유는 별도 기능이 아니라 이 루프의 결과</mark>입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Pod는 버려지고 Deployment가 개수를 지킨다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">오브젝트</th><th scope="col">무엇인가</th><th scope="col">왜 필요한가</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Pod</th><td>컨테이너 묶음, 배포의 최소 단위</td><td>같은 IP와 볼륨을 공유</td></tr>
+        <tr><th scope="row">ReplicaSet</th><td>같은 Pod N개를 유지</td><td>개수 보장 (직접 쓰지 않음)</td></tr>
+        <tr><th scope="row">Deployment</th><td>ReplicaSet의 버전 관리</td><td class="is-flow">롤링 업데이트와 롤백</td></tr>
+        <tr><th scope="row">Service</th><td>Pod 묶음의 고정 주소</td><td>Pod IP는 재시작마다 바뀜</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>Pod는 언제든 죽고 새 IP로 다시 태어나는 일회용입니다. 그래서 Pod를 직접 만들지 않고 Deployment에 원하는 상태를 맡깁니다. Service는 <strong>라벨 셀렉터</strong>로 대상 Pod를 고르므로 Pod가 바뀌어도 주소는 그대로입니다. 8장의 무상태 서버 원칙이 여기서 전제가 됩니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Deployment YAML은 원하는 상태의 기록이다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="deployment.yaml"><code>apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+<span class="hl">  replicas: 3</span>
+  selector:
+    matchLabels: { app: api }
+  template:
+    metadata:
+      labels: { app: api }
+    spec:
+      containers:
+      - name: api
+        image: ghcr.io/acme/api:3f9c2e1
+        resources: { requests: { cpu: 500m } }</code></pre>
+    <div class="prose">
+      <p><code>selector</code>와 <code>template</code>의 라벨이 같아야 Deployment가 자기 Pod를 알아봅니다. Service도 같은 <code>app: api</code> 라벨로 이 Pod들을 찾습니다.</p>
+      <p><code>requests</code>는 Scheduler가 노드를 고르는 기준이자 뒤에 나올 HPA 사용률의 분모입니다. 비워 두면 배치와 확장이 모두 부정확해집니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>요청은 Ingress, Service를 거쳐 Pod에 닿는다</h2>
+  <div class="slide__body">
+    <ol class="flow">
+      <li class="flow__node"><b>클라이언트</b><span>api.example.com</span></li>
+      <li class="flow__node"><b>Ingress</b><span>호스트, 경로로 L7 라우팅</span></li>
+      <li class="flow__node is-flow"><b>Service</b><span>고정 가상 IP, 부하 분산</span></li>
+      <li class="flow__node"><b>Pod</b><span>Ready인 Pod만 대상</span></li>
+    </ol>
+    <div class="prose">
+      <p>Service의 기본형(ClusterIP)은 클러스터 안에서만 닿는 가상 IP입니다. 각 노드의 kube-proxy가 이 IP로 오는 패킷을 실제 Pod로 보내는 규칙을 깔아 둡니다. 밖에서 들어오는 HTTP는 <dfn>Ingress</dfn>가 받아 2장의 L7 라우팅처럼 경로별로 Service에 나눠 줍니다.</p>
+    </div>
+    <aside class="callout callout--note">
+      <p>Kubernetes 프로젝트는 Ingress API를 동결하고 후속인 Gateway API를 권장합니다. Ingress는 계속 지원되므로 개념은 그대로 유효합니다.</p>
+    </aside>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>설정은 이미지 밖에, 비밀은 더 조심해서</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="secret.yaml"><code>apiVersion: v1
+kind: Secret
+metadata: { name: db }
+data:
+<span class="hl">  password: c3VwZXItc2VjcmV0   <span class="c"># base64</span></span>
+
+<span class="prompt">$ </span>echo c3VwZXItc2VjcmV0 | base64 -d
+super-secret</code></pre>
+    <div class="prose">
+      <p>같은 이미지를 개발과 운영에 그대로 쓰려면 환경별 값은 밖으로 빼야 합니다. <dfn>ConfigMap</dfn>은 일반 설정을, <dfn>Secret</dfn>은 비밀번호와 키를 담아 환경 변수나 파일로 Pod에 주입합니다.</p>
+      <p>Secret의 base64는 암호화가 아니라 인코딩입니다. etcd 저장 암호화와 RBAC 접근 제한을 켜거나 외부 비밀 저장소(11장)를 연동해야 합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>살아 있음과 받을 준비는 다른 질문이다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">프로브</th><th scope="col">묻는 것</th><th scope="col">실패하면</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">liveness</th><td>프로세스가 고장 났나 (데드락 등)</td><td class="is-key">컨테이너 재시작</td></tr>
+        <tr><th scope="row">readiness</th><td>지금 트래픽을 받아도 되나</td><td class="is-flow">Service 대상에서 제외만</td></tr>
+        <tr><th scope="row">startup</th><td>느린 시작이 끝났나</td><td>끝날 때까지 위 둘을 보류</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>kubelet은 기본 10초마다 프로브를 보내고, 연속 3번 실패하면 실패로 판단합니다. readiness는 기동 직후 캐시를 데우는 동안이나 종료 중에 "잠시 빼 달라"는 신호이고, liveness는 "나를 다시 시작해 달라"는 신호입니다.</p>
+    </div>
+    <aside class="callout callout--key">
+      <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>liveness에 DB 연결 검사를 넣지 마세요</p>
+      <p>8장에서 본 헬스 체크 원칙 그대로입니다. DB가 잠깐 느려지면 모든 Pod가 동시에 재시작되므로, liveness는 프로세스 자체만 봅니다.</p>
+    </aside>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>HPA는 사용률 비율만큼 Pod 수를 바꾼다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p><dfn title="Horizontal Pod Autoscaler">HPA</dfn>는 metrics-server에서 Pod의 CPU 사용량을 주기적으로 읽어 Deployment의 <code>replicas</code>를 조정합니다. 계산은 단순한 비례식입니다.</p>
+      <p>Pod 4개의 평균 CPU가 목표 50%에 대해 80%라면 ceil(4 × 80/50) = 7개로 늘립니다. 사용률은 <code>requests</code> 대비이므로 requests가 없으면 계산할 수 없습니다.</p>
+    </div>
+    <div class="slide__body">
+      <pre class="code" data-file="HPA 계산식"><code>desired = ceil(current × cur / target)</code></pre>
+      <aside class="callout callout--note">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>출렁임을 막는 두 장치</p>
+        <p>비율이 목표와 10% 이내면 움직이지 않습니다(tolerance 0.1). 줄일 때는 기본 5분 동안의 추천값 중 최댓값을 써서 급감을 막습니다.</p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Part 3: practice ===== -->
+<section class="slide slide--divider" data-section="운영과 무중단 배포" data-depth="practice">
+  <p class="divider__no">3부</p>
+  <h2>멈추지 않고 진단하고 교체하기</h2>
+  <p class="lede">서버가 느릴 때 무엇을 보는지, 코드가 어떻게 자동으로 배포되는지, 그리고 사용자가 모르게 새 버전으로 바꾸는 방법을 봅니다.</p>
+  <div class="depth-shift" aria-label="깊이 전환: 원리에서 실무로">
+    <span class="depth-shift__step"><span class="depth" data-depth="core"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>원리</span>
+    <span class="depth-shift__line" aria-hidden="true"></span>
+    <span class="depth-shift__step is-to"><span class="depth" data-depth="practice"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>실무</span>
+    <span class="depth-shift__note">진단 명령어, 파이프라인, 배포 전략, 종료 순서와 장애 사례를 다룹니다.</span>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>"느리다"는 자원별로 쪼개서 본다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">자원</th><th scope="col">먼저 칠 명령</th><th scope="col">이상 신호</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">CPU</th><td><code>uptime</code>, <code>top</code></td><td>load average가 코어 수 초과</td></tr>
+        <tr><th scope="row">메모리</th><td><code>free -h</code>, <code>vmstat 1</code></td><td>available 부족, si/so 발생</td></tr>
+        <tr><th scope="row">디스크</th><td><code>df -h</code>, <code>iostat -x 1</code></td><td class="is-key">사용률 100%, await 급증</td></tr>
+        <tr><th scope="row">네트워크</th><td><code>ss -s</code>, <code>ss -tanp</code></td><td>TIME-WAIT, CLOSE-WAIT 폭증</td></tr>
+        <tr><th scope="row">로그</th><td><code>tail -f</code>, <code>journalctl</code></td><td>에러 급증, 타임아웃 메시지</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>감으로 재시작하기 전에 어느 자원이 포화됐는지부터 좁힙니다. 지표 대시보드가 있어도 서버 안에서 확인하는 순서는 같습니다. 이 장은 명령어를, 11장은 지표와 덤프를 엮는 전체 플레이북을 다룹니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>CPU와 메모리: 숫자를 코어 수와 비교한다</h2>
+  <div class="slide__body">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>uptime; nproc
+<span class="hl"> 10:21:07 up 41 days,  3 users,  load average: 7.92, 6.10, 3.05</span>
+4
+<span class="prompt">$ </span>free -h
+       total   used   free  shared  buff/cache  available
+Mem:    15Gi   12Gi  320Mi    12Mi       2.9Gi      2.6Gi
+<span class="prompt">$ </span>vmstat 1 3       <span class="c"># 일부 열 생략</span>
+ r  b  swpd   free   si   so   bi   bo  us sy id wa st
+ 9  0     0 327680    0    0   12  840  78 15  5  2  0</code></pre>
+    <div class="prose">
+      <p>load average는 1, 5, 15분 평균 대기열 길이입니다. 코어 4개에 7.92이면 늘 두 배의 작업이 줄을 서 있고, 오르는 추세입니다. 메모리는 <code>free</code>가 아니라 <code>available</code>을 보며, <code>si/so</code>가 0이 아니면 스왑이 일어나는 중입니다. <code>wa</code>가 높으면 CPU가 아니라 디스크를 기다리는 것입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>디스크와 네트워크: 공간, 대기, 연결</h2>
+  <div class="slide__body">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>df -h /var
+Filesystem      Size  Used Avail Use% Mounted on
+<span class="hl">/dev/nvme0n1p1   50G   50G     0 100% /</span>
+<span class="prompt">$ </span>df -i /var              <span class="c"># inode 고갈도 "디스크 꽉 참"</span>
+<span class="prompt">$ </span>du -xh /var --max-depth=1 | sort -h | tail -3
+<span class="prompt">$ </span>iostat -x 1             <span class="c"># %util, await</span>
+<span class="prompt">$ </span>ss -s                   <span class="c"># 상태별 소켓 개수</span>
+<span class="prompt">$ </span>ss -tanp '( dport = :3306 )'   <span class="c"># DB로 나간 연결</span>
+<span class="prompt">$ </span>lsof -p 4211 | wc -l    <span class="c"># 프로세스가 연 fd 수</span></code></pre>
+    <div class="prose">
+      <p>디스크는 용량과 inode(1장) 두 가지가 모두 바닥날 수 있습니다. 작은 파일이 수백만 개 쌓이면 용량이 남아도 파일을 못 만듭니다. 네트워크는 2장의 소켓 상태를, fd 수는 1장의 fd 고갈을 여기서 실제로 확인합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>로그를 지웠는데 디스크가 그대로인 이유</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>tail -f /var/log/api/app.log
+<span class="prompt">$ </span>grep -c <span class="s">" 500 "</span> access.log
+<span class="prompt">$ </span>journalctl -u api --since <span class="s">"10 min ago"</span>
+<span class="prompt">$ </span>kubectl logs api-7d9f --previous
+
+<span class="prompt">$ </span>rm /var/log/api/app.log
+<span class="prompt">$ </span>lsof +L1      <span class="c"># 일부 열 생략</span>
+CMD   PID   FD  SIZE/OFF NLINK NAME
+<span class="hl">java  4211  7w  21474836480  0 app.log (deleted)</span></code></pre>
+    <div class="prose">
+      <p>파일을 <code>rm</code>해도 프로세스가 fd로 열고 있으면 inode는 남아 계속 공간을 차지합니다. 20GB 로그를 지웠는데 <code>df</code>가 그대로라면 이 경우입니다.</p>
+      <p><code>lsof +L1</code>로 찾아 프로세스를 재시작하거나 파일을 비웁니다(<code>: &gt; app.log</code>). 근본 대책은 logrotate나 stdout 로그입니다. <code>--previous</code>는 재시작 직전 컨테이너의 로그입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>CI는 자주 합치고, CD는 언제든 내보낸다</h2>
+  <div class="slide__body">
+    <ol class="flow">
+      <li class="flow__node"><b>커밋, PR</b><span>작은 단위로 자주</span></li>
+      <li class="flow__node"><b>빌드, 테스트</b><span>CI: 깨지면 즉시 알림</span></li>
+      <li class="flow__node"><b>이미지 빌드</b><span>태그는 커밋 SHA</span></li>
+      <li class="flow__node"><b>스테이징</b><span>같은 이미지로 검증</span></li>
+      <li class="flow__node is-flow"><b>운영 배포</b><span>수동 승인 또는 자동</span></li>
+    </ol>
+    <div class="prose">
+      <p><dfn title="Continuous Integration">CI</dfn>는 모두의 코드를 하루에도 여러 번 main에 합치고 그때마다 빌드와 테스트를 돌려 충돌을 일찍 잡는 습관입니다. <dfn title="Continuous Delivery">지속적 전달</dfn>은 언제든 운영에 내보낼 수 있는 상태를 유지하되 마지막 버튼은 사람이 누르고, <dfn title="Continuous Deployment">지속적 배포</dfn>는 그 버튼까지 자동입니다.</p>
+      <p>핵심 원칙은 <mark>이미지를 한 번만 빌드하고 같은 이미지를 환경별로 승격</mark>하는 것입니다. 환경마다 다시 빌드하면 테스트한 것과 다른 것이 나갑니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>GitHub Actions로 쓴 최소 파이프라인</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file=".github/workflows/ci.yml"><code>on:
+  push: { branches: [main] }
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+<span class="hl">      IMG: ghcr.io/acme/api:${{ github.sha }}</span>
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: <span class="s">'21'</span>
+      - run: ./gradlew test bootJar
+      - run: docker build -t $IMG .
+      - run: docker push $IMG</code></pre>
+    <div class="prose">
+      <p>main에 push되면 GitHub이 준비한 러너에서 체크아웃, 테스트, 이미지 빌드와 푸시가 순서대로 실행됩니다. 테스트가 실패하면 그 뒤 단계는 돌지 않습니다. 실제로는 레지스트리 로그인 단계가 하나 더 필요합니다.</p>
+      <p>배포는 이 이미지 태그를 Deployment에 반영하는 단계입니다. 클러스터가 Git 저장소의 매니페스트를 끌어와 맞추는 GitOps(Argo CD 등) 방식도 많이 씁니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Rolling: 조금씩 바꿔 끼운다</h2>
+  <div class="split split--even">
+    <ol class="steps">
+      <li><b>새 Pod 추가</b><p>maxSurge만큼 v2 Pod를 먼저 띄웁니다.</p></li>
+      <li class="is-key"><b>readiness 통과 대기</b><p>준비된 v2만 Service 대상에 들어갑니다.</p></li>
+      <li><b>옛 Pod 제거</b><p>maxUnavailable 범위 안에서 v1을 종료합니다.</p></li>
+      <li><b>반복</b><p>모든 Pod가 v2가 될 때까지 되풀이합니다.</p></li>
+    </ol>
+    <div class="prose">
+      <p>무중단 배포가 어려운 이유는 교체하는 동안 <strong>두 버전이 동시에 요청을 받기</strong> 때문입니다. Rolling은 그 공존을 받아들이고 조금씩 바꿉니다. Deployment의 기본 전략이며 maxSurge와 maxUnavailable의 기본값은 각각 25%입니다.</p>
+      <p>추가 자원이 적게 들지만, 롤백도 다시 굴려야 해서 느립니다. 문제가 생겨도 이미 일부 사용자가 영향을 받습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Blue-Green: 통째로 준비하고 한 번에 전환</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>운영 중인 Blue 옆에 같은 규모의 Green(v2)을 띄워 검증한 뒤, 로드 밸런서나 Service의 대상을 한 번에 Green으로 돌립니다.</p>
+      <p>Blue를 남겨 두면 <mark>롤백은 대상을 되돌리는 것 한 번</mark>입니다. 대신 전환 동안 자원이 두 배 들고, 두 환경이 같은 DB를 쓰므로 스키마 호환은 여전히 필요합니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 490" role="img" aria-labelledby="f9bg">
+        <title id="f9bg">사용자 트래픽은 로드 밸런서를 거쳐 Green v2로 향하고, Blue v1은 롤백용으로 대기한다. 두 환경은 같은 DB를 공유한다.</title>
+        <rect class="dg-box" x="280" y="20" width="200" height="56"/>
+        <text x="380" y="48" text-anchor="middle">사용자 트래픽</text>
+        <line class="dg-arrow dg-arrow--flow" x1="380" y1="80" x2="380" y2="112"/>
+        <rect class="dg-box dg-box--flow" x="230" y="120" width="300" height="60"/>
+        <text x="380" y="150" text-anchor="middle">로드 밸런서</text>
+        <path class="dg-arrow dg-arrow--back" d="M290,184 Q185,190 185,250"/>
+        <path class="dg-arrow dg-arrow--flow" d="M470,184 Q575,190 575,250"/>
+        <rect class="dg-zone" x="20" y="230" width="330" height="140"/>
+        <rect class="dg-box dg-box--muted" x="50" y="258" width="270" height="64"/>
+        <text x="185" y="290" text-anchor="middle">Blue v1</text>
+        <text class="dg-label--muted dg-label--sm" x="185" y="348" text-anchor="middle">대기 (즉시 롤백용)</text>
+        <rect class="dg-zone" x="410" y="230" width="330" height="140"/>
+        <rect class="dg-box dg-box--solid" x="440" y="258" width="270" height="64"/>
+        <text class="dg-label--on" x="575" y="290" text-anchor="middle">Green v2</text>
+        <text class="dg-label--flow dg-label--sm" x="575" y="348" text-anchor="middle">현재 운영</text>
+        <line class="dg-line" x1="185" y1="372" x2="300" y2="414"/>
+        <line class="dg-line" x1="575" y1="372" x2="460" y2="414"/>
+        <rect class="dg-box dg-box--key" x="230" y="420" width="300" height="56"/>
+        <text class="dg-label--key" x="380" y="448" text-anchor="middle">공유 DB</text>
+      </svg>
+      <figcaption>전환은 화살표 하나를 옮기는 일입니다. 하지만 아래 DB는 두 버전이 함께 씁니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Canary: 일부에게 먼저 내보내고 지표로 판단</h2>
+  <div class="slide__body">
+    <ol class="flow">
+      <li class="flow__node is-flow"><b>5%</b><span>v2로 일부 트래픽</span></li>
+      <li class="flow__node is-key"><b>지표 비교</b><span>에러율, p99 지연</span></li>
+      <li class="flow__node"><b>25%</b><span>이상 없으면 확대</span></li>
+      <li class="flow__node"><b>100%</b><span>v1 정리</span></li>
+    </ol>
+    <div class="prose">
+      <p>탄광의 카나리아처럼 소수 사용자에게 먼저 v2를 보내고, v1과 지표를 비교해 단계적으로 늘립니다. 나쁘면 그 5%만 되돌리면 되므로 <strong>영향 범위가 가장 작습니다</strong>.</p>
+      <p>대신 비율 단위 라우팅(Ingress 가중치, 서비스 메시, Argo Rollouts 등)과 버전별로 나눠 보는 관측성이 갖춰져야 합니다. 지표를 보지 않는 Canary는 느린 Rolling일 뿐입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>세 전략은 비용, 롤백 속도, 위험의 교환이다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">기준</th><th scope="col">Rolling</th><th scope="col">Blue-Green</th><th scope="col">Canary</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">추가 자원</th><td class="is-flow">maxSurge만큼</td><td class="is-key">전체 두 배</td><td>소량</td></tr>
+        <tr><th scope="row">롤백 속도</th><td>다시 롤링, 느림</td><td class="is-flow">전환 한 번, 즉시</td><td>비율을 0으로, 빠름</td></tr>
+        <tr><th scope="row">문제 시 영향</th><td>교체된 비율만큼</td><td>전환 순간 전체</td><td>설정한 소수</td></tr>
+        <tr><th scope="row">버전 공존</th><td>배포 내내</td><td>전환 순간만</td><td>관찰 기간 내내</td></tr>
+        <tr><th scope="row">필요한 것</th><td>readiness 프로브</td><td>두 벌의 환경</td><td>가중치 라우팅, 지표</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>어느 전략이든 공통 전제가 두 가지 있습니다. 내려가는 인스턴스가 진행 중 요청을 끝내야 하고(Graceful Shutdown), 두 버전이 같은 DB를 견뎌야 합니다(스키마 하위 호환). AWS에서는 ECS, CodeDeploy가 이 전략을 구현합니다(11장).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Pod 종료는 두 갈래로 동시에 진행된다</h2>
+  <div class="split split--wide-left">
+    <div class="seq" role="img" aria-label="Pod 삭제 시 kubelet이 preStop 훅을 실행하고 SIGTERM을 보내며, 앱은 새 요청을 거절하고 진행 중 요청을 끝낸 뒤 종료한다. 유예 시간을 넘기면 SIGKILL이 온다.">
+      <div class="seq__head"><span>Kubernetes</span><span></span><span>앱 컨테이너</span></div>
+      <div class="seq__row seq__row--note">
+        <span></span><span class="seq__msg"><span>Pod Terminating, 엔드포인트 제거 전파 시작</span></span><span></span>
+      </div>
+      <div class="seq__row seq__row--r">
+        <span class="seq__state">preStop</span>
+        <span class="seq__msg"><b>sleep 10</b><small>그동안 라우팅 규칙이 갱신됨</small></span>
+        <span class="seq__state"></span>
+      </div>
+      <div class="seq__row seq__row--r">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>SIGTERM</b></span>
+        <span class="seq__state">종료 시작</span>
+      </div>
+      <div class="seq__row seq__row--note">
+        <span></span><span class="seq__msg"><span>새 요청 거절, 진행 중 요청 마무리</span></span><span></span>
+      </div>
+      <div class="seq__row seq__row--l is-back">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>exit 0</b></span>
+        <span class="seq__state">정상 종료</span>
+      </div>
+      <div class="seq__row seq__row--r is-key">
+        <span class="seq__state is-key">30초 초과</span>
+        <span class="seq__msg"><b>SIGKILL</b><small>진행 중 요청 유실</small></span>
+        <span class="seq__state"></span>
+      </div>
+    </div>
+    <div class="prose">
+      <p>Pod가 삭제되면 엔드포인트에서 빠지는 일과 컨테이너에 종료를 알리는 일이 <strong>동시에</strong> 시작됩니다. 라우팅 규칙이 모든 노드에 퍼지기 전에 앱이 먼저 죽으면 그 사이 요청이 502로 실패합니다.</p>
+      <p>그래서 preStop에서 몇 초 기다려 <mark>트래픽이 끊긴 뒤에 종료를 시작</mark>합니다. 전체 유예 시간은 기본 30초이고, preStop 시간도 여기에 포함됩니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>종료 예산을 앱과 Pod 설정에 나눠 쓴다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="설정 두 곳"><code><span class="c"># application.yml (Spring Boot)</span>
+server:
+  shutdown: graceful   <span class="c"># Boot 3.4부터 기본값</span>
+spring:
+  lifecycle:
+<span class="hl">    timeout-per-shutdown-phase: 20s</span>
+
+<span class="c"># Pod spec</span>
+<span class="hl">terminationGracePeriodSeconds: 40</span>
+containers:
+- name: api
+  lifecycle:
+    preStop:
+      exec: { command: [<span class="s">"sleep"</span>, <span class="s">"10"</span>] }</code></pre>
+    <div class="prose">
+      <p>SIGTERM을 받은 Spring Boot는 새 요청을 거절하고 진행 중 요청을 최대 20초 기다립니다. preStop 10초와 합쳐 30초이므로 유예 시간을 40초로 넉넉히 둡니다.</p>
+      <p>규칙은 <strong>preStop + 앱 종료 시간 &lt; 유예 시간</strong>입니다. 긴 배치 작업이나 메시지 컨슈머는 처리 중인 일을 마치거나 다시 큐에 돌려놓는 코드가 따로 필요합니다(8장 멱등 컨슈머).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>스키마는 두 버전이 함께 견뎌야 한다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>배포 중에는 v1과 v2가 같은 DB를 씁니다. v2 배포와 함께 컬럼 이름을 바꾸면 아직 남은 v1이 즉시 에러를 냅니다. 롤백해도 v1은 바뀐 스키마를 모릅니다.</p>
+      <p>해법은 변경을 여러 배포로 쪼개는 <dfn title="expand and contract">Expand-Contract</dfn>입니다. <mark>먼저 넓히고, 모두 옮긴 뒤, 나중에 좁힙니다.</mark></p>
+      <p class="small">큰 테이블의 ALTER는 락과 복제 지연을 부를 수 있어 MySQL 온라인 DDL이나 gh-ost 같은 도구를 씁니다.</p>
+    </div>
+    <ol class="steps">
+      <li><b>Expand</b><p>새 컬럼 <code>full_name</code>을 NULL 허용으로 추가합니다. v1은 영향이 없습니다.</p></li>
+      <li><b>이중 쓰기</b><p>v2는 두 컬럼에 모두 쓰고, 읽을 때는 새 컬럼을 우선합니다.</p></li>
+      <li><b>백필</b><p>기존 행의 값을 배치로 나눠 새 컬럼에 복사합니다.</p></li>
+      <li><b>전환</b><p>v1이 모두 사라진 뒤 새 컬럼만 읽고 씁니다.</p></li>
+      <li class="is-key"><b>Contract</b><p>다음 릴리스에서 옛 컬럼 <code>name</code>을 삭제합니다.</p></li>
+    </ol>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>배포 직후 자주 터지는 장애 세 가지</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">증상</th><th scope="col">흔한 원인</th><th scope="col">확인과 대응</th></tr></thead>
+      <tbody>
+        <tr><th scope="row"><code>OOMKilled</code>, 137</th><td>힙이 메모리 상한에 근접</td><td>힙 비율 낮추거나 상한 상향</td></tr>
+        <tr><th scope="row"><code>CrashLoopBackOff</code></th><td>설정 누락, 시작 직후 예외</td><td><code>logs --previous</code>, 이벤트</td></tr>
+        <tr><th scope="row">기동 중 무한 재시작</th><td class="is-key">시작보다 짧은 liveness 대기</td><td>startup 프로브 추가</td></tr>
+        <tr><th scope="row">배포 때마다 502</th><td>즉시 종료, preStop 없음</td><td>preStop, graceful 설정</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>첫 확인은 <code>kubectl describe pod</code>의 Events와 Last State입니다. 종료 이유와 종료 코드, 프로브 실패 기록이 여기 남습니다. CrashLoopBackOff는 재시작 간격이 지수적으로 늘어난 상태라, 원인을 고치지 않고 기다려도 나아지지 않습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>IaC: 인프라도 코드로 리뷰하고 되돌린다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="main.tf"><code>resource <span class="s">"aws_instance"</span> <span class="s">"api"</span> {
+  ami           = <span class="s">"ami-0abc1234"</span>
+  instance_type = <span class="s">"t3.small"</span>
+  tags = { Name = <span class="s">"api"</span> }
+}
+
+<span class="prompt">$ </span>terraform plan
+  # aws_instance.api will be created
+<span class="hl">Plan: 1 to add, 0 to change, 0 to destroy.</span>
+<span class="prompt">$ </span>terraform apply</code></pre>
+    <div class="prose">
+      <p>콘솔에서 손으로 만든 인프라는 누가 왜 바꿨는지 남지 않고 똑같이 다시 만들기도 어렵습니다. <dfn title="Infrastructure as Code">IaC</dfn>는 원하는 인프라를 코드로 선언하고 Git으로 리뷰합니다.</p>
+      <p>Terraform은 state 파일에 기록된 현재 상태와 코드를 비교해 차이(plan)를 보여 준 뒤 적용합니다. Kubernetes의 선언형 모델과 같은 발상입니다. 운영 관행은 11장에서 다룹니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>브랜치 전략은 배포 주기에 맞춘다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">전략</th><th scope="col">구조</th><th scope="col">맞는 팀</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Git Flow</th><td>main, develop, feature, release, hotfix</td><td>정해진 주기로 릴리스</td></tr>
+        <tr><th scope="row">GitHub Flow</th><td>main + 짧은 feature 브랜치, PR</td><td class="is-flow">수시 배포하는 웹 서비스</td></tr>
+        <tr><th scope="row">트렁크 기반</th><td>main에 하루 여러 번 병합</td><td>CI 성숙, 기능 플래그 사용</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>브랜치가 오래 살수록 병합 충돌과 통합 위험이 커집니다. CI의 취지인 "자주 합치기"와 맞는 쪽은 짧은 브랜치입니다. 미완성 기능은 브랜치에 숨기는 대신 <strong>기능 플래그</strong>로 꺼 둔 채 main에 합칠 수 있습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>12-Factor는 이 장의 원칙을 요약한다</h2>
+  <div class="slide__body">
+    <p class="lede">12-Factor App은 클라우드에서 잘 도는 앱의 조건 12가지입니다. 그중 이 장과 직접 맞닿은 것만 추립니다.</p>
+    <table class="compare">
+      <thead><tr><th scope="col">요소</th><th scope="col">내용</th><th scope="col">이 장의 연결</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">설정</th><td>설정은 환경 변수로 분리</td><td>ConfigMap, Secret</td></tr>
+        <tr><th scope="row">프로세스</th><td>무상태, 상태는 외부 저장소</td><td>일회용 Pod (8장)</td></tr>
+        <tr><th scope="row">폐기 가능성</th><td>빠른 시작, 우아한 종료</td><td class="is-flow">SIGTERM, Graceful Shutdown</td></tr>
+        <tr><th scope="row">개발/운영 일치</th><td>환경 차이를 최소화</td><td>같은 이미지 승격</td></tr>
+        <tr><th scope="row">로그</th><td>파일 대신 stdout 이벤트 스트림</td><td>수집은 플랫폼이 담당</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ===== Summary ===== -->
+<section class="slide slide--summary" data-section="정리" data-depth="none">
+  <h2>정리</h2>
+  <ul class="summary">
+    <li><b>SIGTERM은 부탁, SIGKILL은 철거입니다.</b> systemd, Docker, Kubernetes 모두 SIGTERM 후 유예 시간이 지나면 SIGKILL을 보냅니다.</li>
+    <li><b>컨테이너는 격리된 프로세스입니다.</b> namespace가 보이는 범위를, cgroup이 쓰는 양을 나누고 커널은 공유합니다.</li>
+    <li><b>Kubernetes는 조정 루프의 집합입니다.</b> 원하는 상태를 etcd에 적으면 컨트롤러가 차이를 메우고, 그 결과가 자가 치유입니다.</li>
+    <li><b>배포 전략은 비용, 롤백 속도, 위험의 교환입니다.</b> Rolling은 싸고, Blue-Green은 롤백이 빠르고, Canary는 영향이 작습니다.</li>
+    <li><b>무중단은 종료 순서와 스키마 호환이 완성합니다.</b> preStop으로 트래픽을 먼저 끊고, Expand-Contract로 두 버전이 공존하게 합니다.</li>
+  </ul>
+</section>
+
+<!-- ===== Self-check ===== -->
+<section class="slide" data-section="부록: 스스로 점검" data-depth="none">
+  <h2>스스로 점검 (1)</h2>
+  <ol class="selfcheck">
+    <li><details><summary><code>docker stop</code>을 할 때마다 정확히 10초씩 걸린다면 무엇을 의심하나요?</summary>
+      <div class="answer"><p>PID 1이 SIGTERM을 처리하지 않아 SIGKILL을 기다리는 것입니다. shell form CMD로 셸이 PID 1이 된 경우가 흔하며 exec form으로 바꿉니다.</p></div></details></li>
+    <li><details><summary>VM 위에서도 컨테이너를 돌리는데, 왜 컨테이너가 더 가볍다고 하나요?</summary>
+      <div class="answer"><p>컨테이너 하나마다 게스트 OS와 커널을 부팅하지 않기 때문입니다. 비교 대상은 "VM 하나 대 컨테이너 하나"이고, 컨테이너는 프로세스 하나를 띄우는 비용에 가깝습니다.</p></div></details></li>
+    <li><details><summary>소스 한 줄만 고쳤는데 이미지 빌드가 매번 의존성을 다시 받습니다. 왜인가요?</summary>
+      <div class="answer"><p>소스 복사가 의존성 설치보다 앞에 있어 그 레이어가 바뀌면 아래 명령의 캐시가 모두 무효가 됩니다. 빌드 설정을 먼저 복사해 의존성을 받고 소스는 나중에 복사합니다.</p></div></details></li>
+    <li><details><summary>노드 하나가 죽었는데 아무도 명령하지 않았는데 Pod가 다른 노드에 다시 생겼습니다. 어떤 구성 요소들이 움직였나요?</summary>
+      <div class="answer"><p>ReplicaSet 컨트롤러가 실제 개수가 원하는 개수보다 적은 것을 보고 Pod를 만들고, Scheduler가 노드를 정하고, 그 노드의 kubelet이 컨테이너를 띄웠습니다.</p></div></details></li>
+    <li><details><summary>readiness가 실패한 Pod와 liveness가 실패한 Pod는 각각 어떻게 되나요?</summary>
+      <div class="answer"><p>readiness 실패는 Service 대상에서만 빠지고 컨테이너는 그대로 둡니다. liveness 실패는 kubelet이 컨테이너를 재시작합니다.</p></div></details></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <h2>스스로 점검 (2)</h2>
+  <ol class="selfcheck">
+    <li><details><summary>배포 때마다 몇 초간 502가 납니다. 앱은 graceful 설정이 되어 있다면 무엇이 빠졌을까요?</summary>
+      <div class="answer"><p>엔드포인트 제거가 퍼지기 전에 SIGTERM으로 종료가 시작된 것입니다. preStop에서 몇 초 기다려 트래픽이 끊긴 뒤 종료하게 합니다.</p></div></details></li>
+    <li><details><summary>롤백이 가장 빨라야 하는 서비스와 실패 영향 범위를 최소로 해야 하는 서비스에는 각각 어떤 전략이 맞나요?</summary>
+      <div class="answer"><p>롤백 속도는 Blue-Green으로 대상 전환 한 번이면 됩니다. 영향 범위는 Canary로 소수에게만 먼저 노출해 줄입니다.</p></div></details></li>
+    <li><details><summary>컬럼을 삭제하는 마이그레이션을 새 버전 배포와 같이 내보내면 어떤 일이 생기나요?</summary>
+      <div class="answer"><p>아직 남은 이전 버전이 그 컬럼을 읽다가 에러를 내고, 롤백해도 컬럼이 없어 복구되지 않습니다. 이전 버전이 모두 사라진 다음 릴리스에서 삭제합니다.</p></div></details></li>
+    <li><details><summary>로그 파일을 지웠는데 <code>df</code> 사용률이 줄지 않습니다. 어떻게 확인하나요?</summary>
+      <div class="answer"><p><code>lsof +L1</code>로 삭제됐지만 열려 있는 파일을 찾습니다. 프로세스가 fd를 놓아야 공간이 반환되므로 재시작하거나 파일을 비웁니다.</p></div></details></li>
+    <li><details><summary>CPU 사용률은 낮은데 응답 지연이 주기적으로 튑니다. 컨테이너 환경이라면 무엇을 보나요?</summary>
+      <div class="answer"><p>CPU limit에 의한 스로틀링입니다. 짧은 순간 상한을 다 써서 다음 주기까지 멈추는 것이며, cgroup의 스로틀링 통계를 확인하고 limit을 조정합니다.</p></div></details></li>
+  </ol>
+</section>
+
+<!-- ===== Next ===== -->
+<section class="slide" data-section="다음 단계" data-depth="none">
+  <h2>다음으로 올라갈 층</h2>
+  <div class="slide__body">
+    <p class="lede">지금까지 쌓은 서버, 컨테이너, 로드 밸런서, 오토스케일링을 클라우드가 관리형 서비스로 어떻게 제공하는지 AWS 핵심 서비스로 넘어갑니다.</p>
+    <div class="nav-pair">
+      <a class="next" href="10-aws-fundamentals.html">
+        <span class="next__text">
+          <span class="next__label">다음 장</span>
+          <span class="next__title">10장 AWS 핵심 서비스</span>
+          <span class="next__desc">IAM, VPC, EC2, ELB, Auto Scaling, S3, RDS를 앞 장의 개념과 연결합니다</span>
+        </span>
+        <div class="stackmap stackmap--mini" data-current="10"></div>
+      </a>
+      <a class="next next--prev" href="08-system-design.html">
+        <span class="next__text">
+          <span class="next__label">이전 장</span>
+          <span class="next__title">8장 대규모 시스템 설계</span>
+        </span>
+      </a>
+    </div>
+    <p class="small"><a href="index.html">전체 학습 지도로 돌아가기</a></p>
+  </div>
+</section>
+
+</main>
+<script src="assets/deck.js"></script>
+</body>
+</html>

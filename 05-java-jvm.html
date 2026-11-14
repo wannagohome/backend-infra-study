@@ -1,0 +1,1094 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>5장 Java와 JVM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="assets/deck.css">
+</head>
+<body>
+<main class="deck" data-chapter="5" data-chapter-title="Java와 JVM">
+
+<!-- ===== Cover ======================================================== -->
+<section class="slide slide--cover">
+  <div class="cover">
+    <div class="cover__main">
+      <p class="cover__chapter"><b>5장</b> Java와 JVM</p>
+      <h1>내 코드는 JVM 안에서 어떻게 살고 죽는가</h1>
+      <p class="cover__lede">소스 코드가 바이트코드가 되어 실행되고, 객체가 힙에서 태어나 GC로 사라지기까지를 따라갑니다. 그 위에서 언어 핵심, HashMap, 동시성, 운영 진단까지 이어 봅니다.</p>
+      <dl class="cover__meta">
+        <div><dt>선수 지식</dt><dd>1장 스레드와 동기화, 3장 해시 테이블</dd></div>
+        <div><dt>슬라이드</dt><dd>55장</dd></div>
+        <div><dt>예상 학습 시간</dt><dd>150분</dd></div>
+      </dl>
+    </div>
+    <div class="cover__map">
+      <p class="stackmap__cap">아래층부터 위로 쌓아 올라가는 순서입니다. 지금은 5단계입니다.</p>
+      <div class="stackmap" data-current="5"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 1부: 실행 구조 (basic) ======================================= -->
+<section class="slide slide--divider" data-section="Java 코드의 실행" data-depth="basic">
+  <p class="divider__no">1부</p>
+  <h2>Java 코드는 어떻게 실행되는가</h2>
+  <p class="lede">4장까지는 OS, 네트워크, DB처럼 서버가 기대는 바닥을 봤습니다. 이제 그 위에서 우리 서버 코드가 실제로 돌아가는 런타임, JVM으로 올라갑니다.</p>
+</section>
+
+<section class="slide">
+  <h2>컴파일은 한 번, 실행은 각 OS의 JVM이</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>C 프로그램은 OS와 CPU마다 따로 컴파일해야 합니다. Java는 소스를 특정 CPU의 기계어가 아니라 <dfn title="bytecode">바이트코드</dfn>라는 중간 명령어로 컴파일합니다.</p>
+      <p>바이트코드를 실제 기계어로 바꿔 실행하는 일은 OS마다 설치된 <dfn title="Java Virtual Machine">JVM</dfn>이 맡습니다. 그래서 <mark>같은 .class 파일이 어느 OS에서든 그대로 돕니다</mark>.</p>
+      <p>Kotlin, Scala도 바이트코드로 컴파일되므로 같은 JVM 위에서 실행됩니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 420" role="img" aria-labelledby="f3t">
+        <title id="f3t">Hello.java가 javac로 Hello.class가 되고, 같은 class 파일이 Linux, macOS, Windows의 JVM에서 각각 실행된다.</title>
+        <rect class="dg-box" x="20" y="178" width="150" height="64"/>
+        <text x="95" y="210" text-anchor="middle" class="dg-mono">Hello.java</text>
+        <path class="dg-arrow dg-arrow--flow" d="M172,210 H232"/>
+        <text class="dg-label--sm" x="202" y="196" text-anchor="middle">javac</text>
+        <rect class="dg-box dg-box--solid" x="240" y="178" width="160" height="64"/>
+        <text class="dg-label--on dg-mono" x="320" y="210" text-anchor="middle">Hello.class</text>
+        <text class="dg-label--sm" x="320" y="268" text-anchor="middle">바이트코드</text>
+        <path class="dg-arrow dg-arrow--flow" d="M402,200 Q440,200 440,160 V100 Q440,70 470,70 H522"/>
+        <path class="dg-arrow dg-arrow--flow" d="M402,210 H522"/>
+        <path class="dg-arrow dg-arrow--flow" d="M402,220 Q440,220 440,260 V320 Q440,350 470,350 H522"/>
+        <rect class="dg-box dg-box--flow" x="530" y="38" width="210" height="64"/>
+        <text x="635" y="70" text-anchor="middle">JVM for Linux</text>
+        <rect class="dg-box dg-box--flow" x="530" y="178" width="210" height="64"/>
+        <text x="635" y="210" text-anchor="middle">JVM for macOS</text>
+        <rect class="dg-box dg-box--flow" x="530" y="318" width="210" height="64"/>
+        <text x="635" y="350" text-anchor="middle">JVM for Windows</text>
+      </svg>
+      <figcaption>OS에 맞춰 달라지는 것은 JVM이고, 바이트코드는 하나입니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>JDK는 개발 도구, JVM은 실행 엔진</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">구분</th><th scope="col">들어 있는 것</th><th scope="col">누가 필요한가</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">JVM</th><td>클래스 로더, 메모리 영역, 실행 엔진, GC</td><td>바이트코드를 실행하는 모든 곳</td></tr>
+        <tr><th scope="row">JRE</th><td>JVM + 표준 라이브러리</td><td>실행만 하는 환경</td></tr>
+        <tr><th scope="row">JDK</th><td class="is-flow">JRE + javac, jar, jcmd 등 도구</td><td>개발과 운영 진단</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p><dfn title="Java Runtime Environment">JRE</dfn>는 실행 환경, <dfn title="Java Development Kit">JDK</dfn>는 여기에 개발 도구를 더한 것입니다. JDK 11부터 Oracle은 JRE를 따로 배포하지 않고, 필요한 모듈만 묶은 런타임을 <code>jlink</code>로 만들게 했습니다.</p>
+    </div>
+    <aside class="callout callout--note">
+      <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>운영 이미지에도 진단 도구를 고려하세요</p>
+      <p>최소 런타임 이미지에는 <code>jcmd</code>가 없을 수 있습니다. 장애 때 힙 덤프를 뜰 방법을 미리 정해 두세요(6부에서 다룸).</p>
+    </aside>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>소스에서 실행까지 다섯 단계를 거친다</h2>
+  <div class="slide__body">
+    <ol class="flow">
+      <li class="flow__node"><b>javac</b><span>.java를 .class로</span></li>
+      <li class="flow__node"><b>클래스 로더</b><span>필요할 때 읽어 들임</span></li>
+      <li class="flow__node"><b>검증과 링크</b><span>바이트코드 안전성 확인</span></li>
+      <li class="flow__node is-flow"><b>실행 엔진</b><span>인터프리터 + JIT</span></li>
+      <li class="flow__node"><b>GC</b><span>안 쓰는 객체 회수</span></li>
+    </ol>
+    <div class="prose">
+      <p><code>javac</code>가 만든 .class 파일은 프로그램 시작 시 한꺼번에 올라가지 않습니다. 어떤 클래스가 처음 쓰이는 순간 <dfn title="Class Loader">클래스 로더</dfn>가 읽어 메모리에 올리고, 실행 엔진이 그 바이트코드를 기계어로 바꿔 실행합니다.</p>
+      <p>실행 중 만들어진 객체는 힙에 쌓이고, 더 이상 쓰이지 않으면 GC가 치웁니다. 이 장은 이 흐름을 한 칸씩 따라갑니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>클래스 로더는 부모에게 먼저 묻는다</h2>
+  <div class="split split--even">
+    <ol class="steps">
+      <li><b>Application 로더</b><p>클래스패스의 우리 코드와 라이브러리를 담당. 요청을 먼저 부모에게 넘깁니다.</p></li>
+      <li><b>Platform 로더</b><p>JDK 9부터의 이름. java.sql 같은 플랫폼 모듈을 담당합니다.</p></li>
+      <li class="is-key"><b>Bootstrap 로더</b><p>java.lang 같은 핵심 클래스. 여기서 못 찾으면 아래로 내려옵니다.</p></li>
+      <li><b>링크와 초기화</b><p>검증, static 필드 준비 후 static 초기화 블록을 실행합니다.</p></li>
+    </ol>
+    <div class="prose">
+      <p>클래스 로딩은 <dfn title="parent delegation">부모 위임 모델</dfn>을 따릅니다. 자식 로더는 직접 찾기 전에 부모에게 먼저 맡기고, 부모가 못 찾을 때만 스스로 찾습니다.</p>
+      <p>그래서 누군가 클래스패스에 가짜 <code>java.lang.String</code>을 넣어도 <mark>Bootstrap이 먼저 진짜를 올려</mark> 바꿔치기가 불가능합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>메모리는 공유 영역과 스레드별 영역으로 나뉜다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>JVM이 쓰는 메모리를 <dfn title="Runtime Data Area">런타임 데이터 영역</dfn>이라 부릅니다. <strong>힙</strong>과 <strong>메서드 영역</strong>은 모든 스레드가 공유하고, 스택과 PC 레지스터는 스레드마다 하나씩 생깁니다.</p>
+      <p>1장에서 본 프로세스 메모리 구조와 같은 발상입니다. <mark>공유 영역이라서 동시성 문제가 생기고, GC가 정리하는 곳도 힙입니다.</mark></p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 460" role="img" aria-labelledby="f7t">
+        <title id="f7t">JVM 런타임 데이터 영역. 모든 스레드가 공유하는 힙과 메서드 영역, 스레드마다 생기는 스택, PC 레지스터, 네이티브 메서드 스택.</title>
+        <rect class="dg-zone" x="20" y="20" width="720" height="170"/>
+        <text class="dg-label--sm" x="40" y="48" text-anchor="start">모든 스레드가 공유</text>
+        <rect class="dg-box dg-box--flow" x="44" y="66" width="400" height="100"/>
+        <text class="dg-label--lg" x="244" y="106" text-anchor="middle">힙(Heap)</text>
+        <text class="dg-label--sm" x="244" y="138" text-anchor="middle">new로 만든 객체, 배열. GC 대상</text>
+        <rect class="dg-box" x="464" y="66" width="252" height="100"/>
+        <text x="590" y="106" text-anchor="middle">메서드 영역</text>
+        <text class="dg-label--sm" x="590" y="138" text-anchor="middle">클래스 정보(Metaspace)</text>
+        <rect class="dg-zone" x="20" y="216" width="720" height="224"/>
+        <text class="dg-label--sm" x="40" y="244" text-anchor="start">스레드마다 하나씩</text>
+        <text class="dg-label--sm" x="140" y="276" text-anchor="middle">스레드 A</text>
+        <rect class="dg-box" x="44" y="290" width="192" height="64"/>
+        <text x="140" y="322" text-anchor="middle">JVM 스택</text>
+        <rect class="dg-box dg-box--muted" x="44" y="364" width="92" height="56"/>
+        <text class="dg-label--sm" x="90" y="392" text-anchor="middle">PC</text>
+        <rect class="dg-box dg-box--muted" x="144" y="364" width="92" height="56"/>
+        <text class="dg-label--sm" x="190" y="392" text-anchor="middle">네이티브</text>
+        <text class="dg-label--sm" x="380" y="276" text-anchor="middle">스레드 B</text>
+        <rect class="dg-box" x="284" y="290" width="192" height="64"/>
+        <text x="380" y="322" text-anchor="middle">JVM 스택</text>
+        <rect class="dg-box dg-box--muted" x="284" y="364" width="92" height="56"/>
+        <text class="dg-label--sm" x="330" y="392" text-anchor="middle">PC</text>
+        <rect class="dg-box dg-box--muted" x="384" y="364" width="92" height="56"/>
+        <text class="dg-label--sm" x="430" y="392" text-anchor="middle">네이티브</text>
+        <rect class="dg-box dg-box--ghost" x="524" y="290" width="192" height="130"/>
+        <text class="dg-label--muted" x="620" y="360" text-anchor="middle">스레드 C …</text>
+      </svg>
+      <figcaption>PC 레지스터는 지금 실행 중인 바이트코드 위치를, 네이티브 메서드 스택은 C 코드 호출을 기록합니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>지역 변수는 스택에, 객체는 힙에 산다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="OrderService.java"><code><span class="k">void</span> place(<span class="k">long</span> userId) {
+<span class="hl">    <span class="k">int</span> qty = <span class="n">3</span>;              <span class="c">// 스택: 값 자체</span></span>
+<span class="hl">    Order o = <span class="k">new</span> Order(qty); <span class="c">// 스택: 참조값</span></span>
+    repo.save(o);              <span class="c">// 힙: Order 객체</span>
+}   <span class="c">// 메서드 종료 → 프레임 제거</span>
+    <span class="c">// Order는 아무도 안 가리키면</span>
+    <span class="c">// GC 대상</span></code></pre>
+    <div class="prose">
+      <p>메서드를 호출할 때마다 스택에 <dfn title="stack frame">프레임</dfn>이 쌓이고, 지역 변수와 매개변수가 그 안에 놓입니다. 객체 자체는 힙에 있고, 변수에는 그 위치를 가리키는 참조값만 들어갑니다.</p>
+      <p>재귀가 너무 깊으면 <code>StackOverflowError</code>, 힙이 가득 차면 <code>OutOfMemoryError</code>가 납니다. 클래스 정보는 JDK 8부터 힙 밖 네이티브 메모리의 <dfn>Metaspace</dfn>에 둡니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>인터프리터로 시작해 뜨거운 코드만 JIT으로</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>인터프리터는 바이트코드를 한 줄씩 해석해 바로 실행합니다. 시작은 빠르지만 같은 코드를 매번 다시 해석하므로 느립니다.</p>
+      <p><dfn title="Just-In-Time">JIT</dfn> 컴파일러는 자주 호출되는 <strong>뜨거운 메서드</strong>를 찾아 기계어로 컴파일해 캐시합니다. HotSpot은 빠른 C1과 최적화가 강한 C2를 단계적으로 쓰는 <dfn>계층형 컴파일</dfn>이 기본입니다.</p>
+    </div>
+    <div class="slide__body">
+      <aside class="callout callout--key">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>배포 직후 첫 요청들은 느립니다</p>
+        <p>JIT이 아직 코드를 컴파일하지 않은 웜업 구간이라 지연이 튑니다. 트래픽을 받기 전에 주요 API를 미리 호출해 두는 이유입니다.</p>
+      </aside>
+      <aside class="callout callout--note">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>왜 처음부터 다 컴파일하지 않나</p>
+        <p>실행해 봐야 어떤 분기가 자주 타는지 압니다. JIT은 그 실행 정보로 인라이닝 같은 공격적 최적화를 합니다.</p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 2부: GC (core) =============================================== -->
+<section class="slide slide--divider" data-section="메모리와 GC" data-depth="core">
+  <p class="divider__no">2부</p>
+  <h2>GC는 무엇을 언제 어떻게 치우는가</h2>
+  <p class="lede">Java 개발자는 free()를 호출하지 않습니다. 대신 JVM이 쓰레기를 판단하고 회수하며, 그 대가로 애플리케이션을 잠시 멈춥니다.</p>
+  <div class="depth-shift" aria-label="깊이 전환: 기초에서 원리로">
+    <span class="depth-shift__step"><span class="depth" data-depth="basic"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>기초</span>
+    <span class="depth-shift__line" aria-hidden="true"></span>
+    <span class="depth-shift__step is-to"><span class="depth" data-depth="core"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>원리</span>
+    <span class="depth-shift__note">여기부터는 GC 알고리즘과 JVM 내부 동작을 다룹니다.</span>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>GC Root에서 닿지 않으면 쓰레기다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p><dfn title="Garbage Collection">가비지 컬렉션(GC)</dfn>은 <dfn title="GC Root">GC Root</dfn>에서 참조를 따라가 닿는 객체만 살아 있다고 봅니다. 이를 <dfn title="Reachability">도달 가능성</dfn>이라 합니다.</p>
+      <p>GC Root는 실행 중인 스택 프레임의 지역 변수, 클래스의 static 필드, JNI 참조 등입니다. 서로를 가리키는 순환 참조라도 <mark>Root에서 끊겼다면 함께 회수됩니다</mark>.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 440" role="img" aria-labelledby="f11t">
+        <title id="f11t">GC Root인 스택 지역 변수와 static 필드에서 화살표로 닿는 객체 A, B, C는 살아 있고, 서로만 가리키는 D와 E는 Root에서 닿지 않아 회수 대상이다.</title>
+        <rect class="dg-zone" x="20" y="20" width="200" height="400"/>
+        <text class="dg-label--sm" x="120" y="48" text-anchor="middle">GC Root</text>
+        <rect class="dg-box dg-box--solid" x="40" y="80" width="160" height="60"/>
+        <text class="dg-label--on" x="120" y="110" text-anchor="middle">스택 지역 변수</text>
+        <rect class="dg-box dg-box--solid" x="40" y="200" width="160" height="60"/>
+        <text class="dg-label--on" x="120" y="230" text-anchor="middle">static 필드</text>
+        <rect class="dg-box dg-box--flow" x="300" y="80" width="120" height="60"/>
+        <text x="360" y="110" text-anchor="middle">A</text>
+        <rect class="dg-box dg-box--flow" x="520" y="80" width="120" height="60"/>
+        <text x="580" y="110" text-anchor="middle">B</text>
+        <rect class="dg-box dg-box--flow" x="300" y="200" width="120" height="60"/>
+        <text x="360" y="230" text-anchor="middle">C</text>
+        <path class="dg-arrow dg-arrow--flow" d="M202,110 H292"/>
+        <path class="dg-arrow dg-arrow--flow" d="M422,110 H512"/>
+        <path class="dg-arrow dg-arrow--flow" d="M202,230 H292"/>
+        <rect class="dg-box dg-box--key" x="300" y="330" width="120" height="60"/>
+        <text x="360" y="360" text-anchor="middle">D</text>
+        <rect class="dg-box dg-box--key" x="520" y="330" width="120" height="60"/>
+        <text x="580" y="360" text-anchor="middle">E</text>
+        <path class="dg-arrow dg-arrow--key dg-arrow--both" d="M428,360 H512"/>
+        <text class="dg-label--key" x="470" y="418" text-anchor="middle">순환 참조지만 Root에서 닿지 않음</text>
+      </svg>
+      <ul class="legend">
+        <li class="is-flow"><i></i>도달 가능(생존)</li>
+        <li class="is-key"><i></i>도달 불가(회수)</li>
+      </ul>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>표시하고, 쓸고, 압축한다</h2>
+  <div class="split split--even">
+    <ol class="steps">
+      <li><b>Mark</b><p>GC Root부터 그래프를 따라가며 살아 있는 객체에 표시합니다.</p></li>
+      <li><b>Sweep</b><p>표시되지 않은 객체가 차지한 공간을 빈 공간으로 돌립니다.</p></li>
+      <li class="is-key"><b>Compact</b><p>살아남은 객체를 한쪽으로 몰아 조각난 빈 공간을 합칩니다.</p></li>
+    </ol>
+    <div class="prose">
+      <p>Sweep만 하면 빈 공간이 여기저기 흩어집니다. 1장에서 본 <strong>외부 단편화</strong>처럼, 전체 여유는 충분한데 큰 배열 하나 놓을 연속 공간이 없게 됩니다.</p>
+      <p>Compact가 이를 해결하지만 객체를 옮기면 그 객체를 가리키던 <mark>모든 참조의 주소를 고쳐야 해</mark> 비용이 큽니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Stop-The-World: GC는 세상을 멈춘다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>GC가 객체 그래프를 표시하는 도중에 애플리케이션이 참조를 바꾸면, 살아 있는 객체를 쓰레기로 잘못 판단할 수 있습니다. 그래서 GC는 안전한 지점에서 모든 애플리케이션 스레드를 멈춥니다. 이것이 <dfn>Stop-The-World</dfn>(STW)입니다.</p>
+      <p>멈춘 동안에는 요청이 처리되지 않으므로 STW 시간이 곧 응답 지연입니다. <strong>GC 튜닝의 목표는 대부분 STW를 짧고 드물게 만드는 것</strong>입니다.</p>
+    </div>
+    <div class="slide__body">
+      <aside class="callout callout--note">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>현대 GC의 방향</p>
+        <p>멈추지 않을 수는 없으니, 표시 같은 무거운 일을 애플리케이션과 동시에(concurrent) 하고 STW 구간만 짧게 남깁니다.</p>
+      </aside>
+      <aside class="callout callout--key">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>null 대입은 즉시 회수가 아닙니다</p>
+        <p>참조를 끊어 회수 대상이 될 뿐, 실제 회수는 다음 GC 때입니다. <code>System.gc()</code>도 요청일 뿐 보장이 아닙니다.</p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>대부분의 객체는 금방 죽는다</h2>
+  <div class="prose">
+    <p>매번 힙 전체를 표시하면 힙이 클수록 STW가 길어집니다. GC 설계자들은 관찰에서 실마리를 얻었습니다. <dfn title="Weak Generational Hypothesis">약한 세대 가설</dfn>은 두 가지입니다. <mark>대부분의 객체는 만들어지고 곧 쓸모가 없어진다</mark>, 그리고 오래된 객체가 젊은 객체를 가리키는 경우는 드물다.</p>
+    <p>요청 하나를 처리하며 만든 DTO, 임시 문자열, 반복자는 응답이 나가면 모두 쓰레기가 됩니다. 반면 캐시나 싱글톤은 오래 삽니다.</p>
+    <p>그렇다면 힙을 나이별로 나눠 <strong>젊은 영역만 자주, 빠르게</strong> 치우면 됩니다. 젊은 영역은 대부분 죽어 있으니 살아남은 소수만 옮기면 끝납니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Eden에서 태어나 Survivor를 거쳐 Old로</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>새 객체는 <dfn>Eden</dfn>에 할당됩니다. Eden이 차면 <dfn>Minor GC</dfn>가 살아 있는 객체만 비어 있는 Survivor로 복사하고 Eden을 통째로 비웁니다.</p>
+      <p>Survivor 두 칸은 번갈아 쓰이며, 살아남을 때마다 나이가 하나씩 오릅니다. 나이가 임계값(<code>MaxTenuringThreshold</code>)에 닿으면 Old로 <dfn title="promotion">승격</dfn>됩니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 400" role="img" aria-labelledby="f15t">
+        <title id="f15t">Young 영역은 Eden과 Survivor 두 칸으로 나뉜다. 객체는 Eden에 할당되고 Minor GC 때 Survivor로 복사되며, 나이가 차면 Old 영역으로 승격된다.</title>
+        <rect class="dg-zone" x="20" y="40" width="460" height="200"/>
+        <text class="dg-label--sm" x="250" y="30" text-anchor="middle">Young</text>
+        <rect class="dg-box dg-box--flow" x="40" y="70" width="200" height="150"/>
+        <text class="dg-label--lg" x="140" y="145" text-anchor="middle">Eden</text>
+        <rect class="dg-box" x="270" y="70" width="190" height="64"/>
+        <text x="365" y="102" text-anchor="middle">Survivor 0</text>
+        <rect class="dg-box dg-box--ghost" x="270" y="156" width="190" height="64"/>
+        <text class="dg-label--muted" x="365" y="188" text-anchor="middle">Survivor 1 (빈칸)</text>
+        <path class="dg-arrow dg-arrow--flow" d="M242,110 H262"/>
+        <path class="dg-arrow dg-arrow--back" d="M462,118 Q494,118 494,150 Q494,188 470,188"/>
+        <rect class="dg-box dg-box--muted" x="520" y="40" width="220" height="200"/>
+        <text class="dg-label--lg" x="630" y="145" text-anchor="middle">Old</text>
+        <path class="dg-arrow dg-arrow--flow" d="M462,102 H512"/>
+        <text class="dg-label--sm" x="140" y="280" text-anchor="middle">new 객체 할당</text>
+        <text class="dg-label--sm" x="365" y="280" text-anchor="middle">생존할 때마다 나이 +1</text>
+        <text class="dg-label--sm" x="630" y="280" text-anchor="middle">임계 나이 도달 시 승격</text>
+        <text class="dg-label--flow" x="250" y="340" text-anchor="middle">Minor GC: Young만, 자주, 짧게</text>
+        <text class="dg-label--key" x="630" y="340" text-anchor="middle">Old가 차면 더 큰 GC</text>
+      </svg>
+      <figcaption>Survivor 한 칸은 항상 비워 두고, 살아남은 객체를 다른 칸으로 복사하며 오갑니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Minor, Major, Full GC는 범위가 다르다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">구분</th><th scope="col">대상</th><th scope="col">언제</th><th scope="col">정지 시간</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Minor GC</th><td>Young 영역</td><td>Eden이 가득 찼을 때</td><td class="is-flow">짧음(생존자만 복사)</td></tr>
+        <tr><th scope="row">Major GC</th><td>Old 영역 위주</td><td>Old 사용률이 높을 때</td><td>GC 종류에 따라 다름</td></tr>
+        <tr><th scope="row">Full GC</th><td>힙 전체 + Metaspace</td><td>회수가 할당을 못 따라갈 때</td><td class="is-key">가장 김(수 초도 가능)</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>Minor GC는 Young만 보는데, Old 객체가 Young 객체를 가리키면 그것도 Root처럼 봐야 합니다. 그래서 JVM은 Old에서 Young을 가리키는 곳을 <dfn title="card table">카드 테이블</dfn>에 기록해 두고 그 부분만 확인합니다. 가설 두 번째 항목 덕분에 이 기록은 작습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>GC는 처리량과 정지 시간 사이의 선택이다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">GC</th><th scope="col">방식</th><th scope="col">적합한 곳</th><th scope="col">버전</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Serial</th><td>스레드 하나로 STW</td><td>작은 힙, CPU 1개</td><td>초기부터</td></tr>
+        <tr><th scope="row">Parallel</th><td>여러 스레드로 STW</td><td>배치, 처리량 우선</td><td>JDK 8 기본</td></tr>
+        <tr><th scope="row">CMS</th><td>Old를 동시 표시</td><td>과거 저지연용</td><td class="is-key">JDK 14에서 제거</td></tr>
+        <tr><th scope="row">G1</th><td>리전 단위, 목표 정지 시간</td><td>일반 서버</td><td class="is-flow">JDK 9부터 기본</td></tr>
+        <tr><th scope="row">ZGC</th><td>거의 모든 작업을 동시 수행</td><td>큰 힙, 저지연</td><td>JDK 15 정식</td></tr>
+      </tbody>
+    </table>
+    <p class="small">출처: OpenJDK JEP 248(G1 기본), JEP 363(CMS 제거), JEP 377(ZGC 정식). JDK 21 GC 튜닝 가이드 기준 G1은 서버급 머신에서 기본입니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>G1은 힙을 리전으로 쪼개 쓰레기가 많은 곳부터</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p><dfn title="Garbage-First">G1</dfn>은 힙을 같은 크기의 <dfn title="region">리전</dfn>으로 나누고, 각 리전에 Eden, Survivor, Old 역할을 그때그때 붙입니다. 세대는 물리적 구역이 아니라 리전의 꼬리표입니다.</p>
+      <p>정해진 목표 정지 시간(<code>MaxGCPauseMillis</code>, 기본 200ms) 안에서 <mark>쓰레기가 가장 많은 리전부터</mark> 골라 치웁니다. 이름이 Garbage-First인 이유입니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 400" role="img" aria-labelledby="f18t">
+        <title id="f18t">G1 힙은 같은 크기 리전의 격자다. 리전마다 Eden, Survivor, Old, Humongous, 빈 리전 역할이 섞여 있다.</title>
+        <rect class="dg-box dg-box--flow" x="20" y="20" width="160" height="72"/><text x="100" y="56" text-anchor="middle">E</text>
+        <rect class="dg-box dg-box--muted" x="200" y="20" width="160" height="72"/><text x="280" y="56" text-anchor="middle">O</text>
+        <rect class="dg-box dg-box--ghost" x="380" y="20" width="160" height="72"/>
+        <rect class="dg-box dg-box--flow" x="560" y="20" width="160" height="72"/><text x="640" y="56" text-anchor="middle">E</text>
+        <rect class="dg-box dg-box--muted" x="20" y="108" width="160" height="72"/><text x="100" y="144" text-anchor="middle">O</text>
+        <rect class="dg-box" x="200" y="108" width="160" height="72"/><text x="280" y="144" text-anchor="middle">S</text>
+        <rect class="dg-box dg-box--key" x="380" y="108" width="340" height="72"/><text class="dg-label--key" x="550" y="144" text-anchor="middle">H (Humongous)</text>
+        <rect class="dg-box dg-box--ghost" x="20" y="196" width="160" height="72"/>
+        <rect class="dg-box dg-box--flow" x="200" y="196" width="160" height="72"/><text x="280" y="232" text-anchor="middle">E</text>
+        <rect class="dg-box dg-box--muted" x="380" y="196" width="160" height="72"/><text x="460" y="232" text-anchor="middle">O</text>
+        <rect class="dg-box dg-box--ghost" x="560" y="196" width="160" height="72"/>
+        <text class="dg-label--sm" x="20" y="310" text-anchor="start">E는 Eden, S는 Survivor, O는 Old, 점선은 빈 리전</text>
+        <text class="dg-label--sm" x="20" y="342" text-anchor="start">H: 리전 크기의 절반 이상인 큰 객체. 연속 리전을 차지</text>
+      </svg>
+      <figcaption>Young 수집 때 Old 리전 일부를 함께 치우는 것을 Mixed GC라고 부릅니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>ZGC는 객체를 옮기는 일까지 동시에 한다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>G1도 객체를 옮기는(compact) 단계는 STW 안에서 합니다. <dfn title="Z Garbage Collector">ZGC</dfn>는 이 이동마저 애플리케이션과 동시에 합니다. 참조를 읽는 순간 끼어드는 <dfn title="load barrier">로드 배리어</dfn>가 옮겨진 객체의 새 주소로 참조를 고쳐 줍니다.</p>
+      <p>그 결과 정지 시간이 힙 크기와 거의 무관하게 1ms 미만으로 유지됩니다. 대신 배리어 비용만큼 CPU와 처리량을 조금 내줍니다.</p>
+    </div>
+    <ol class="steps">
+      <li><b>JDK 15</b><p>ZGC 정식 기능(JEP 377). <code>-XX:+UseZGC</code>로 켭니다.</p></li>
+      <li><b>JDK 21</b><p>세대별 ZGC 추가(JEP 439). 약한 세대 가설을 ZGC에도 적용합니다.</p></li>
+      <li class="is-key"><b>JDK 23~24</b><p>세대별 모드가 기본(JEP 474), 24에서 비세대 모드 제거(JEP 490).</p></li>
+    </ol>
+  </div>
+</section>
+
+<!-- ===== 3부: 언어 핵심 (core) ======================================== -->
+<section class="slide slide--divider" data-section="언어 핵심" data-depth="core">
+  <p class="divider__no">3부</p>
+  <h2>JVM 위에서 객체가 동작하는 방식</h2>
+  <p class="lede">JVM의 메모리 구조를 알면 언어 규칙이 왜 그렇게 정해졌는지 보입니다. 다형성, 값 전달, String 불변, equals와 hashCode를 그 관점에서 봅니다.</p>
+</section>
+
+<section class="slide">
+  <h2>다형성은 실행 시점에 메서드를 고르는 것</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="Payment.java"><code><span class="k">interface</span> Payment { <span class="k">void</span> pay(<span class="k">int</span> won); }
+<span class="k">class</span> Card <span class="k">implements</span> Payment { … }
+<span class="k">class</span> Point <span class="k">implements</span> Payment { … }
+
+<span class="hl">Payment p = pickByUser();  <span class="c">// Card? Point?</span></span>
+<span class="hl">p.pay(<span class="n">10_000</span>);  <span class="c">// 실제 객체의 pay 호출</span></span></code></pre>
+    <div class="prose">
+      <p>객체지향 프로그래밍(OOP)의 4가지 특징은 캡슐화, 상속, 추상화, <dfn title="Polymorphism">다형성</dfn>입니다. 다형성은 같은 호출이 객체에 따라 다르게 동작하는 성질입니다.</p>
+      <p><strong>오버로딩</strong>은 컴파일 때 인자 타입으로 정해지고(정적), <strong>오버라이딩</strong>은 실행 때 실제 객체의 메서드로 정해집니다(동적 디스패치).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>SOLID는 바뀌는 곳을 가두는 원칙이다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">원칙</th><th scope="col">핵심</th><th scope="col">어기면</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">SRP 단일 책임</th><td>바뀌는 이유는 하나</td><td>한 수정이 여러 기능을 깸</td></tr>
+        <tr><th scope="row">OCP 개방 폐쇄</th><td>확장엔 열고 수정엔 닫음</td><td>결제 수단마다 if 추가</td></tr>
+        <tr><th scope="row">LSP 리스코프 치환</th><td>자식은 부모 자리에 대체 가능</td><td>하위 타입에서 예외 폭발</td></tr>
+        <tr><th scope="row">ISP 인터페이스 분리</th><td>쓰지 않는 메서드에 의존 금지</td><td>빈 구현 메서드 양산</td></tr>
+        <tr><th scope="row">DIP 의존 역전</th><td class="is-flow">구현 말고 추상에 의존</td><td>구현 교체 시 호출부 수정</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>앞 슬라이드의 <code>Payment</code>처럼 호출부가 인터페이스에만 의존하면, 새 결제 수단을 추가해도 호출부는 그대로입니다(OCP, DIP). 그런데 구현 객체는 누가 만들어 넣어 줄까요? 그 일을 대신하는 것이 6장의 Spring DI입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>인터페이스는 역할, 추상 클래스는 공통 뼈대</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">항목</th><th scope="col">인터페이스</th><th scope="col">추상 클래스</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">다중 상속</th><td class="is-flow">여러 개 구현 가능</td><td>하나만 상속</td></tr>
+        <tr><th scope="row">상태(필드)</th><td>상수만</td><td>인스턴스 필드 가능</td></tr>
+        <tr><th scope="row">구현 코드</th><td>default 메서드(Java 8+)</td><td>일반 메서드 자유롭게</td></tr>
+        <tr><th scope="row">생성자</th><td>없음</td><td>있음</td></tr>
+        <tr><th scope="row">관계</th><td>할 수 있다(can-do)</td><td>이다(is-a)</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>서로 무관한 클래스에 같은 능력을 부여할 때는 인터페이스를, 같은 계열의 클래스들이 상태와 공통 로직을 공유할 때는 추상 클래스를 씁니다. 실무에서는 인터페이스로 계약을 정하고 필요할 때만 추상 클래스로 공통 구현을 묶는 편이 유연합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Java는 언제나 값을 복사해 넘긴다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>메서드에 객체를 넘기면 객체가 아니라 <strong>참조값의 복사본</strong>이 넘어갑니다. 두 변수가 같은 힙 객체를 가리키므로 필드를 바꾸면 호출자도 그 변화를 봅니다.</p>
+      <p>하지만 매개변수에 새 객체를 대입하면 복사본만 바뀝니다. <mark>호출자의 변수는 여전히 원래 객체를 가리킵니다.</mark> 그래서 Java는 Call by Reference가 아니라 Call by Value입니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 400" role="img" aria-labelledby="f23t">
+        <title id="f23t">호출자 스택의 변수 u와 메서드 스택의 매개변수 p가 처음에는 같은 힙 User 객체를 가리킨다. p에 new User를 대입하면 p만 새 객체를 가리키고 u는 그대로다.</title>
+        <rect class="dg-zone" x="20" y="20" width="280" height="360"/>
+        <text class="dg-label--sm" x="160" y="48" text-anchor="middle">스택</text>
+        <rect class="dg-box" x="44" y="80" width="232" height="64"/>
+        <text x="160" y="112" text-anchor="middle">호출자: u</text>
+        <rect class="dg-box dg-box--flow" x="44" y="240" width="232" height="64"/>
+        <text x="160" y="272" text-anchor="middle">change(p): p</text>
+        <rect class="dg-zone" x="380" y="20" width="360" height="360"/>
+        <text class="dg-label--sm" x="560" y="48" text-anchor="middle">힙</text>
+        <rect class="dg-box dg-box--solid" x="440" y="80" width="240" height="64"/>
+        <text class="dg-label--on" x="560" y="112" text-anchor="middle">User(name="kim")</text>
+        <rect class="dg-box dg-box--key" x="440" y="240" width="240" height="64"/>
+        <text x="560" y="272" text-anchor="middle">new User()</text>
+        <path class="dg-arrow" d="M278,112 H432"/>
+        <path class="dg-arrow dg-arrow--back" d="M278,256 Q340,256 360,200 Q380,140 432,124"/>
+        <path class="dg-arrow dg-arrow--key" d="M278,280 H432"/>
+        <text class="dg-label--sm" x="340" y="330" text-anchor="middle">대입 전(점선) → 대입 후</text>
+      </svg>
+      <figcaption>p를 새 객체로 바꿔도 u의 화살표는 움직이지 않습니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>String은 불변이라 공유할 수 있다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="StringDemo.java"><code>String a = <span class="s">"hello"</span>;          <span class="c">// String Pool</span>
+String b = <span class="s">"hello"</span>;          <span class="c">// 같은 객체 재사용</span>
+String c = <span class="k">new</span> String(<span class="s">"hello"</span>); <span class="c">// 새 객체</span>
+<span class="hl">a == b;      <span class="c">// true  (같은 주소)</span></span>
+<span class="hl">a == c;      <span class="c">// false (다른 주소)</span></span>
+a.equals(c); <span class="c">// true  (같은 내용)</span>
+
+<span class="c">// 루프 안 문자열 누적은 StringBuilder로</span>
+StringBuilder sb = <span class="k">new</span> StringBuilder();
+<span class="k">for</span> (String s : rows) sb.append(s);</code></pre>
+    <div class="prose">
+      <p>String은 한 번 만들면 내용을 바꿀 수 없습니다. 그래서 같은 리터럴을 힙의 <dfn>String Pool</dfn>에 하나만 두고 공유해도 안전하고, 해시값을 캐시해 HashMap 키로 쓰기 좋으며, 여러 스레드가 동시에 읽어도 문제가 없습니다.</p>
+      <p>대신 <code>+</code>로 누적하면 매번 새 객체가 생깁니다. 반복 누적은 <code>StringBuilder</code>로 하고, 동기화가 붙은 <code>StringBuffer</code>는 거의 쓰지 않습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>equals를 바꾸면 hashCode도 바꿔야 한다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p><code>==</code>는 같은 객체(주소)인지, <code>equals()</code>는 같은 내용인지 비교합니다. 기본 <code>equals()</code>는 <code>==</code>와 같으므로 값 객체는 재정의합니다.</p>
+      <p>규약은 하나입니다. <mark>equals가 같으면 hashCode도 같아야 합니다.</mark> HashMap은 hashCode로 버킷을 먼저 고르고, 그 버킷 안에서만 equals로 비교하기 때문입니다.</p>
+    </div>
+    <div class="slide__body">
+      <aside class="callout callout--key">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>equals만 재정의하면</p>
+        <p>내용이 같은 두 객체가 다른 버킷으로 갑니다. HashSet에 중복이 들어가고, 넣은 키로 get()을 해도 null이 나옵니다.</p>
+      </aside>
+      <aside class="callout callout--note">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>값 객체는 record로</p>
+        <p>Java 16의 record는 필드 기반 equals, hashCode를 자동으로 만들고 필드를 final로 묶어 불변 객체가 됩니다.</p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 4부: 컬렉션과 언어 도구 (core) ============================== -->
+<section class="slide slide--divider" data-section="컬렉션과 HashMap" data-depth="core">
+  <p class="divider__no">4부</p>
+  <h2>컬렉션과 HashMap의 내부</h2>
+  <p class="lede">3장의 해시 테이블 원리가 Java에서 어떻게 구현됐는지 봅니다. 그리고 예외, 제네릭, 람다와 Stream처럼 매일 쓰는 언어 도구를 정리합니다.</p>
+</section>
+
+<section class="slide">
+  <h2>List, Set, Map은 무엇을 보장하나</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">인터페이스</th><th scope="col">보장</th><th scope="col">대표 구현</th><th scope="col">조회</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">List</th><td>순서 유지, 중복 허용</td><td>ArrayList</td><td>인덱스 O(1)</td></tr>
+        <tr><th scope="row">Set</th><td>중복 금지</td><td>HashSet, TreeSet</td><td>평균 O(1) / O(log n)</td></tr>
+        <tr><th scope="row">Map</th><td>키 중복 금지</td><td>HashMap, TreeMap</td><td>평균 O(1) / O(log n)</td></tr>
+        <tr><th scope="row">Queue/Deque</th><td>꺼내는 순서 규칙</td><td>ArrayDeque, PriorityQueue</td><td>끝 O(1) / 힙 O(log n)</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>ArrayList와 LinkedList의 차이는 3장에서 본 배열과 연결 리스트의 차이 그대로입니다. 실무에서는 캐시 지역성 때문에 대부분 ArrayList가 빠릅니다. HashSet은 내부적으로 HashMap의 키만 쓰는 구현이라, 결국 HashMap을 이해하면 둘 다 이해됩니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>HashMap은 해시를 섞은 뒤 비트 AND로 버킷을 고른다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="java.util.HashMap"><code><span class="k">static final int</span> hash(Object key) {
+    <span class="k">int</span> h;
+<span class="hl">    <span class="k">return</span> (key == <span class="k">null</span>) ? <span class="n">0</span></span>
+<span class="hl">        : (h = key.hashCode()) ^ (h &gt;&gt;&gt; <span class="n">16</span>);</span>
+}
+<span class="c">// 버킷 인덱스</span>
+<span class="k">int</span> i = (n - <span class="n">1</span>) &amp; hash;  <span class="c">// n은 2의 거듭제곱</span></code></pre>
+    <div class="prose">
+      <p>HashMap은 배열 크기 n을 항상 2의 거듭제곱으로 유지합니다(기본 16). 그러면 나머지 연산 대신 <code>(n-1) &amp; hash</code>로 빠르게 버킷을 고를 수 있습니다.</p>
+      <p>문제는 이 방식이 해시의 <strong>하위 비트만</strong> 본다는 점입니다. 그래서 상위 16비트를 하위로 XOR해 섞어, 상위 비트만 다른 키들도 고르게 퍼지게 합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>충돌이 쌓이면 리스트를 트리로 바꾼다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>같은 버킷에 키가 몰리면 HashMap은 3장의 <strong>체이닝</strong>처럼 노드를 연결 리스트로 잇습니다. 리스트가 길어지면 조회가 O(n)으로 느려집니다.</p>
+      <p>Java 8부터는 한 버킷의 노드가 <mark>8개 이상이고 배열 크기가 64 이상이면</mark> 레드-블랙 트리로 바꿔 O(log n)을 보장합니다. 배열이 작으면 트리 대신 배열부터 키우고, 6개 이하로 줄면 다시 리스트로 돌아갑니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 420" role="img" aria-labelledby="f29t">
+        <title id="f29t">HashMap 버킷 배열. 1번 버킷은 노드 하나, 3번 버킷은 연결 리스트, 6번 버킷은 노드가 8개를 넘어 트리로 바뀌었다.</title>
+        <text class="dg-label--sm" x="60" y="26" text-anchor="middle">table[]</text>
+        <rect class="dg-box dg-box--muted" x="20" y="40" width="80" height="44"/><text class="dg-label--sm" x="60" y="62" text-anchor="middle">0</text>
+        <rect class="dg-box" x="20" y="88" width="80" height="44"/><text class="dg-label--sm" x="60" y="110" text-anchor="middle">1</text>
+        <rect class="dg-box dg-box--muted" x="20" y="136" width="80" height="44"/><text class="dg-label--sm" x="60" y="158" text-anchor="middle">2</text>
+        <rect class="dg-box dg-box--flow" x="20" y="184" width="80" height="44"/><text class="dg-label--sm" x="60" y="206" text-anchor="middle">3</text>
+        <rect class="dg-box dg-box--muted" x="20" y="232" width="80" height="44"/><text class="dg-label--sm" x="60" y="254" text-anchor="middle">4</text>
+        <rect class="dg-box dg-box--muted" x="20" y="280" width="80" height="44"/><text class="dg-label--sm" x="60" y="302" text-anchor="middle">5</text>
+        <rect class="dg-box dg-box--key" x="20" y="328" width="80" height="44"/><text class="dg-label--sm" x="60" y="350" text-anchor="middle">6</text>
+        <path class="dg-arrow" d="M102,110 H142"/>
+        <rect class="dg-box" x="150" y="88" width="90" height="44"/><text class="dg-label--sm" x="195" y="110" text-anchor="middle">K1</text>
+        <path class="dg-arrow dg-arrow--flow" d="M102,206 H142"/>
+        <rect class="dg-box dg-box--flow" x="150" y="184" width="90" height="44"/><text class="dg-label--sm" x="195" y="206" text-anchor="middle">K2</text>
+        <path class="dg-arrow dg-arrow--flow" d="M242,206 H282"/>
+        <rect class="dg-box dg-box--flow" x="290" y="184" width="90" height="44"/><text class="dg-label--sm" x="335" y="206" text-anchor="middle">K3</text>
+        <path class="dg-arrow dg-arrow--flow" d="M382,206 H422"/>
+        <rect class="dg-box dg-box--flow" x="430" y="184" width="90" height="44"/><text class="dg-label--sm" x="475" y="206" text-anchor="middle">K4</text>
+        <text class="dg-label--sm" x="640" y="212" text-anchor="middle">리스트 O(n)</text>
+        <path class="dg-arrow dg-arrow--key" d="M102,350 H262"/>
+        <rect class="dg-box dg-box--key" x="270" y="328" width="90" height="44"/><text class="dg-label--sm" x="315" y="350" text-anchor="middle">루트</text>
+        <path class="dg-line" d="M290,374 L220,396"/>
+        <path class="dg-line" d="M340,374 L410,396"/>
+        <circle class="dg-dot dg-dot--key" cx="214" cy="400" r="8"/>
+        <circle class="dg-dot dg-dot--key" cx="416" cy="400" r="8"/>
+        <text class="dg-label--key" x="600" y="356" text-anchor="middle">트리 O(log n)</text>
+      </svg>
+      <figcaption>트리 노드는 일반 노드보다 두 배쯤 커서, 충돌이 심할 때만 씁니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>75%가 차면 배열을 두 배로 늘린다</h2>
+  <div class="split split--even">
+    <ol class="steps">
+      <li><b>임계값 확인</b><p>크기가 용량 × load factor(기본 0.75)를 넘으면 리사이징합니다.</p></li>
+      <li><b>두 배 배열</b><p>16 → 32처럼 2의 거듭제곱을 유지합니다.</p></li>
+      <li class="is-key"><b>노드 재배치</b><p>hash &amp; 기존 용량 비트 하나로 같은 자리 또는 +기존 용량 자리로 나눕니다.</p></li>
+    </ol>
+    <div class="prose">
+      <p>3장에서 본 재해싱을 HashMap은 비트 연산으로 가볍게 만듭니다. 크기가 두 배가 되면 인덱스 계산에 비트가 하나 더 쓰입니다. 그래서 각 노드는 해시를 다시 계산하지 않고 <strong>그 비트 하나만 보고</strong> 제자리에 남을지 옮길지 정합니다.</p>
+      <p>그래도 리사이징은 모든 노드를 훑는 O(n) 작업입니다. 넣을 개수를 안다면 <code>new HashMap&lt;&gt;(예상 개수 / 0.75 + 1)</code>처럼 미리 용량을 잡습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>공유 Map에는 ConcurrentHashMap</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">항목</th><th scope="col">HashMap</th><th scope="col">Hashtable</th><th scope="col">ConcurrentHashMap</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">스레드 안전</th><td class="is-key">아님</td><td>메서드 전체 synchronized</td><td class="is-flow">버킷 단위로 잠금</td></tr>
+        <tr><th scope="row">읽기</th><td>잠금 없음</td><td>잠금 필요</td><td>잠금 없음(volatile 읽기)</td></tr>
+        <tr><th scope="row">빈 버킷 쓰기</th><td>그냥 씀</td><td>잠금</td><td>CAS로 한 번에</td></tr>
+        <tr><th scope="row">null 키/값</th><td>허용</td><td>금지</td><td>금지</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>여러 스레드가 HashMap에 동시에 쓰면 갱신이 사라지거나 리사이징 중 구조가 깨집니다. Java 8의 ConcurrentHashMap은 빈 버킷은 CAS로, 차 있는 버킷은 그 첫 노드만 잠가 서로 다른 버킷 쓰기를 병렬로 처리합니다. CAS는 5부에서 다룹니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>복구할 수 있으면 Checked, 버그면 Unchecked</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p><code>Error</code>는 OOM처럼 애플리케이션이 복구할 수 없는 문제입니다. <code>Exception</code> 중 <code>RuntimeException</code> 계열이 <dfn>Unchecked 예외</dfn>, 나머지가 컴파일러가 처리를 강제하는 <dfn>Checked 예외</dfn>입니다.</p>
+      <p>Checked는 파일 없음처럼 호출자가 대응할 수 있는 상황, Unchecked는 null 참조처럼 코드를 고쳐야 하는 상황에 씁니다.</p>
+    </div>
+    <div class="slide__body">
+      <aside class="callout callout--key">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>Spring 트랜잭션은 Checked에서 롤백하지 않습니다</p>
+        <p>기본 규칙은 Unchecked와 Error에서만 롤백입니다. 원리와 rollbackFor는 6장에서 다룹니다.</p>
+      </aside>
+      <aside class="callout callout--note">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>예외를 삼키지 마세요</p>
+        <p>catch 후 로그도 없이 넘어가면 장애 원인이 사라집니다. 감쌀 때는 원인 예외를 cause로 넘깁니다.</p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>제네릭은 컴파일러만 아는 타입이다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="Generics.java"><code>List&lt;String&gt; names = <span class="k">new</span> ArrayList&lt;&gt;();
+<span class="c">// 컴파일 후 바이트코드에서는 List</span>
+<span class="c">// 꺼낼 때 (String) 캐스트가 자동 삽입</span>
+
+<span class="c">// PECS: 꺼내면 extends, 넣으면 super</span>
+<span class="hl"><span class="k">double</span> sum(List&lt;? <span class="k">extends</span> Number&gt; xs)</span>
+<span class="hl"><span class="k">void</span> fill(List&lt;? <span class="k">super</span> Integer&gt; out)</span></code></pre>
+    <div class="prose">
+      <p><dfn>제네릭</dfn>은 컴파일 때 타입을 검사해 잘못된 대입을 막습니다. 하지만 하위 호환을 위해 바이트코드에서는 타입 정보를 지웁니다. 이를 <dfn title="type erasure">타입 소거</dfn>라 합니다.</p>
+      <p>그래서 실행 중에는 <code>List&lt;String&gt;</code>과 <code>List&lt;Integer&gt;</code>가 같은 클래스이고, <code>new T()</code>나 <code>instanceof List&lt;String&gt;</code>은 쓸 수 없습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Stream은 최종 연산 전까지 아무것도 안 한다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="StreamDemo.java"><code>List&lt;String&gt; vip = orders.stream()
+    .filter(o -&gt; o.amount() &gt; <span class="n">100_000</span>) <span class="c">// 중간</span>
+    .map(Order::userName)             <span class="c">// 중간</span>
+    .distinct()                       <span class="c">// 중간</span>
+<span class="hl">    .toList();                        <span class="c">// 최종</span></span>
+
+Optional&lt;User&gt; u = repo.findById(id);
+String name = u.map(User::name)
+               .orElse(<span class="s">"guest"</span>);</code></pre>
+    <div class="prose">
+      <p><dfn>람다</dfn>는 메서드 하나짜리 함수형 인터페이스를 짧게 구현하는 문법입니다. Stream의 중간 연산은 실행 계획만 쌓고, 최종 연산이 호출될 때 요소를 하나씩 파이프라인에 흘립니다(지연 연산).</p>
+      <p><code>parallelStream()</code>은 JVM 전체가 공유하는 공용 ForkJoinPool을 씁니다. 서버에서 블로킹 작업을 넣으면 다른 요청까지 막을 수 있습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>리플렉션과 어노테이션은 Spring의 토대다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="Reflection.java"><code>Class&lt;?&gt; c = Class.forName(<span class="s">"com.app.OrderService"</span>);
+<span class="hl"><span class="k">for</span> (Field f : c.getDeclaredFields()) {</span>
+<span class="hl">    <span class="k">if</span> (f.isAnnotationPresent(Inject.<span class="k">class</span>)) {</span>
+        f.setAccessible(<span class="k">true</span>);
+        f.set(target, findBean(f.getType()));
+    }
+}</code></pre>
+    <div class="prose">
+      <p><dfn title="Reflection">리플렉션</dfn>은 실행 중에 메서드 영역의 클래스 정보를 읽어 필드, 메서드, 생성자를 다루는 기능입니다. <dfn title="Annotation">어노테이션</dfn>은 코드에 붙이는 메타데이터로, 그 자체는 아무 일도 하지 않습니다.</p>
+      <p>프레임워크는 리플렉션으로 어노테이션을 읽어 객체를 만들고 연결합니다. 실행 중 프록시 객체를 만드는 동적 프록시도 이 위에 있으며 6장에서 다룹니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 5부: 동시성 (core) =========================================== -->
+<section class="slide slide--divider" data-section="동시성" data-depth="core">
+  <p class="divider__no">5부</p>
+  <h2>여러 스레드가 힙을 함께 쓸 때</h2>
+  <p class="lede">1장에서 경쟁 상태, 뮤텍스, 모니터를 OS 관점에서 봤습니다. 이제 같은 문제를 Java가 synchronized, volatile, CAS로 어떻게 푸는지 봅니다.</p>
+</section>
+
+<section class="slide">
+  <h2>synchronized는 객체마다 있는 모니터를 잡는다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="Counter.java"><code><span class="k">class</span> Counter {
+    <span class="k">private int</span> count = <span class="n">0</span>;
+<span class="hl">    <span class="k">synchronized void</span> inc() {</span>
+        count++;  <span class="c">// 읽기, 더하기, 쓰기 3단계</span>
+    }
+}
+<span class="c">// 타임아웃, 공정성이 필요하면</span>
+lock.tryLock(<span class="n">1</span>, TimeUnit.SECONDS);</code></pre>
+    <div class="prose">
+      <p>Java의 모든 객체는 1장에서 본 <strong>모니터</strong>를 하나씩 가집니다. <code>synchronized</code> 블록에 들어가려면 그 모니터를 얻어야 하고, 같은 스레드는 다시 들어갈 수 있습니다(재진입).</p>
+      <p>더 세밀한 제어가 필요하면 <code>ReentrantLock</code>을 씁니다. 대기 시간 제한, 공정 모드, 여러 조건 변수를 지원하지만 <code>finally</code>에서 직접 풀어야 합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>volatile은 보이게 할 뿐 원자적이지 않다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>CPU 코어는 각자 캐시를 가지므로, 한 스레드가 바꾼 값이 다른 스레드에게 바로 보이지 않을 수 있습니다. 컴파일러와 CPU가 명령 순서를 바꾸기도 합니다.</p>
+      <p><dfn title="Java Memory Model">JMM</dfn>은 언제 쓰기가 보이는지를 <dfn>happens-before</dfn> 규칙으로 정합니다. <code>volatile</code> 변수는 쓰기 직후 다른 스레드의 읽기에 보입니다. 하지만 <mark>count++ 같은 읽고-쓰기는 여전히 끼어들 수 있습니다.</mark></p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 400" role="img" aria-labelledby="f37t">
+        <title id="f37t">코어 1의 스레드 A가 캐시에 running=false를 썼지만 메인 메모리에 반영되지 않아, 코어 2의 스레드 B는 자기 캐시의 running=true를 계속 읽는다. volatile은 메인 메모리를 거치게 한다.</title>
+        <rect class="dg-box" x="40" y="30" width="280" height="64"/>
+        <text x="180" y="62" text-anchor="middle">스레드 A (코어 1)</text>
+        <rect class="dg-box" x="440" y="30" width="280" height="64"/>
+        <text x="580" y="62" text-anchor="middle">스레드 B (코어 2)</text>
+        <rect class="dg-box dg-box--flow" x="40" y="150" width="280" height="64"/>
+        <text class="dg-mono" x="180" y="182" text-anchor="middle">running = false</text>
+        <rect class="dg-box dg-box--key" x="440" y="150" width="280" height="64"/>
+        <text class="dg-mono" x="580" y="182" text-anchor="middle">running = true</text>
+        <text class="dg-label--sm" x="84" y="244" text-anchor="start">코어 1 캐시</text>
+        <text class="dg-label--sm" x="440" y="244" text-anchor="start">코어 2 캐시(오래된 값)</text>
+        <rect class="dg-box dg-box--muted" x="200" y="300" width="360" height="64"/>
+        <text x="380" y="332" text-anchor="middle">메인 메모리</text>
+        <path class="dg-arrow" d="M180,96 V142"/>
+        <path class="dg-arrow" d="M580,142 V96"/>
+        <path class="dg-arrow dg-arrow--flow" d="M60,216 V300 Q60,332 92,332 H192"/>
+        <path class="dg-arrow dg-arrow--key dg-arrow--back" d="M562,332 H640 Q690,332 690,290 V224"/>
+        <text class="dg-label--key" x="676" y="290" text-anchor="end">다시 안 읽음</text>
+      </svg>
+      <figcaption>volatile은 읽기와 쓰기가 캐시가 아닌 공유된 최신 값을 보도록 보장합니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>CAS는 잠그지 않고 비교한 뒤 바꾼다</h2>
+  <div class="split split--even">
+    <ol class="steps">
+      <li><b>읽기</b><p>현재 값 V를 읽어 둡니다(예: 10).</p></li>
+      <li><b>계산</b><p>새 값 N을 만듭니다(11).</p></li>
+      <li class="is-key"><b>비교 후 교체</b><p>메모리 값이 아직 V일 때만 N으로 바꿉니다. CPU 명령 하나로 원자적입니다.</p></li>
+      <li><b>실패 시 재시도</b><p>다른 스레드가 먼저 바꿨다면 처음부터 다시 합니다.</p></li>
+    </ol>
+    <div class="prose">
+      <p><dfn title="Compare-And-Swap">CAS</dfn>는 스레드를 재우지 않고 실패하면 다시 시도합니다. <code>AtomicInteger.incrementAndGet()</code>이 이 방식이라, 경합이 적으면 락보다 빠릅니다.</p>
+      <p>경합이 아주 심하면 재시도가 CPU를 태웁니다. 카운터처럼 쓰기가 몰리는 곳에는 값을 여러 칸에 나눠 더하는 <code>LongAdder</code>가 낫습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>불변 객체는 동기화가 필요 없다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="Money.java"><code><span class="k">public final class</span> Money {          <span class="c">// 상속 금지</span>
+<span class="hl">    <span class="k">private final long</span> amount;      <span class="c">// final 필드</span></span>
+    <span class="k">private final</span> List&lt;Long&gt; history;
+    Money(<span class="k">long</span> a, List&lt;Long&gt; h) {
+        amount = a;
+<span class="hl">        history = List.copyOf(h);     <span class="c">// 방어적 복사</span></span>
+    }
+    Money plus(<span class="k">long</span> x) {               <span class="c">// 새 객체 반환</span>
+        <span class="k">return new</span> Money(amount + x, history);
+    }
+}</code></pre>
+    <div class="prose">
+      <p>동시성 버그는 <strong>공유된 가변 상태</strong>에서 생깁니다. 상태가 바뀌지 않으면 여러 스레드가 동시에 읽어도 경쟁 상태가 생길 수 없습니다.</p>
+      <p>클래스를 final로, 필드를 private final로 두고, 가변 컬렉션은 복사해서 받습니다. 바꾸고 싶으면 새 객체를 돌려줍니다. String이 바로 이런 클래스입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>스레드 풀에서 ThreadLocal은 지워야 한다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p><code>ThreadLocal</code>은 스레드마다 따로 값을 두는 저장소입니다. 요청마다 스레드 하나가 처리하는 서버에서 로그인 사용자나 트랜잭션 정보를 넘기는 데 씁니다.</p>
+      <p>그런데 서버의 스레드는 풀에서 <strong>재사용</strong>됩니다. 요청이 끝나도 값을 지우지 않으면 <mark>다음 요청이 이전 사용자의 정보를 읽습니다.</mark> 큰 객체라면 스레드가 살아 있는 동안 메모리도 회수되지 않습니다.</p>
+    </div>
+    <div class="slide__body">
+      <pre class="code" data-file="Filter.java"><code><span class="k">try</span> {
+    CTX.set(user);
+    chain.doFilter(req, res);
+} <span class="k">finally</span> {
+<span class="hl">    CTX.remove();  <span class="c">// 반드시</span></span>
+}</code></pre>
+      <aside class="callout callout--key">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>메모리 누수이자 보안 사고입니다</p>
+        <p>다른 사용자의 데이터가 섞여 나가는 장애로 이어질 수 있습니다.</p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Virtual Thread: 블로킹하면 캐리어에서 내려온다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>기존 Java 스레드는 OS 스레드와 1:1이라 수천 개가 한계입니다. JDK 21의 <dfn title="Virtual Thread">Virtual Thread</dfn>(JEP 444)는 JVM이 관리하는 가벼운 스레드로, 적은 수의 <dfn title="carrier thread">캐리어 스레드</dfn> 위에 올라가 실행됩니다.</p>
+      <p>I/O로 블로킹되면 JVM이 스택을 힙에 떼어 두고 <mark>캐리어를 다른 Virtual Thread에 내줍니다</mark>. 블로킹 코드를 그대로 쓰면서 1장의 이벤트 루프 같은 효율을 얻습니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 420" role="img" aria-labelledby="f41t">
+        <title id="f41t">수많은 Virtual Thread가 몇 개의 캐리어 스레드 위에 번갈아 올라간다. DB 응답을 기다리는 Virtual Thread는 캐리어에서 내려와 힙에서 대기한다.</title>
+        <rect class="dg-zone" x="20" y="20" width="720" height="110"/>
+        <text class="dg-label--sm" x="40" y="46" text-anchor="start">Virtual Thread 수십만 개</text>
+        <rect class="dg-box dg-box--flow" x="44" y="60" width="100" height="56"/><text class="dg-label--sm" x="94" y="88" text-anchor="middle">VT 1</text>
+        <rect class="dg-box dg-box--flow" x="160" y="60" width="100" height="56"/><text class="dg-label--sm" x="210" y="88" text-anchor="middle">VT 2</text>
+        <rect class="dg-box" x="276" y="60" width="100" height="56"/><text class="dg-label--sm" x="326" y="88" text-anchor="middle">VT 3</text>
+        <rect class="dg-box" x="392" y="60" width="100" height="56"/><text class="dg-label--sm" x="442" y="88" text-anchor="middle">VT 4</text>
+        <rect class="dg-box dg-box--ghost" x="508" y="60" width="210" height="56"/><text class="dg-label--muted" x="613" y="88" text-anchor="middle">…</text>
+        <path class="dg-arrow dg-arrow--flow" d="M94,118 V194"/>
+        <path class="dg-arrow dg-arrow--flow" d="M210,118 V194"/>
+        <rect class="dg-box dg-box--solid" x="44" y="202" width="100" height="64"/><text class="dg-label--on dg-label--sm" x="94" y="234" text-anchor="middle">캐리어 1</text>
+        <rect class="dg-box dg-box--solid" x="160" y="202" width="100" height="64"/><text class="dg-label--on dg-label--sm" x="210" y="234" text-anchor="middle">캐리어 2</text>
+        <text class="dg-label--sm" x="152" y="294" text-anchor="middle">ForkJoinPool, 코어 수만큼</text>
+        <path class="dg-arrow dg-arrow--key dg-arrow--back" d="M442,118 V194"/>
+        <rect class="dg-box dg-box--key" x="360" y="202" width="360" height="64"/>
+        <text x="540" y="234" text-anchor="middle">DB 응답 대기: 힙에 보관</text>
+        <text class="dg-label--sm" x="540" y="294" text-anchor="middle">응답이 오면 빈 캐리어에 다시 올라감</text>
+        <rect class="dg-box dg-box--muted" x="44" y="330" width="676" height="60"/>
+        <text x="382" y="360" text-anchor="middle">OS 스레드는 캐리어 수만큼만 존재</text>
+      </svg>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Virtual Thread는 I/O 대기에만 이득이다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">주의점</th><th scope="col">이유</th><th scope="col">대응</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">CPU 바운드 작업</th><td>캐리어 수 이상 빨라지지 않음</td><td>기존 스레드 풀 유지</td></tr>
+        <tr><th scope="row">풀링 금지</th><td>만들기가 매우 싸서 풀이 무의미</td><td>작업마다 새로 생성</td></tr>
+        <tr><th scope="row">synchronized 고정</th><td class="is-key">JDK 21~23은 캐리어를 붙잡음</td><td>JDK 24(JEP 491)에서 해소</td></tr>
+        <tr><th scope="row">하류 자원 고갈</th><td>동시 요청이 DB로 몰림</td><td>세마포어로 동시성 제한</td></tr>
+        <tr><th scope="row">ThreadLocal</th><td>수십만 개면 메모리 급증</td><td>큰 값 캐시 금지</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>스레드가 무제한에 가까워지면 병목은 4장의 커넥션 풀 같은 하류 자원으로 옮겨 갑니다. 스레드 수가 자연스러운 동시성 제한 역할을 하던 것이 사라지기 때문입니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 6부: 실무 (practice) ========================================= -->
+<section class="slide slide--divider" data-section="운영에서 보는 JVM" data-depth="practice">
+  <p class="divider__no">6부</p>
+  <h2>운영 서버에서 JVM 읽기</h2>
+  <p class="lede">장애의 상당수는 메모리와 스레드에서 시작됩니다. 힙 크기 설정, GC 지표, 누수 패턴, 덤프를 읽는 감각을 익힙니다.</p>
+  <div class="depth-shift" aria-label="깊이 전환: 원리에서 실무로">
+    <span class="depth-shift__step"><span class="depth" data-depth="core"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>원리</span>
+    <span class="depth-shift__line" aria-hidden="true"></span>
+    <span class="depth-shift__step is-to"><span class="depth" data-depth="practice"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>실무</span>
+    <span class="depth-shift__note">JVM 옵션, GC 로그, 누수 사례, 덤프 분석을 다룹니다.</span>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>컨테이너에서는 힙 기본값부터 의심한다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="Dockerfile"><code><span class="c"># 기본: 최대 힙 = 메모리의 1/4</span>
+<span class="c"># 2GB 컨테이너면 힙 512MB뿐</span>
+<span class="hl">ENV JAVA_TOOL_OPTIONS=<span class="s">"\</span></span>
+<span class="hl"><span class="s">  -XX:MaxRAMPercentage=75 \</span></span>
+<span class="s">  -XX:+HeapDumpOnOutOfMemoryError \</span>
+<span class="s">  -XX:HeapDumpPath=/dumps \</span>
+<span class="s">  -Xlog:gc*:file=/logs/gc.log"</span></code></pre>
+    <div class="prose">
+      <p>JVM은 서버급 머신에서 최대 힙을 물리 메모리의 1/4로, CPU 2개 이상이고 메모리 1792MB 이상일 때만 G1을 고릅니다. <mark>CPU 1개짜리 컨테이너는 Serial GC로 뜹니다.</mark></p>
+      <p>힙 비율은 75% 안팎으로 잡고 나머지는 Metaspace, 스레드 스택, 다이렉트 버퍼 몫으로 남깁니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>GC는 로그와 지표 네 가지로 본다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">지표</th><th scope="col">무엇을 보나</th><th scope="col">위험 신호</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">GC 정지 시간</th><td>p99 STW 길이</td><td>응답 SLO에 근접</td></tr>
+        <tr><th scope="row">GC 빈도와 비율</th><td>전체 시간 중 GC 비중</td><td>수 % 이상 지속</td></tr>
+        <tr><th scope="row">GC 후 Old 사용량</th><td>살아남는 데이터 크기</td><td class="is-key">톱니 바닥이 계속 상승</td></tr>
+        <tr><th scope="row">Full GC 횟수</th><td>G1에서 최후 수단 발생</td><td>0이 아니면 조사</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>힙 사용량은 할당과 GC로 톱니 모양을 그립니다. 꼭대기가 아니라 <strong>GC 직후의 바닥</strong>이 시간이 지나며 올라간다면 회수되지 않는 객체가 쌓이는 누수입니다. 로그는 JDK 9부터 <code>-Xlog:gc*</code>로 통일되었고, Spring 환경에서는 Micrometer의 <code>jvm.gc.pause</code>로 지표를 수집합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Java 메모리 누수는 끊기지 않은 참조다</h2>
+  <div class="slide__body">
+    <div class="prose">
+      <p>GC가 있어도 누수는 생깁니다. GC는 닿지 않는 객체만 치우므로, <mark>더 이상 쓰지 않는데 어딘가에서 참조가 남아 있으면</mark> 영원히 살아남습니다. 자주 터지는 패턴은 다음과 같습니다.</p>
+      <ul>
+        <li><strong>static 컬렉션 캐시</strong>: 넣기만 하고 빼지 않는 Map. 크기 제한과 만료가 있는 캐시를 씁니다.</li>
+        <li><strong>ThreadLocal 미삭제</strong>: 풀 스레드가 값을 계속 쥐고 있습니다.</li>
+        <li><strong>리스너, 콜백 미해제</strong>: 등록한 쪽이 사라져도 이벤트 소스가 참조를 유지합니다.</li>
+        <li><strong>닫지 않은 리소스</strong>: 커넥션, 스트림은 <code>try-with-resources</code>로 닫습니다.</li>
+        <li><strong>hashCode가 바뀌는 키</strong>: 넣은 뒤 필드를 바꾸면 찾을 수도 지울 수도 없습니다.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>OOM 메시지가 어느 영역인지 알려 준다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">메시지 / 증상</th><th scope="col">고갈된 곳</th><th scope="col">먼저 의심할 것</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Java heap space</th><td>힙</td><td>누수, 대용량 조회 결과</td></tr>
+        <tr><th scope="row">Metaspace</th><td>클래스 메타데이터</td><td>동적 클래스 생성 누적</td></tr>
+        <tr><th scope="row">unable to create native thread</th><td>OS 스레드</td><td>스레드 무한 생성</td></tr>
+        <tr><th scope="row">Direct buffer memory</th><td>힙 밖 버퍼</td><td>Netty 등 다이렉트 버퍼</td></tr>
+        <tr><th scope="row">컨테이너 OOMKilled</th><td class="is-key">프로세스 전체</td><td>힙 비율 과다, 힙 밖 메모리</td></tr>
+      </tbody>
+    </table>
+    <aside class="callout callout--key">
+      <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>OOMKilled는 JVM 예외가 아닙니다</p>
+      <p>커널이 프로세스를 강제 종료하므로 힙 덤프도 남지 않습니다. 힙은 프로세스 메모리의 일부일 뿐입니다(9장 cgroup).</p>
+    </aside>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>힙 덤프는 그 순간 힙의 사진이다</h2>
+  <div class="split split--even">
+    <ol class="steps">
+      <li><b>확보</b><p>OOM 시 자동(<code>HeapDumpOnOutOfMemoryError</code>) 또는 <code>jcmd &lt;pid&gt; GC.heap_dump</code>.</p></li>
+      <li><b>열기</b><p>Eclipse MAT 같은 분석 도구로 엽니다.</p></li>
+      <li class="is-key"><b>Retained 크기</b><p>이 객체가 사라지면 함께 회수될 크기순으로 정렬합니다.</p></li>
+      <li><b>GC Root 경로</b><p>누가 붙잡고 있는지 Root까지 참조 사슬을 따라갑니다.</p></li>
+    </ol>
+    <div class="prose">
+      <p>힙 덤프에는 모든 객체와 참조 관계가 담깁니다. 누수 분석은 결국 2부의 도달 가능성을 거꾸로 따라가는 일입니다. 큰 객체를 찾고, 그 객체를 살려 두는 GC Root 경로를 찾습니다.</p>
+      <p>덤프를 뜨는 동안 STW가 걸리고 파일이 힙 크기만큼 커집니다. 덤프에는 개인 정보도 들어 있으니 취급에 주의합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>스레드 덤프는 지금 모두가 하는 일이다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="jcmd 1 Thread.print"><code><span class="dim">"http-nio-8080-exec-7" #41 …</span>
+<span class="hl">   java.lang.Thread.State: BLOCKED</span>
+    at c.a.StockService.decrease(…)
+    - waiting to lock &lt;0x7f3a…&gt;
+    - locked &lt;0x7f2b…&gt;
+
+<span class="hl">Found one Java-level deadlock:</span>
+<span class="dim">=============================</span></code></pre>
+    <div class="prose">
+      <p>"서버가 응답이 없다"면 스레드 덤프를 몇 초 간격으로 2~3번 뜹니다. 각 스레드의 상태(RUNNABLE, BLOCKED, WAITING)와 호출 스택이 보입니다.</p>
+      <p>요청 스레드 대부분이 같은 락에서 BLOCKED이거나 커넥션 풀 대기에서 WAITING이면 원인이 거기에 있습니다. JVM은 데드락을 감지해 직접 알려 줍니다. 전체 진단 순서는 11장에서 다룹니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 정리 ========================================================= -->
+<section class="slide slide--summary" data-section="정리" data-depth="none">
+  <h2>정리</h2>
+  <ul class="summary">
+    <li><b>JVM은 바이트코드를 실행하는 OS별 엔진입니다.</b> 클래스 로더가 필요할 때 올리고, 인터프리터로 시작해 뜨거운 코드만 JIT이 컴파일합니다.</li>
+    <li><b>GC는 GC Root에서 닿지 않는 객체를 치웁니다.</b> 대부분 객체가 일찍 죽으므로 Young만 자주 치우고, G1과 ZGC는 STW를 줄이는 방향으로 발전했습니다.</li>
+    <li><b>equals와 hashCode는 함께 다닙니다.</b> HashMap이 hashCode로 버킷을 고르고, 충돌이 심하면 트리로, 75%가 차면 두 배로 늘리기 때문입니다.</li>
+    <li><b>가시성과 원자성은 다른 문제입니다.</b> volatile은 보이게, synchronized와 CAS는 끼어들지 못하게 합니다.</li>
+    <li><b>운영에서는 GC 직후 Old 바닥선, 덤프, 컨테이너 기본값을 봅니다.</b> 누수는 끊기지 않은 참조입니다.</li>
+  </ul>
+</section>
+
+<!-- ===== 부록: 스스로 점검 ============================================ -->
+<section class="slide" data-section="부록: 스스로 점검" data-depth="none">
+  <h2>스스로 점검 (1)</h2>
+  <ol class="selfcheck">
+    <li><details><summary>스택과 PC 레지스터는 왜 스레드마다 따로 있어야 하나요?</summary>
+      <div class="answer"><p>스레드마다 실행 중인 메서드와 위치가 다르기 때문입니다. 공유하면 서로의 호출 흐름과 지역 변수를 덮어씁니다.</p></div></details></li>
+    <li><details><summary>서로만 참조하는 두 객체는 GC 대상인가요?</summary>
+      <div class="answer"><p>네. Java GC는 참조 개수가 아니라 GC Root에서 닿는지로 판단하므로, Root에서 끊긴 순환 참조는 함께 회수됩니다.</p></div></details></li>
+    <li><details><summary>Young 영역을 너무 작게 잡으면 어떤 일이 생기나요?</summary>
+      <div class="answer"><p>Minor GC가 잦아지고, 곧 죽을 객체까지 나이가 차기 전에 Old로 밀려납니다. Old가 빨리 차서 더 비싼 GC가 늘어납니다.</p></div></details></li>
+    <li><details><summary>HashMap에 넣은 키 객체의 필드를 나중에 바꾸면 어떻게 되나요?</summary>
+      <div class="answer"><p>hashCode가 바뀌어 다른 버킷을 찾게 되므로 get도 remove도 실패합니다. 엔트리는 그대로 남아 누수가 됩니다.</p></div></details></li>
+  </ol>
+</section>
+
+<section class="slide" data-section="부록: 스스로 점검" data-depth="none">
+  <h2>스스로 점검 (2)</h2>
+  <ol class="selfcheck">
+    <li><details><summary>volatile int count에 count++를 하면 안전한가요?</summary>
+      <div class="answer"><p>아닙니다. 읽기, 더하기, 쓰기 사이에 다른 스레드가 끼어들 수 있습니다. AtomicInteger나 synchronized가 필요합니다.</p></div></details></li>
+    <li><details><summary>Tomcat 스레드 풀에서 ThreadLocal을 remove하지 않으면 무엇이 보이나요?</summary>
+      <div class="answer"><p>재사용된 스레드에서 다음 요청이 이전 요청의 값을 읽습니다. 다른 사용자 정보가 노출될 수 있습니다.</p></div></details></li>
+    <li><details><summary>Virtual Thread로 바꿨더니 DB 커넥션 대기가 폭증했습니다. 왜일까요?</summary>
+      <div class="answer"><p>스레드 수 제한이 사라져 동시 요청이 커넥션 풀로 한꺼번에 몰렸기 때문입니다. 하류 자원 앞에서 동시성을 따로 제한해야 합니다.</p></div></details></li>
+    <li><details><summary>메모리 1GB, CPU 1개 컨테이너에서 옵션 없이 뜬 JVM의 GC와 최대 힙은?</summary>
+      <div class="answer"><p>서버급 조건에 못 미쳐 Serial GC가 선택되고, 최대 힙은 메모리의 1/4인 약 256MB입니다.</p></div></details></li>
+  </ol>
+</section>
+
+<!-- ===== 다음 장 ====================================================== -->
+<section class="slide" data-section="다음 단계" data-depth="none">
+  <h2>다음으로 올라갈 층</h2>
+  <div class="slide__body">
+    <p class="lede">리플렉션으로 어노테이션을 읽어 객체를 만들고 연결하는 일, 그것을 대규모로 해 주는 것이 Spring입니다. 이제 JVM 위의 프레임워크로 올라갑니다.</p>
+    <div class="nav-pair">
+      <a class="next" href="06-spring-jpa.html">
+        <span class="next__text">
+          <span class="next__label">다음 장</span>
+          <span class="next__title">6장 Spring과 JPA</span>
+          <span class="next__desc">DI, AOP 프록시, @Transactional, 영속성 컨텍스트가 동작하는 원리</span>
+        </span>
+        <div class="stackmap stackmap--mini" data-current="6"></div>
+      </a>
+      <a class="next next--prev" href="04-database.html">
+        <span class="next__text">
+          <span class="next__label">이전 장</span>
+          <span class="next__title">4장 데이터베이스</span>
+        </span>
+      </a>
+    </div>
+    <p class="small"><a href="index.html">전체 학습 지도로 돌아가기</a></p>
+  </div>
+</section>
+
+</main>
+<script src="assets/deck.js"></script>
+</body>
+</html>
