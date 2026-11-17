@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>백엔드와 인프라(AWS) 학습 지도</title>
-<meta name="description" content="CS 기초에서 AWS 운영까지, 11개 장으로 쌓아 올리는 백엔드와 인프라 학습 슬라이드">
+<meta name="description" content="CS 기초에서 AWS 운영까지, 18개 장으로 쌓아 올리는 백엔드와 인프라 학습 슬라이드">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
@@ -19,7 +19,7 @@
     max-width: 1280px; margin: 0 auto;
     padding: 56px 48px 72px;
     display: grid; grid-template-columns: minmax(0, 23rem) minmax(0, 1fr);
-    gap: 32px 72px; align-items: start;
+    gap: 32px 44px; align-items: start;
   }
   .ix__aside { position: sticky; top: 40px; }
 
@@ -65,23 +65,34 @@
   /* ---- stack map ---- */
   .ix__map h2 { margin: 6px 0 4px; font-size: 1.15rem; font-weight: 600; }
   .ix__map .stackmap__cap { font-size: 0.95rem; margin-bottom: 22px; }
-  .ix__map .stackmap--index { --sm-h: 84px; --sm-gap: 10px; --sm-step: 1.4%; }
+  .ix__map .stackmap--index { --sm-h: 76px; --sm-gap: 8px; --sm-step: 0.9%; }
   .ix__map .stackmap--index .stackmap__layer { padding: 0; }
   .ix__map .stackmap__layer a {
-    display: grid; align-items: center;
-    grid-template-columns: 2.2rem minmax(0, 1fr) auto;
+    display: grid; align-items: baseline;
+    grid-template-columns: 2.2rem auto minmax(0, 1fr);
     grid-template-areas: "no name desc" "no topics topics";
     gap: 2px 14px; padding: 14px 18px;
   }
   .ix__map .stackmap__no { grid-area: no; align-self: start; padding-top: 1px; font-size: 1.05rem; }
-  .ix__map .stackmap__name { grid-area: name; font-size: 1.15rem; font-weight: 600; }
+  .ix__map .stackmap__name { grid-area: name; font-size: 1.15rem; font-weight: 600; white-space: nowrap; }
   .ix__map .stackmap--index .stackmap__desc { grid-area: desc; font-size: 0.9rem; color: var(--ink-2); }
   .ix__topics { grid-area: topics; font-size: 0.9rem; line-height: 1.55; color: var(--ink-3); }
   .ix__map .stackmap__layer:hover .ix__topics { color: var(--ink-2); }
   .ix__map .stackmap__layer a:focus-visible { outline-offset: 2px; }
 
+  .ix__map .stackmap__group { padding-left: 18px; }
   .ix__foot { margin: 22px 0 0 34px; font-size: 0.9rem; color: var(--ink-3); }
 
+  /* where the map is too narrow (1081-1299px beside the intro, 681-860px alone)
+     for name + one-line description side by side, the description
+     gets its own row instead of wrapping beside the name */
+  @media (min-width: 1081px) and (max-width: 1299px), (min-width: 681px) and (max-width: 860px) {
+    .ix__map .stackmap__layer a {
+      grid-template-columns: 2.2rem minmax(0, 1fr);
+      grid-template-areas: "no name" "no desc" "no topics";
+    }
+    .ix__map .stackmap--index .stackmap__desc { margin-left: 0; text-align: left; }
+  }
   @media (max-width: 1080px) {
     .ix { grid-template-columns: 1fr; padding: 40px 32px 56px; }
     .ix__aside { position: static; }
@@ -92,7 +103,8 @@
     .ix__title { font-size: 2rem; }
     .ix__map .stackmap--index { --sm-step: 0%; }
     .ix__map .stackmap__list { padding-left: 28px; }
-    .ix__map .stackmap__layer::before { left: -18px; }
+    .ix__map .stackmap__layer::before, .ix__map .stackmap__group::before { left: -18px; }
+    .ix__map .stackmap__group { padding-left: 14px; }
     .ix__map .stackmap__layer::after { left: -23px; }
     .ix__map .stackmap__layer a {
       grid-template-columns: 1.8rem minmax(0, 1fr);
@@ -100,7 +112,7 @@
       gap: 3px 10px; padding: 12px 14px;
     }
     .ix__map .stackmap--index .stackmap__desc { margin-left: 0; text-align: left; }
-    .ix__map .stackmap__name { font-size: 1.05rem; }
+    .ix__map .stackmap__name { font-size: 1.05rem; white-space: normal; }
     .ix__foot { margin-left: 28px; }
   }
 </style>
@@ -116,7 +128,7 @@
     </div>
 
     <div class="ix__intro">
-      <p>서버 한 대가 요청을 처리하는 데 필요한 지식을 열한 개 장으로 정리한 슬라이드입니다. 운영체제와 네트워크에서 출발해 데이터베이스, Java와 Spring, 시스템 설계, 컨테이너를 거쳐 AWS 운영까지 아래층부터 차례로 쌓아 올립니다.</p>
+      <p>서버 한 대가 요청을 처리하는 데 필요한 지식을 열여덟 개 장으로 정리한 슬라이드입니다. 1~8장은 CS와 백엔드(운영체제, 네트워크, 데이터베이스, Java와 Spring, 시스템 설계), 9~18장은 인프라와 AWS(컨테이너, Kubernetes, 배포 자동화, AWS 서비스별 설계와 운영)입니다. 아래층부터 차례로 쌓아 올립니다.</p>
       <p>각 장은 같은 순서로 깊어집니다.</p>
     </div>
     <ul class="ix__arc">
@@ -159,9 +171,16 @@
       6: "프록시와 @Transactional, N+1 문제, OSIV, 디자인 패턴",
       7: "JWT와 OAuth 2.0, CORS, XSS와 CSRF, 멱등성 키",
       8: "캐시 전략과 Redis, Kafka, Saga와 Outbox, 서킷 브레이커",
-      9: "namespace와 cgroup, 무중단 배포 전략, Graceful Shutdown",
-      10: "VPC 설계, 보안 그룹과 NACL, Multi-AZ, Route 53, CloudFront",
-      11: "Lambda와 ECS, SQS와 SNS, SLI와 SLO, 재해 복구, Well-Architected"
+      9: "파일 권한과 systemd, 시그널과 장애 확인 명령, namespace와 cgroup, 멀티 스테이지 빌드",
+      10: "Control Plane 구성, Deployment 롤아웃, Ingress, ConfigMap과 Secret, liveness·readiness probe",
+      11: "Rolling·Blue-Green·Canary, Graceful Shutdown, 스키마 하위 호환, Terraform 상태",
+      12: "공유 책임 모델, 정책 평가 순서, AssumeRole과 임시 자격 증명, 최소 권한, 루트 계정 보호",
+      13: "CIDR 설계, Public·Private 서브넷과 NAT Gateway, 보안 그룹과 NACL, VPC Endpoint",
+      14: "인스턴스 유형과 구매 옵션, 스케일링 정책, 컴퓨팅 선택지 비교",
+      15: "스토리지 클래스와 Presigned URL, Multi-AZ와 읽기 복제본, PITR, RDS Proxy",
+      16: "OAC와 캐시 무효화, 봉투 암호화, Secrets Manager, 감사 로그",
+      17: "콜드 스타트와 동시성 한도, Visibility Timeout, FIFO 큐, DLQ, SNS 팬아웃",
+      18: "3-티어 레퍼런스, RPO와 RTO, SLI와 SLO, 트러블슈팅 플레이북, Well-Architected"
     };
     var map = document.querySelector(".stackmap--index");
     if (!map) return;

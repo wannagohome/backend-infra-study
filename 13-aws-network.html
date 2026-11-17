@@ -1,0 +1,1633 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>13장 AWS 네트워킹</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="assets/deck.css">
+</head>
+<body>
+<main class="deck" data-chapter="13" data-chapter-title="AWS 네트워킹">
+
+<!-- ===== 표지 ===== -->
+<section class="slide slide--cover">
+  <div class="cover">
+    <div class="cover__main">
+      <p class="cover__chapter"><b>13장</b> AWS 네트워킹</p>
+      <h1>패킷은 VPC 안에서 어떤 길로 오가는가</h1>
+      <p class="cover__lede">2장의 IP, NAT, DNS, L4/L7이 AWS에서는 VPC, NAT Gateway, Route 53, ELB가 됩니다. 사설망을 긋고, 밖과 잇고, 트래픽을 나누고, 이름으로 찾게 하는 과정을 따라갑니다.</p>
+      <dl class="cover__meta">
+        <div><dt>선수 지식</dt><dd>2장 네트워크, 12장 AWS 기초와 IAM</dd></div>
+        <div><dt>슬라이드</dt><dd>90장</dd></div>
+        <div><dt>예상 학습 시간</dt><dd>150분</dd></div>
+      </dl>
+    </div>
+    <div class="cover__map">
+      <p class="stackmap__cap">아래층부터 위로 쌓아 올라가는 순서입니다. 지금은 13단계입니다.</p>
+      <div class="stackmap" data-current="13"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 1부 VPC 기초 ===== -->
+<section class="slide slide--divider" data-section="VPC 기초" data-depth="basic">
+  <p class="divider__no">1부</p>
+  <h2>리전 안에 나만의 사설망을 긋는다</h2>
+  <p class="lede">12장에서 계정과 권한을 만들었습니다. 이제 그 계정 안에서 서버들이 놓일 네트워크를 설계합니다. 주소 대역, 서브넷, 라우팅, 출입문, 방화벽 순서로 봅니다.</p>
+</section>
+
+<section class="slide">
+  <h2>VPC는 리전 하나에 걸친 논리적 사설망이다</h2>
+  <div class="prose">
+    <p><dfn title="Virtual Private Cloud">VPC</dfn>는 AWS 리전 하나 안에 만드는, 다른 계정과 격리된 가상 네트워크입니다. 실제로는 AWS의 거대한 물리망 위에 소프트웨어로 그은 경계지만, 사용자에게는 2장에서 본 사설 네트워크 하나처럼 보입니다.</p>
+    <p>만들 때 정하는 것은 주소 대역 하나뿐입니다. 2장의 CIDR 표기로 <code>10.0.0.0/16</code>처럼 지정하면, 그 안의 주소를 서브넷으로 나눠 서버, 로드 밸런서, DB에 나눠 줍니다.</p>
+    <p>VPC는 <mark>리전 범위</mark>이고 그 안의 서브넷은 AZ 범위입니다. 이 두 범위의 차이가 고가용성 설계의 출발점입니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>CIDR은 나중에 바꾸기 어려우니 넉넉히 잡는다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>VPC의 IPv4 CIDR은 <code>/16</code>(65,536개)부터 <code>/28</code>(16개)까지 고를 수 있습니다. 나중에 보조 CIDR을 붙일 수는 있지만, 처음 대역을 줄이거나 바꿀 수는 없습니다.</p>
+      <p>가장 흔한 실수는 너무 작게 잡는 것입니다. 컨테이너가 Pod마다 VPC IP를 하나씩 쓰는 구성(14장 EKS)에서는 서버 수보다 IP가 훨씬 빨리 소진됩니다.</p>
+    </div>
+    <div class="prose">
+      <p>두 번째 실수는 <strong>겹치는 대역</strong>입니다. 사내망이 <code>10.0.0.0/16</code>인데 VPC도 같은 대역이면, 나중에 VPN이나 Peering으로 잇는 순간 라우팅이 성립하지 않습니다.</p>
+      <p>그래서 회사 단위로 대역 계획표를 두고 VPC마다 겹치지 않는 /16을 배정합니다(예: 운영 <code>10.10.0.0/16</code>, 개발 <code>10.20.0.0/16</code>).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>서브넷은 AZ 하나에 놓이고 주소 5개를 뺏긴다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p><dfn title="Subnet">서브넷</dfn>은 VPC 대역을 잘라 <strong>가용 영역 하나</strong>에 놓은 조각입니다. 서브넷은 AZ를 넘지 못하므로, 두 AZ에 서버를 두려면 서브넷도 최소 두 개가 필요합니다.</p>
+      <p>각 서브넷의 <mark>앞 4개와 마지막 1개 주소는 AWS가 예약</mark>합니다. /24 서브넷이면 256개 중 251개만 쓸 수 있고, /28이면 16개 중 11개뿐입니다.</p>
+    </div>
+    <table class="compare">
+      <thead><tr><th scope="col">10.0.1.0/24에서</th><th scope="col">용도</th></tr></thead>
+      <tbody>
+        <tr><th scope="row" class="num">10.0.1.0</th><td>네트워크 주소</td></tr>
+        <tr><th scope="row" class="num">10.0.1.1</th><td>VPC 라우터</td></tr>
+        <tr><th scope="row" class="num">10.0.1.2</th><td>DNS 서버(VPC 대역 +2)</td></tr>
+        <tr><th scope="row" class="num">10.0.1.3</th><td>향후 사용 예약</td></tr>
+        <tr><th scope="row" class="num">10.0.1.255</th><td>브로드캐스트(VPC는 미지원)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>서브넷의 성격은 나가는 길로 정해진다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">종류</th><th scope="col">기본 경로(0.0.0.0/0)</th><th scope="col">밖에서 들어오기</th><th scope="col">대표 배치</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Public</th><td class="is-flow">인터넷 게이트웨이</td><td>퍼블릭 IP가 있으면 가능</td><td>ALB, NAT Gateway</td></tr>
+        <tr><th scope="row">Private</th><td>NAT Gateway</td><td>불가(나가기만 가능)</td><td>앱 서버, 컨테이너</td></tr>
+        <tr><th scope="row">Isolated</th><td class="is-key">없음</td><td>불가</td><td>DB, 내부 전용 시스템</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>콘솔에 "Public" 체크 상자가 있는 것이 아닙니다. 서브넷에 연결된 라우팅 테이블에 인터넷 게이트웨이로 가는 경로가 있으면 Public이라고 부를 뿐입니다. Isolated 서브넷은 VPC 안에서만 통신하므로, AWS 서비스를 쓰려면 2부의 VPC 엔드포인트가 필요합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>두 AZ에 걸친 VPC의 기본 모양</h2>
+  <figure class="figure">
+    <svg class="dg" viewBox="0 0 1400 510" role="img" aria-labelledby="f7t">
+      <title id="f7t">VPC 10.0.0.0/16이 두 가용 영역에 걸쳐 있다. 각 가용 영역에 Public Subnet(ALB 노드, NAT Gateway)과 Private Subnet(앱 서버, DB)이 있다. 인터넷 요청은 인터넷 게이트웨이와 ALB를 거쳐 앱으로 들어오고, 앱이 밖으로 여는 연결은 같은 AZ의 NAT Gateway를 거쳐 인터넷 게이트웨이로 나간다.</title>
+      <rect class="dg-box dg-box--muted" x="600" y="4" width="200" height="48"/>
+      <text x="700" y="28" text-anchor="middle">인터넷</text>
+      <path class="dg-arrow dg-arrow--both" d="M700,60 V86"/>
+      <rect class="dg-zone" x="20" y="120" width="1360" height="384"/>
+      <rect class="dg-box dg-box--solid" x="600" y="92" width="200" height="56"/>
+      <text class="dg-label--on" x="700" y="120" text-anchor="middle">인터넷 게이트웨이</text>
+      <text class="dg-label--lg" x="214" y="150" text-anchor="start">VPC 10.0.0.0/16</text>
+      <rect class="dg-zone" x="40" y="166" width="640" height="326"/>
+      <text class="dg-label--sm" x="60" y="190" text-anchor="start">가용 영역 a</text>
+      <rect class="dg-box dg-box--muted" x="60" y="202" width="600" height="124"/>
+      <text class="dg-label--sm" x="210" y="226" text-anchor="start">Public Subnet 10.0.1.0/24</text>
+      <text class="dg-label--sm dg-label--flow" x="644" y="226" text-anchor="end">0.0.0.0/0 → IGW</text>
+      <rect class="dg-box" x="90" y="246" width="200" height="60"/>
+      <text x="190" y="276" text-anchor="middle">ALB 노드</text>
+      <rect class="dg-box dg-box--flow" x="420" y="246" width="200" height="60"/>
+      <text x="520" y="276" text-anchor="middle">NAT Gateway</text>
+      <rect class="dg-box dg-box--muted" x="60" y="342" width="600" height="138"/>
+      <text class="dg-label--sm" x="76" y="366" text-anchor="start">Private Subnet 10.0.11.0/24</text>
+      <text class="dg-label--sm dg-label--flow" x="644" y="470" text-anchor="end">0.0.0.0/0 → NAT(AZ a)</text>
+      <rect class="dg-box" x="90" y="390" width="200" height="60"/>
+      <text x="190" y="420" text-anchor="middle">DB 기본</text>
+      <rect class="dg-box dg-box--flow" x="420" y="390" width="200" height="60"/>
+      <text x="520" y="420" text-anchor="middle">앱 서버</text>
+      <rect class="dg-zone" x="720" y="166" width="640" height="326"/>
+      <text class="dg-label--sm" x="740" y="190" text-anchor="start">가용 영역 c</text>
+      <rect class="dg-box dg-box--muted" x="740" y="202" width="600" height="124"/>
+      <text class="dg-label--sm" x="890" y="226" text-anchor="start">Public Subnet 10.0.2.0/24</text>
+      <text class="dg-label--sm dg-label--flow" x="1324" y="226" text-anchor="end">0.0.0.0/0 → IGW</text>
+      <rect class="dg-box" x="770" y="246" width="200" height="60"/>
+      <text x="870" y="276" text-anchor="middle">ALB 노드</text>
+      <rect class="dg-box dg-box--flow" x="1100" y="246" width="200" height="60"/>
+      <text x="1200" y="276" text-anchor="middle">NAT Gateway</text>
+      <rect class="dg-box dg-box--muted" x="740" y="342" width="600" height="138"/>
+      <text class="dg-label--sm" x="756" y="366" text-anchor="start">Private Subnet 10.0.12.0/24</text>
+      <text class="dg-label--sm dg-label--flow" x="1324" y="470" text-anchor="end">0.0.0.0/0 → NAT(AZ c)</text>
+      <rect class="dg-box dg-box--ghost" x="770" y="390" width="200" height="60"/>
+      <text class="dg-label--muted" x="870" y="420" text-anchor="middle">DB 대기</text>
+      <rect class="dg-box dg-box--flow" x="1100" y="390" width="200" height="60"/>
+      <text x="1200" y="420" text-anchor="middle">앱 서버</text>
+      <path class="dg-arrow dg-arrow--flow" d="M592,108 H226 Q190,108 190,144 V238"/>
+      <path class="dg-arrow dg-arrow--flow" d="M808,108 H834 Q870,108 870,144 V238"/>
+      <path class="dg-arrow dg-arrow--flow" d="M296,286 H350 Q380,286 380,316 V380 Q380,406 406,406 H412"/>
+      <path class="dg-arrow dg-arrow--flow" d="M976,286 H1030 Q1060,286 1060,316 V380 Q1060,406 1086,406 H1092"/>
+      <path class="dg-arrow" d="M414,436 H298"/>
+      <path class="dg-arrow dg-arrow--back" d="M520,384 V314"/>
+      <path class="dg-arrow dg-arrow--back" d="M520,240 V172 Q520,136 556,136 H592"/>
+      <path class="dg-arrow dg-arrow--back" d="M1200,384 V314"/>
+      <path class="dg-arrow dg-arrow--back" d="M1200,240 V172 Q1200,136 1164,136 H808"/>
+    </svg>
+    <ul class="legend">
+      <li class="is-flow"><i></i>들어오는 요청 (IGW → ALB → 앱)</li>
+      <li class="is-dash"><i></i>앱이 밖으로 여는 연결 (NAT → IGW)</li>
+    </ul>
+  </figure>
+</section>
+
+<section class="slide">
+  <h2>라우팅 테이블은 가장 긴 프리픽스가 이긴다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="라우팅 테이블"><code><span class="c"># Public 서브넷용</span>
+대상             타깃
+10.0.0.0/16      local
+<span class="hl">0.0.0.0/0        igw-0a1b2c</span>
+
+<span class="c"># Private 서브넷용 (AZ a)</span>
+10.0.0.0/16      local
+0.0.0.0/0        nat-0d4e5f
+<span class="hl">pl-63a5400a      vpce-0s3gw  (S3)</span>
+
+<span class="c"># Isolated(DB) 서브넷용</span>
+10.0.0.0/16      local</code></pre>
+    <div class="prose">
+      <p><dfn title="Route Table">라우팅 테이블</dfn>은 "목적지 대역이면 어느 타깃으로"를 적은 표이고, 서브넷마다 정확히 하나가 연결됩니다. 패킷마다 일치하는 경로 중 <mark>프리픽스가 가장 긴 것</mark>을 고릅니다.</p>
+      <p><code>local</code> 경로는 지울 수 없어서 VPC 내부 통신은 항상 직접 갑니다. 연결하지 않은 서브넷은 메인 라우팅 테이블을 따르므로, 메인 테이블에는 인터넷 경로를 넣지 않는 편이 안전합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>인터넷 게이트웨이는 퍼블릭 IP를 1:1로 바꾼다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p><dfn title="Internet Gateway">인터넷 게이트웨이(IGW)</dfn>는 VPC와 인터넷 사이의 출입문입니다. VPC에 하나만 붙고, AWS가 이중화와 확장을 맡으므로 대역폭이나 가용성을 신경 쓸 필요가 없습니다.</p>
+      <p>인스턴스의 네트워크 카드에는 사설 IP만 있습니다. 패킷이 IGW를 지날 때 IGW가 사설 IP와 연결된 퍼블릭 IP를 <strong>1:1로 바꿔</strong> 줍니다. 2장의 NAT와 비슷하지만 포트를 섞지 않는 정적 변환입니다.</p>
+    </div>
+    <div class="prose">
+      <p>그래서 인터넷과 직접 통신하려면 세 가지가 모두 필요합니다. IGW로 가는 경로, 인스턴스의 퍼블릭 IP, 그리고 그 트래픽을 허용하는 보안 그룹입니다. 하나라도 빠지면 연결되지 않습니다.</p>
+      <p>퍼블릭 IPv4 주소는 2024년부터 사용 중이든 유휴든 <strong>시간당 0.005 USD</strong>가 붙습니다. 서버마다 퍼블릭 IP를 주지 않는 설계가 비용 면에서도 유리합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Elastic IP는 계정이 붙잡아 두는 IP다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">항목</th><th scope="col">자동 할당 퍼블릭 IP</th><th scope="col">Elastic IP(EIP)</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">소유</th><td>인스턴스에 딸림</td><td class="is-flow">계정이 보유, 떼었다 붙임</td></tr>
+        <tr><th scope="row">중지 후 시작</th><td class="is-key">새 주소로 바뀜</td><td>그대로 유지</td></tr>
+        <tr><th scope="row">요금</th><td>시간당 0.005 USD</td><td>연결 여부와 관계없이 동일</td></tr>
+        <tr><th scope="row">쓰는 곳</th><td>임시 서버</td><td>NAT Gateway, NLB, 허용 목록 등록</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p><dfn>Elastic IP</dfn>는 외부 파트너가 우리 IP를 방화벽에 등록해야 할 때처럼 주소가 바뀌면 안 되는 곳에 씁니다. 다만 서버 IP를 외부에 알리는 대신 앞단 로드 밸런서나 NAT의 고정 IP를 알리는 쪽이 장애 교체에 강합니다. 쓰지 않는 EIP는 바로 반납합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>ENI는 인스턴스에 꽂는 가상 네트워크 카드다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p><dfn title="Elastic Network Interface">ENI</dfn>는 서브넷 하나에 속한 가상 네트워크 카드입니다. 사설 IP, 퍼블릭 IP, MAC 주소, 그리고 <strong>보안 그룹</strong>이 모두 인스턴스가 아니라 ENI에 붙습니다.</p>
+      <p>인스턴스는 기본 ENI 하나를 갖고, 유형에 따라 보조 ENI를 더 꽂을 수 있습니다. ENI마다 보조 사설 IP도 여러 개 둘 수 있습니다.</p>
+    </div>
+    <div class="prose">
+      <p>보조 ENI는 떼어서 다른 인스턴스에 옮길 수 있어, 장애 시 같은 IP를 대기 서버로 넘기는 구성에 쓰였습니다.</p>
+      <p>더 중요한 사실은 <mark>VPC에 붙는 거의 모든 관리형 서비스가 ENI를 만든다</mark>는 점입니다. ALB 노드, NAT Gateway, 인터페이스 엔드포인트, VPC 안의 Lambda, RDS가 모두 서브넷의 IP를 하나씩 차지합니다. 서브넷 크기를 정할 때 이 몫까지 셉니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>NAT Gateway는 나가는 문만 연다</h2>
+  <div class="split split--wide-left">
+    <div class="seq" role="img" aria-label="Private 서브넷의 앱 서버가 외부 API로 요청을 보내면 NAT Gateway가 출발지를 자신의 Elastic IP와 포트로 바꿔 내보내고, 돌아온 응답을 원래 서버로 되돌려 준다. 외부에서 먼저 시작한 연결은 들어오지 못한다">
+      <div class="seq__head"><span>앱 10.0.11.5</span><span></span><span>외부 API</span></div>
+      <div class="seq__row seq__row--r">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>요청</b> 10.0.11.5:41000 → API:443</span>
+        <span class="seq__state"></span>
+      </div>
+      <div class="seq__row seq__row--note">
+        <span></span><span class="seq__msg"><span>NAT: 출발지를 EIP:1024로 바꾸고 기록</span></span><span></span>
+      </div>
+      <div class="seq__row seq__row--l is-back">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>응답</b> API:443 → EIP:1024<small>기록을 보고 10.0.11.5:41000으로</small></span>
+        <span class="seq__state"></span>
+      </div>
+      <div class="seq__row seq__row--l is-key">
+        <span class="seq__state is-key">차단</span>
+        <span class="seq__msg"><b>새 연결</b> 외부 → EIP:22</span>
+        <span class="seq__state"></span>
+      </div>
+    </div>
+    <div class="prose">
+      <p><dfn>NAT Gateway</dfn>는 2장의 NAT(포트까지 바꾸는 NAPT)를 관리형으로 만든 것입니다. Public 서브넷에 두고 EIP를 붙인 뒤, Private 서브넷의 기본 경로를 NAT로 향하게 합니다.</p>
+      <p>변환 기록에 없는 연결은 들어올 수 없습니다. 패키지 설치와 외부 API 호출은 되지만 <mark>밖에서 먼저 말을 걸 수는 없는</mark> 비대칭이 Private 서브넷의 정의입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>NAT Gateway는 AZ마다 두고 경로도 맞춘다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>기본 NAT Gateway는 <strong>AZ 하나에 사는 영역(zonal) 리소스</strong>입니다. 그 AZ 안에서는 AWS가 이중화하지만, AZ 자체가 장애 나면 함께 멈춥니다.</p>
+      <p>세 AZ의 Private 서브넷이 NAT 하나를 공유하면, NAT가 있는 AZ 하나의 장애가 나머지 두 AZ의 외부 통신까지 끊습니다. 그래서 AZ마다 NAT를 두고, 각 AZ의 Private 라우팅 테이블이 <mark>같은 AZ의 NAT</mark>를 가리키게 합니다.</p>
+    </div>
+    <div class="slide__body">
+      <aside class="callout callout--note">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>리전 모드 NAT Gateway</p>
+        <p>NAT ID 하나로 워크로드가 있는 AZ에 자동 확장되고, Public 서브넷도 필요 없습니다. 새 AZ로 확장되는 데 최대 60분이 걸리고 Private NAT 용도는 지원하지 않습니다.</p>
+      </aside>
+      <aside class="callout callout--key">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>다른 AZ의 NAT는 요금도 두 번</p>
+        <p>AZ를 건너 NAT로 가면 NAT 처리 요금에 AZ 간 전송 요금이 더해집니다. 가용성과 비용이 같은 답을 가리킵니다.</p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>NAT Gateway의 한도와 요금을 숫자로 본다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>대역폭은 5 Gbps에서 시작해 <strong>100 Gbps까지 자동 확장</strong>되고, 초당 패킷은 100만에서 1,000만까지 늘어납니다. 이 한도를 넘으면 패킷을 버리므로 서브넷을 나눠 NAT를 더 둡니다.</p>
+      <p>포트 한도도 있습니다. IP 하나는 <mark>같은 목적지(IP, 포트, 프로토콜)로 동시 연결 55,000개</mark>까지입니다. 외부 API 한 곳을 세게 두드리면 여기서 막히고, IP를 최대 8개까지 붙여 늘립니다.</p>
+    </div>
+    <div class="prose">
+      <p>요금은 두 가지입니다. us-east-1 기준으로 존재만으로 <strong>시간당 0.045 USD</strong>, 처리한 데이터 <strong>GB당 0.045 USD</strong>입니다. 인터넷으로 나가는 전송 요금은 별도로 더해집니다.</p>
+      <p>AZ 세 곳에 NAT를 두면 시간 요금만 한 달 약 100 USD이고, 하루 1TB를 NAT로 보내면 처리 요금만 한 달 약 1,380 USD입니다. 처리 요금을 줄이는 방법은 2부의 VPC 엔드포인트에서 봅니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>NAT 인스턴스는 싸지만 운영을 떠안는다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">항목</th><th scope="col">NAT Gateway</th><th scope="col">NAT 인스턴스(EC2 직접 구성)</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">가용성</th><td class="is-flow">AZ 안에서 AWS가 이중화</td><td class="is-key">인스턴스 하나가 단일 장애점</td></tr>
+        <tr><th scope="row">대역폭</th><td>최대 100 Gbps 자동 확장</td><td>인스턴스 유형에 묶임</td></tr>
+        <tr><th scope="row">보안 그룹</th><td>붙일 수 없음</td><td>붙일 수 있음</td></tr>
+        <tr><th scope="row">설정</th><td>없음</td><td>소스/대상 확인 끄기, iptables</td></tr>
+        <tr><th scope="row">비용</th><td>시간당 + GB당 처리 요금</td><td>인스턴스 요금만</td></tr>
+      </tbody>
+    </table>
+    <p class="small">NAT 인스턴스는 트래픽이 아주 적은 개발 환경에서 비용을 아끼려고 쓰는 정도입니다. 운영 환경의 기본은 NAT Gateway입니다. EC2가 자기 IP가 아닌 패킷을 중계하려면 "소스/대상 확인"을 꺼야 한다는 점만 기억해 둡니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>기본 VPC는 연습용 지름길이다</h2>
+  <div class="prose">
+    <p>계정을 만들면 리전마다 <dfn title="Default VPC">기본 VPC</dfn>가 하나씩 있습니다. 대역은 <code>172.31.0.0/16</code>이고, AZ마다 /20 서브넷이 하나씩 있으며, 모든 서브넷이 IGW로 가는 경로를 가진 Public 서브넷입니다. 인스턴스에는 퍼블릭 IP가 자동으로 붙습니다.</p>
+    <p>덕분에 설정 없이 EC2를 띄워 바로 접속해 볼 수 있지만, 운영에는 맞지 않습니다. 모든 것이 인터넷에 노출된 구조이고, 모든 계정의 기본 VPC 대역이 같아서 나중에 서로 연결할 수 없습니다.</p>
+    <p>운영 계정에서는 <mark>목적에 맞는 VPC를 IaC로 새로 만들고</mark> 기본 VPC는 지우거나 쓰지 않습니다. 지운 기본 VPC는 콘솔에서 다시 만들 수 있습니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>보안 그룹과 NACL은 서는 자리가 다르다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">항목</th><th scope="col">보안 그룹(Security Group)</th><th scope="col">NACL(Network ACL)</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">적용 단위</th><td>ENI(네트워크 카드)</td><td>서브넷 경계</td></tr>
+        <tr><th scope="row">상태</th><td class="is-flow">Stateful: 응답은 자동 허용</td><td class="is-key">Stateless: 응답도 규칙 필요</td></tr>
+        <tr><th scope="row">규칙 종류</th><td>허용만</td><td>허용과 거부</td></tr>
+        <tr><th scope="row">평가 방식</th><td>모든 규칙을 합쳐 판단</td><td>번호 낮은 순, 첫 일치로 결정</td></tr>
+        <tr><th scope="row">기본값</th><td>인바운드 거부, 아웃바운드 허용</td><td>기본 NACL은 모두 허용</td></tr>
+        <tr><th scope="row">소스 지정</th><td>CIDR, 다른 보안 그룹</td><td>CIDR만</td></tr>
+      </tbody>
+    </table>
+    <p class="small">실무의 주 방어선은 보안 그룹입니다. NACL은 특정 대역을 서브넷 단위로 막는 보조 수단입니다. 새로 만든 사용자 지정 NACL은 기본 NACL과 달리 모든 트래픽을 거부하는 상태로 시작합니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Stateful은 응답 패킷을 기억한다는 뜻이다</h2>
+  <div class="split split--wide-left">
+    <div class="seq" role="img" aria-label="클라이언트가 임시 포트 52344에서 서버 443으로 SYN을 보내고, 서버의 응답은 목적지 포트 52344로 돌아간다. 보안 그룹은 연결을 추적해 응답을 통과시키고, NACL은 아웃바운드 규칙이 따로 필요하다">
+      <div class="seq__head"><span>클라이언트</span><span></span><span>EC2 :443</span></div>
+      <div class="seq__row seq__row--r">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>SYN</b> 52344 → 443</span>
+        <span class="seq__state">인바운드 443 허용</span>
+      </div>
+      <div class="seq__row seq__row--l">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>SYN + ACK</b> 443 → 52344</span>
+        <span class="seq__state is-key">연결 추적으로 통과</span>
+      </div>
+      <div class="seq__row seq__row--r">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>HTTP 요청</b> 52344 → 443</span>
+        <span class="seq__state"></span>
+      </div>
+      <div class="seq__row seq__row--note">
+        <span></span><span class="seq__msg"><span>NACL이라면 아웃바운드 1024–65535 규칙이 따로 필요</span></span><span></span>
+      </div>
+    </div>
+    <div class="prose">
+      <p>응답 패킷의 목적지는 클라이언트가 고른 <dfn title="ephemeral port">임시 포트</dfn>입니다. 보안 그룹은 2장의 TCP 연결 상태를 추적하므로, 허용된 요청의 응답이면 규칙 없이 통과시킵니다.</p>
+      <p>NACL은 패킷 하나하나를 독립적으로 봅니다. 인바운드 443만 열고 아웃바운드 임시 포트를 잊으면 <mark>요청은 들어오는데 응답이 나가지 못합니다</mark>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>NACL은 번호 순으로 읽다가 첫 일치에서 멈춘다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="NACL 인바운드 (Public 서브넷)"><code>번호  유형    포트          소스             동작
+<span class="hl">90    전체    전체          203.0.113.0/24   DENY</span>
+100   TCP     443           0.0.0.0/0        ALLOW
+110   TCP     1024-65535    0.0.0.0/0        ALLOW
+*     전체    전체          0.0.0.0/0        DENY
+
+<span class="c"># 아웃바운드</span>
+100   TCP     443           0.0.0.0/0        ALLOW
+110   TCP     1024-65535    0.0.0.0/0        ALLOW
+*     전체    전체          0.0.0.0/0        DENY</code></pre>
+    <div class="prose">
+      <p>공격 대역을 막는 DENY는 ALLOW보다 <strong>작은 번호</strong>여야 효과가 있습니다. 번호를 10 단위로 띄워 두면 사이에 끼워 넣기 쉽습니다.</p>
+      <p>인바운드 110번은 서버가 밖으로 연 연결의 응답을 받기 위한 규칙입니다. NACL 규칙은 방향별 기본 20개(최대 40개)까지라 대량 IP 차단에는 맞지 않고, 그 일은 16장의 WAF가 맡습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>보안 그룹은 IP 대신 다른 보안 그룹을 가리킨다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>DB 보안 그룹의 소스를 IP 대역 대신 <code>sg-app</code>으로 지정하면, 그 보안 그룹이 붙은 ENI만 접근할 수 있습니다.</p>
+      <p>Auto Scaling으로 서버 IP가 계속 바뀌어도 규칙을 고칠 필요가 없고, 같은 서브넷의 엉뚱한 인스턴스는 IP가 맞아도 막힙니다. <mark>각 계층이 바로 앞 계층만 믿는</mark> 사슬이 됩니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 380" role="img" aria-labelledby="f19t">
+        <title id="f19t">인터넷에서 ALB 보안 그룹으로 443, ALB 보안 그룹에서 앱 보안 그룹으로 8080, 앱 보안 그룹에서 DB 보안 그룹으로 3306만 허용되는 보안 그룹 참조 사슬.</title>
+        <text class="dg-label--sm" x="115" y="30" text-anchor="middle">인터넷</text>
+        <path class="dg-arrow dg-arrow--flow" d="M115,42 V134"/>
+        <rect class="dg-zone" x="20" y="100" width="190" height="160"/>
+        <rect class="dg-zone" x="285" y="100" width="190" height="160"/>
+        <rect class="dg-zone" x="550" y="100" width="190" height="160"/>
+        <rect class="dg-box" x="40" y="142" width="150" height="60"/>
+        <text x="115" y="172" text-anchor="middle">ALB</text>
+        <rect class="dg-box dg-box--flow" x="305" y="142" width="150" height="60"/>
+        <text x="380" y="172" text-anchor="middle">앱 서버</text>
+        <rect class="dg-box" x="570" y="142" width="150" height="60"/>
+        <text x="645" y="172" text-anchor="middle">DB</text>
+        <path class="dg-arrow dg-arrow--flow" d="M196,172 H297"/>
+        <path class="dg-arrow dg-arrow--flow" d="M461,172 H562"/>
+        <text class="dg-mono dg-label--sm" x="115" y="236" text-anchor="middle">sg-alb</text>
+        <text class="dg-mono dg-label--sm" x="380" y="236" text-anchor="middle">sg-app</text>
+        <text class="dg-mono dg-label--sm" x="645" y="236" text-anchor="middle">sg-db</text>
+        <text class="dg-label--sm dg-label--muted" x="115" y="300" text-anchor="middle">인바운드</text>
+        <text class="dg-label--sm dg-label--muted" x="380" y="300" text-anchor="middle">인바운드</text>
+        <text class="dg-label--sm dg-label--muted" x="645" y="300" text-anchor="middle">인바운드</text>
+        <text class="dg-mono dg-label--sm" x="115" y="326" text-anchor="middle">443 ← 0.0.0.0/0</text>
+        <text class="dg-mono dg-label--sm" x="380" y="326" text-anchor="middle">8080 ← sg-alb</text>
+        <text class="dg-mono dg-label--sm" x="645" y="326" text-anchor="middle">3306 ← sg-app</text>
+      </svg>
+      <figcaption>각 계층은 바로 앞 계층의 보안 그룹만 소스로 허용합니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>보안 그룹 규칙에도 한도와 습관이 있다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>보안 그룹 하나에는 인바운드와 아웃바운드 각각 기본 <strong>60개</strong> 규칙을 둘 수 있고, ENI 하나에는 기본 <strong>5개</strong>(최대 16개)의 보안 그룹을 붙입니다. 두 값의 곱은 1,000을 넘지 못합니다.</p>
+      <p>주의할 점이 하나 있습니다. 허용 규칙을 지워도 <strong>이미 추적 중인 연결은 끊기지 않습니다</strong>. 공격 중인 연결을 즉시 끊어야 한다면 상태를 보지 않는 NACL의 DENY를 씁니다.</p>
+    </div>
+    <div class="prose">
+      <p>운영에서 지키는 습관은 세 가지입니다. 소스를 <code>0.0.0.0/0</code>으로 여는 것은 공개 로드 밸런서의 443뿐으로 제한합니다. 22번 포트는 열지 않고 14장의 SSM Session Manager로 접속합니다.</p>
+      <p>마지막으로 보안 그룹에 역할이 드러나는 이름과 설명을 붙입니다. 규칙마다 "왜 열었는가"가 남아 있지 않으면 아무도 지우지 못해 계속 늘어납니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>VPC 안의 DNS는 대역 +2 주소가 답한다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>VPC마다 <dfn>Route 53 Resolver</dfn>(최근 문서 표기 VPC Resolver)가 내장되어 있습니다. 주소는 VPC 기본 대역 +2(<code>10.0.0.2</code>)와 링크 로컬 <code>169.254.169.253</code>이고, 인스턴스는 DHCP로 이 주소를 받습니다.</p>
+      <p>이 리졸버가 인터넷 도메인은 2장의 재귀 조회로, 내부 이름과 프라이빗 호스팅 영역은 직접 답합니다.</p>
+    </div>
+    <div class="prose">
+      <p>VPC 속성 두 개가 이 동작을 켭니다. <code>enableDnsSupport</code>(기본 true)는 리졸버 사용 여부, <code>enableDnsHostnames</code>(새 VPC 기본 false)는 퍼블릭 IP를 가진 인스턴스에 DNS 이름을 붙일지입니다.</p>
+      <p><mark>프라이빗 호스팅 영역과 인터페이스 엔드포인트의 프라이빗 DNS는 둘 다 true여야</mark> 동작합니다. 그리고 링크 로컬 서비스(DNS, IMDS, NTP) 합계로 ENI당 초당 1,024패킷 한도가 있습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>IPv6는 Egress-only IGW로 나간다</h2>
+  <div class="prose">
+    <p>VPC에 IPv6 대역(/56)을 붙이면 서브넷마다 /64가 배정됩니다. IPv6 주소는 모두 전역 주소라 NAT가 없고, 그래서 "나가기만 되는 서브넷"을 다른 방법으로 만들어야 합니다.</p>
+    <p>그 장치가 <dfn title="Egress-only Internet Gateway">Egress-only 인터넷 게이트웨이</dfn>입니다. 라우팅 테이블에 <code>::/0 → eigw</code>를 넣으면 안에서 시작한 연결과 그 응답만 통과시키고, 밖에서 시작한 연결은 막습니다. 상태를 기억하지만 주소는 바꾸지 않습니다.</p>
+    <p>퍼블릭 IPv4 요금과 주소 고갈 때문에 IPv6 도입이 늘고 있습니다. 다만 보안 그룹과 NACL 규칙을 IPv4와 IPv6에 <strong>각각</strong> 써야 하므로, 한쪽만 열고 다른 쪽을 잊는 실수에 주의합니다.</p>
+  </div>
+</section>
+
+<!-- ===== 2부 VPC 연결 ===== -->
+<section class="slide slide--divider" data-section="VPC 연결" data-depth="core">
+  <p class="divider__no">2부</p>
+  <h2>VPC 밖과 잇는 다섯 가지 길</h2>
+  <p class="lede">VPC는 격리가 기본입니다. AWS 서비스, 다른 VPC, 사내망과 통신하려면 길을 따로 놓아야 하고, 길마다 동작 원리와 비용이 다릅니다.</p>
+  <div class="depth-shift" aria-label="깊이 전환: 기초에서 원리로">
+    <span class="depth-shift__step"><span class="depth" data-depth="basic"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>기초</span>
+    <span class="depth-shift__line" aria-hidden="true"></span>
+    <span class="depth-shift__step is-to"><span class="depth" data-depth="core"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>원리</span>
+    <span class="depth-shift__note">여기부터는 연결 장치마다 패킷이 어디를 지나는지 봅니다.</span>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>무엇과 잇느냐에 따라 장치가 정해진다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">연결 대상</th><th scope="col">장치</th><th scope="col">핵심 성질</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">AWS 서비스(S3 등)</th><td class="is-flow">VPC 엔드포인트</td><td>인터넷과 NAT를 거치지 않음</td></tr>
+        <tr><th scope="row">다른 VPC의 서비스 하나</th><td>PrivateLink</td><td>단방향, CIDR 겹쳐도 됨</td></tr>
+        <tr><th scope="row">다른 VPC 두세 개</th><td>VPC Peering</td><td>1:1, 전이되지 않음</td></tr>
+        <tr><th scope="row">VPC 수십 개와 사내망</th><td>Transit Gateway</td><td>허브 앤 스포크</td></tr>
+        <tr><th scope="row">사내 데이터 센터</th><td>Site-to-Site VPN, Direct Connect</td><td>인터넷 위 암호화 vs 전용선</td></tr>
+      </tbody>
+    </table>
+    <p class="small">하나씩 보되, 각 장치가 2장의 어떤 개념(라우팅, 터널, DNS)을 관리형으로 만든 것인지 함께 짚습니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>S3로 가는 트래픽이 NAT를 지날 이유는 없다</h2>
+  <div class="slide__body">
+    <div class="prose">
+      <p>Private 서브넷의 서버가 S3에 백업을 올리면, S3 주소는 퍼블릭 IP라서 기본 경로를 따라 NAT Gateway와 인터넷 게이트웨이를 지납니다. 같은 리전 안의 통신인데도 NAT 처리 요금이 GB마다 붙습니다.</p>
+      <p><dfn title="VPC Endpoint">VPC 엔드포인트</dfn>는 AWS 서비스로 가는 <mark>사설 지름길</mark>입니다. 경로를 라우팅 테이블에 넣는 <strong>게이트웨이</strong>형과 서브넷에 ENI를 만드는 <strong>인터페이스</strong>형이 있고, Isolated 서브넷에서도 동작합니다.</p>
+    </div>
+    <ol class="flow">
+      <li class="flow__node"><b>앱 서버</b><span>Private 서브넷</span></li>
+      <li class="flow__node is-key"><b>NAT Gateway</b><span>GB당 처리 요금</span></li>
+      <li class="flow__node"><b>IGW</b><span>퍼블릭 경로</span></li>
+      <li class="flow__node"><b>S3</b><span>같은 리전</span></li>
+    </ol>
+    <ol class="flow">
+      <li class="flow__node"><b>앱 서버</b><span>Private 서브넷</span></li>
+      <li class="flow__node is-flow"><b>엔드포인트</b><span>AWS 망 안에서 직접</span></li>
+      <li class="flow__node"><b>S3</b><span>NAT 요금 없음</span></li>
+    </ol>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>게이트웨이 엔드포인트는 라우팅 경로 한 줄이다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p><dfn title="Gateway Endpoint">게이트웨이 엔드포인트</dfn>는 <strong>S3와 DynamoDB</strong>만 지원합니다. 만들면서 고른 라우팅 테이블에 "S3의 IP 대역 목록(prefix list) → vpce" 경로가 자동으로 들어갑니다.</p>
+      <p>S3의 대역이 <code>0.0.0.0/0</code>보다 긴 프리픽스이므로 최장 일치 규칙에 따라 S3 트래픽만 엔드포인트로 빠집니다. 앱 코드는 바꿀 것이 없습니다.</p>
+    </div>
+    <div class="slide__body">
+      <aside class="callout callout--note">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>추가 요금이 없다</p>
+        <p>시간 요금도 데이터 처리 요금도 없습니다. S3를 쓰는 VPC라면 만들지 않을 이유가 거의 없습니다.</p>
+      </aside>
+      <aside class="callout callout--key">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>같은 리전, VPC 안에서만</p>
+        <p>다른 리전의 S3에는 쓸 수 없고, VPN이나 Peering 너머에서 이 경로를 빌려 쓸 수도 없습니다. 그때는 인터페이스 엔드포인트입니다.</p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>인터페이스 엔드포인트는 서브넷에 꽂힌 ENI다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p><dfn title="Interface Endpoint">인터페이스 엔드포인트</dfn>는 고른 서브넷마다 사설 IP를 가진 ENI를 만들고, 그 ENI가 서비스로 가는 입구가 됩니다. 이 기술의 이름이 <dfn>PrivateLink</dfn>입니다. ECR, Secrets Manager, SSM, CloudWatch Logs, STS 등 대부분의 서비스가 지원합니다.</p>
+      <p>ENI이므로 <strong>보안 그룹</strong>이 붙습니다. 앱 서버 보안 그룹에서 오는 443만 허용합니다.</p>
+    </div>
+    <div class="prose">
+      <p><strong>프라이빗 DNS</strong>를 켜면 <code>secretsmanager.ap-northeast-2.amazonaws.com</code>이 VPC 안에서는 엔드포인트 ENI의 사설 IP로 풀립니다. SDK 설정을 바꾸지 않아도 되는 이유입니다.</p>
+      <p>요금은 <mark>AZ마다 시간당 요금 + GB당 처리 요금</mark>(us-east-1 기준 각 0.01 USD)입니다. 서비스 10개를 3 AZ에 만들면 시간 요금만 한 달 약 216 USD이므로, 쓰는 서비스만 만듭니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>엔드포인트 정책으로 지름길에 문지기를 둔다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="S3 게이트웨이 엔드포인트 정책"><code>{
+  <span class="s">"Version"</span>: <span class="s">"2012-10-17"</span>,
+  <span class="s">"Statement"</span>: [{
+    <span class="s">"Effect"</span>: <span class="s">"Allow"</span>,
+    <span class="s">"Principal"</span>: <span class="s">"*"</span>,
+    <span class="s">"Action"</span>: [<span class="s">"s3:GetObject"</span>, <span class="s">"s3:PutObject"</span>],
+<span class="hl">    <span class="s">"Resource"</span>: <span class="s">"arn:aws:s3:::corp-prod-*/*"</span></span>
+  }]
+}</code></pre>
+    <div class="prose">
+      <p><dfn title="Endpoint Policy">엔드포인트 정책</dfn>은 12장의 리소스 기반 정책과 같은 문법으로, 이 엔드포인트를 지나는 요청에 한 번 더 조건을 겁니다. 기본값은 모두 허용입니다.</p>
+      <p>위 정책은 회사 버킷 외의 S3로는 데이터를 올리지 못하게 합니다. 탈취한 자격 증명으로 공격자 버킷에 <mark>데이터를 빼돌리는 경로</mark>를 막는 용도입니다. 권한을 주는 것이 아니라 IAM 정책과 함께 평가되어 범위를 좁힐 뿐입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>PrivateLink로 내 서비스를 내놓는다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>PrivateLink는 AWS 서비스만의 것이 아닙니다. 내 서비스 앞에 NLB를 두고 <dfn title="Endpoint Service">엔드포인트 서비스</dfn>로 등록하면, 다른 VPC나 다른 계정이 인터페이스 엔드포인트를 만들어 접속합니다.</p>
+      <p>연결은 <strong>소비자에서 제공자 방향으로만</strong> 열리고, 두 VPC의 라우팅은 섞이지 않습니다. 그래서 <mark>CIDR이 겹쳐도</mark> 연결할 수 있습니다. SaaS 업체가 고객 VPC에 사설로 API를 제공할 때 쓰는 방식입니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 360" role="img" aria-labelledby="f29t">
+        <title id="f29t">소비자 VPC의 앱이 자기 서브넷의 엔드포인트 ENI로 요청하면, PrivateLink를 통해 제공자 VPC의 NLB와 서비스로 전달된다. 두 VPC는 같은 10.0.0.0/16 대역을 쓴다.</title>
+        <rect class="dg-zone" x="20" y="40" width="330" height="280"/>
+        <text class="dg-label--sm" x="36" y="66" text-anchor="start">소비자 VPC 10.0.0.0/16</text>
+        <rect class="dg-zone" x="410" y="40" width="330" height="280"/>
+        <text class="dg-label--sm" x="426" y="66" text-anchor="start">제공자 VPC 10.0.0.0/16</text>
+        <rect class="dg-box" x="50" y="100" width="180" height="60"/>
+        <text x="140" y="130" text-anchor="middle">앱</text>
+        <rect class="dg-box dg-box--flow" x="50" y="220" width="270" height="60"/>
+        <text x="185" y="250" text-anchor="middle">엔드포인트 ENI</text>
+        <rect class="dg-box" x="440" y="220" width="130" height="60"/>
+        <text x="505" y="250" text-anchor="middle">NLB</text>
+        <rect class="dg-box" x="590" y="100" width="130" height="60"/>
+        <text x="655" y="130" text-anchor="middle">서비스</text>
+        <path class="dg-arrow dg-arrow--flow" d="M140,166 V212"/>
+        <path class="dg-arrow dg-arrow--flow" d="M326,250 H432"/>
+        <path class="dg-arrow dg-arrow--flow" d="M576,250 H625 Q655,250 655,220 V168"/>
+        <text class="dg-label--sm dg-label--flow" x="380" y="350" text-anchor="middle">PrivateLink 연결</text>
+      </svg>
+      <figcaption>소비자는 자기 서브넷의 사설 IP로 요청하고, 제공자는 NLB로 받습니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>VPC Peering은 둘만 잇는 1:1 연결이다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p><dfn>VPC Peering</dfn>은 두 VPC를 사설 IP로 직접 잇습니다. 다른 계정, 다른 리전과도 맺을 수 있고, 중간 장비가 없어 대역폭 한계나 단일 장애점이 없습니다. 양쪽 라우팅 테이블에 "상대 CIDR → pcx" 경로도 넣어야 합니다.</p>
+      <p>제약은 둘입니다. <strong>CIDR이 하나라도 겹치면</strong> 만들 수 없고, <mark>전이되지 않습니다</mark>. VPC n개를 모두 이으려면 n(n−1)/2개, 10개면 45개 연결이 필요합니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 380" role="img" aria-labelledby="f31pt">
+        <title id="f31pt">VPC A가 B, C와 각각 Peering으로 연결되어 있지만, B에서 A를 거쳐 C로 가는 경로는 성립하지 않는다.</title>
+        <rect class="dg-box dg-box--flow" x="280" y="30" width="200" height="64"/>
+        <text class="dg-label--lg" x="380" y="62" text-anchor="middle">VPC A</text>
+        <text class="dg-label--sm dg-label--muted" x="380" y="118" text-anchor="middle">10.10.0.0/16</text>
+        <rect class="dg-box" x="40" y="250" width="200" height="64"/>
+        <text class="dg-label--lg" x="140" y="282" text-anchor="middle">VPC B</text>
+        <text class="dg-label--sm dg-label--muted" x="140" y="340" text-anchor="middle">10.20.0.0/16</text>
+        <rect class="dg-box" x="520" y="250" width="200" height="64"/>
+        <text class="dg-label--lg" x="620" y="282" text-anchor="middle">VPC C</text>
+        <text class="dg-label--sm dg-label--muted" x="620" y="340" text-anchor="middle">10.30.0.0/16</text>
+        <path class="dg-arrow dg-arrow--flow dg-arrow--both" d="M300,104 L170,240"/>
+        <path class="dg-arrow dg-arrow--flow dg-arrow--both" d="M460,104 L590,240"/>
+        <path class="dg-arrow dg-arrow--key dg-arrow--back" d="M250,282 H510"/>
+        <rect class="dg-fill-paper" x="300" y="262" width="160" height="40"/>
+        <text class="dg-label--key" x="380" y="282" text-anchor="middle">B → C 불가</text>
+        <text class="dg-label--sm dg-label--flow" x="200" y="160" text-anchor="middle">pcx-ab</text>
+        <text class="dg-label--sm dg-label--flow" x="560" y="160" text-anchor="middle">pcx-ac</text>
+      </svg>
+      <figcaption>A를 거쳐 B에서 C로 가려면 B–C Peering을 따로 만들어야 합니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Transit Gateway는 연결을 허브로 모은다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p><dfn>Transit Gateway(TGW)</dfn>는 리전 안의 가상 라우터입니다. VPC, VPN, Direct Connect를 각각 <dfn>연결(attachment)</dfn>로 붙이면, 모두가 TGW 하나를 거쳐 서로 통신합니다.</p>
+      <p>VPC가 10개여도 연결은 10개면 됩니다. 사내망 VPN도 TGW에 한 번만 붙이면 모든 VPC에 닿습니다. VPC 연결 하나당 AZ마다 최대 100 Gbps까지 지원합니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 400" role="img" aria-labelledby="f31t">
+        <title id="f31t">Transit Gateway를 가운데 두고 운영 VPC, 개발 VPC, 공유 서비스 VPC, 사내망 VPN이 각각 하나의 연결로 붙은 허브 앤 스포크 구조.</title>
+        <rect class="dg-box dg-box--solid" x="280" y="170" width="200" height="64"/>
+        <text class="dg-label--on" x="380" y="202" text-anchor="middle">Transit Gateway</text>
+        <rect class="dg-box" x="40" y="40" width="190" height="60"/>
+        <text x="135" y="70" text-anchor="middle">운영 VPC</text>
+        <rect class="dg-box" x="530" y="40" width="190" height="60"/>
+        <text x="625" y="70" text-anchor="middle">개발 VPC</text>
+        <rect class="dg-box" x="40" y="300" width="190" height="60"/>
+        <text x="135" y="330" text-anchor="middle">공유 서비스 VPC</text>
+        <rect class="dg-box dg-box--muted" x="530" y="300" width="190" height="60"/>
+        <text x="625" y="330" text-anchor="middle">사내망(VPN)</text>
+        <path class="dg-arrow dg-arrow--both" d="M200,108 L300,162"/>
+        <path class="dg-arrow dg-arrow--both" d="M560,108 L460,162"/>
+        <path class="dg-arrow dg-arrow--both" d="M200,292 L300,242"/>
+        <path class="dg-arrow dg-arrow--both" d="M560,292 L460,242"/>
+      </svg>
+      <figcaption>각 VPC는 TGW에만 연결하고, 누가 누구와 통신할지는 TGW 라우팅 테이블이 정합니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>TGW 라우팅 테이블로 누가 누구와 통할지 정한다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="TGW 라우팅 테이블 설계"><code><span class="c"># rt-prod: 운영 VPC가 연결(association)됨</span>
+10.10.0.0/16   tgw-attach-prod      (전파)
+10.90.0.0/16   tgw-attach-shared    (전파)
+192.168.0.0/16 tgw-attach-vpn       (전파)
+
+<span class="c"># rt-dev: 개발 VPC가 연결됨</span>
+10.20.0.0/16   tgw-attach-dev       (전파)
+10.90.0.0/16   tgw-attach-shared    (전파)
+<span class="hl"><span class="c"># 운영 대역 경로가 없으므로 개발 → 운영 불가</span></span></code></pre>
+    <div class="prose">
+      <p>TGW 연결은 라우팅 테이블 하나에 <strong>연결(association)</strong>되어 그 표로 목적지를 찾고, 여러 표에 자기 대역을 <strong>전파(propagation)</strong>할 수 있습니다.</p>
+      <p>운영과 개발이 공유 서비스에는 닿되 <mark>서로는 닿지 못하게</mark> 하려면 위처럼 표를 나눕니다. 각 VPC의 서브넷 라우팅 테이블에도 "다른 대역 → tgw" 경로가 있어야 합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Peering과 TGW는 규모와 비용으로 고른다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">항목</th><th scope="col">VPC Peering</th><th scope="col">Transit Gateway</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">구조</th><td>1:1 그물망</td><td>허브 앤 스포크</td></tr>
+        <tr><th scope="row">전이 라우팅</th><td class="is-key">불가</td><td class="is-flow">가능(VPN, DX 포함)</td></tr>
+        <tr><th scope="row">요금</th><td>연결 무료, 전송 요금만</td><td>연결당 시간 + GB당 처리</td></tr>
+        <tr><th scope="row">지연</th><td>추가 홉 없음</td><td>TGW 홉 하나 추가</td></tr>
+        <tr><th scope="row">어울리는 규모</th><td>VPC 두세 개</td><td>VPC 여러 개, 하이브리드</td></tr>
+      </tbody>
+    </table>
+    <p class="small">둘을 섞어 쓰기도 합니다. 대부분은 TGW로 묶고, 트래픽이 아주 많은 VPC 한 쌍만 Peering으로 직접 이어 TGW 처리 요금을 피합니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>VPN은 인터넷 위에 암호 터널을 판다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p><dfn>Site-to-Site VPN</dfn>은 사내 라우터(고객 게이트웨이)와 AWS 사이에 IPsec 터널을 맺는 관리형 VPN입니다. AWS 쪽 끝은 VPC에 붙는 가상 프라이빗 게이트웨이(VGW)나 TGW입니다.</p>
+      <p>연결 하나에 <mark>터널이 항상 두 개</mark>, 서로 다른 AWS 장비에 맺힙니다. AWS 쪽 유지 보수 중 한 터널이 내려가도 다른 쪽으로 통하도록 두 터널 모두 구성해야 합니다.</p>
+    </div>
+    <div class="prose">
+      <p>표준 터널 하나의 대역폭은 최대 <strong>1.25 Gbps</strong>입니다(대역폭 확장 터널은 5 Gbps). TGW에 붙이고 BGP 동적 라우팅을 쓰면 ECMP로 여러 터널을 묶어 더 키울 수 있습니다.</p>
+      <p>장점은 몇 분이면 만든다는 것, 단점은 인터넷을 지나므로 지연과 대역폭이 일정하지 않다는 것입니다. 그래서 초기 연결이나 전용선의 백업으로 많이 씁니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Direct Connect는 전용선을 깐다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p><dfn>Direct Connect(DX)</dfn>는 사내망과 AWS를 인터넷을 거치지 않는 물리 회선으로 잇습니다. 데이터 센터에서 DX 로케이션까지 회선을 끌어와, 그곳의 AWS 라우터와 연결합니다.</p>
+      <p>전용 연결은 1, 10, 100, 400 Gbps이고, 파트너가 나눠 주는 호스팅 연결은 더 작은 단위로 받습니다. 개통에 몇 주가 걸리고, 회선 자체는 <strong>암호화되지 않으므로</strong> 필요하면 위에 VPN이나 MACsec을 얹습니다.</p>
+    </div>
+    <table class="compare">
+      <thead><tr><th scope="col">가상 인터페이스(VIF)</th><th scope="col">닿는 곳</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Private VIF</th><td>VPC(VGW 또는 DX 게이트웨이 경유)</td></tr>
+        <tr><th scope="row">Transit VIF</th><td>DX 게이트웨이 → TGW</td></tr>
+        <tr><th scope="row">Public VIF</th><td>S3 등 AWS 퍼블릭 서비스</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>전용선 하나는 단일 장애점이라 VPN을 뒤에 둔다</h2>
+  <div class="prose">
+    <p>회선은 굴착 공사 한 번에 끊깁니다. DX 하나만 쓰면 사내망과 AWS의 연결 전체가 그 회선에 달려 있습니다. 중요도에 따라 서로 다른 DX 로케이션에 회선을 두 개 이상 두거나, 최소한 <mark>Site-to-Site VPN을 백업 경로</mark>로 둡니다.</p>
+    <p>두 경로가 같은 대역을 광고하면 AWS는 경로 선택에서 DX를 VPN보다 우선합니다. 평소에는 전용선으로 흐르고, DX의 BGP 세션이 끊기면 VPN으로 넘어갑니다.</p>
+    <p>장애 조치는 실제로 회선을 내려 시험해 봐야 믿을 수 있습니다. 백업 VPN의 대역폭이 평소 트래픽을 감당하지 못하면 넘어간 뒤에 혼잡으로 다시 장애가 납니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>하이브리드 DNS는 리졸버 엔드포인트로</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>VPN이나 DX로 IP가 통해도 이름은 통하지 않습니다. 사내 DNS는 프라이빗 호스팅 영역을 모르고, VPC 리졸버는 <code>corp.local</code>을 모르기 때문입니다.</p>
+      <p><strong>인바운드 엔드포인트</strong>는 사내 DNS가 VPC 쪽 이름을 물어 올 사설 IP를 열고, <strong>아웃바운드 엔드포인트</strong>와 <dfn title="Resolver rule">전달 규칙</dfn>은 "<code>corp.local</code>은 사내 DNS로 넘겨라"를 실행합니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 380" role="img" aria-labelledby="f37t">
+        <title id="f37t">VPC 안의 앱이 corp.local을 물으면 VPC 리졸버가 전달 규칙에 따라 아웃바운드 엔드포인트를 거쳐 사내 DNS로 넘긴다. 사내 서버가 VPC의 내부 이름을 물으면 사내 DNS가 인바운드 엔드포인트로 넘겨 VPC 리졸버가 답한다.</title>
+        <rect class="dg-zone" x="20" y="30" width="430" height="330"/>
+        <text class="dg-label--sm" x="36" y="56" text-anchor="start">VPC</text>
+        <rect class="dg-box" x="50" y="80" width="150" height="60"/>
+        <text x="125" y="110" text-anchor="middle">앱</text>
+        <rect class="dg-box dg-box--solid" x="50" y="200" width="150" height="64"/>
+        <text class="dg-label--on" x="125" y="232" text-anchor="middle">VPC 리졸버</text>
+        <rect class="dg-box dg-box--flow" x="260" y="100" width="170" height="60"/>
+        <text x="345" y="130" text-anchor="middle">아웃바운드 EP</text>
+        <rect class="dg-box dg-box--flow" x="260" y="270" width="170" height="60"/>
+        <text x="345" y="300" text-anchor="middle">인바운드 EP</text>
+        <rect class="dg-zone" x="510" y="30" width="230" height="330"/>
+        <text class="dg-label--sm" x="526" y="56" text-anchor="start">사내망</text>
+        <rect class="dg-box" x="540" y="180" width="170" height="64"/>
+        <text x="625" y="212" text-anchor="middle">사내 DNS</text>
+        <path class="dg-arrow dg-arrow--flow" d="M125,146 V192"/>
+        <path class="dg-arrow dg-arrow--flow" d="M206,214 Q240,214 240,180 V160 Q240,130 252,130"/>
+        <path class="dg-arrow dg-arrow--flow" d="M436,130 H580 Q610,130 610,160 V172"/>
+        <path class="dg-arrow dg-arrow--back" d="M610,252 V270 Q610,300 580,300 H438"/>
+        <path class="dg-arrow dg-arrow--back" d="M254,300 H155 Q125,300 125,272"/>
+        <text class="dg-label--sm dg-label--flow" x="500" y="116" text-anchor="middle">corp.local</text>
+        <text class="dg-label--sm" x="500" y="326" text-anchor="middle">*.aws.corp</text>
+      </svg>
+      <ul class="legend">
+        <li class="is-flow"><i></i>VPC에서 사내 이름 조회</li>
+        <li class="is-dash"><i></i>사내에서 VPC 이름 조회</li>
+      </ul>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Client VPN과 Lattice는 쓰임새만 본다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p><dfn>Client VPN</dfn>은 사무실 단위가 아니라 <strong>개인 단말</strong>이 VPC에 붙는 관리형 OpenVPN 서비스입니다. 재택 근무자가 노트북에서 사설 리소스에 접근할 때 씁니다. 인증은 Active Directory, SAML, 인증서로 하고, 연결된 서브넷 시간과 접속 수로 과금됩니다.</p>
+    </div>
+    <div class="prose">
+      <p><dfn>VPC Lattice</dfn>는 VPC와 계정을 가로질러 <strong>서비스 단위</strong>로 연결하는 L7 서비스 네트워크입니다. IP 라우팅을 맞추는 대신 서비스 이름으로 찾고, IAM 기반 인증 정책과 경로별 라우팅을 함께 제공합니다.</p>
+      <p>MSA에서 서비스 간 통신을 VPC 구조와 분리하고 싶을 때 검토합니다. 10장의 서비스 메시와 같은 문제를 AWS 관리형으로 푸는 쪽입니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 3부 ELB ===== -->
+<section class="slide slide--divider" data-section="Elastic Load Balancing" data-depth="core">
+  <p class="divider__no">3부</p>
+  <h2>트래픽을 나누는 관리형 로드 밸런서</h2>
+  <p class="lede">2장의 L4/L7 구분과 8장의 로드 밸런싱 알고리즘을 AWS가 제품으로 만든 것이 ELB입니다. 종류를 고르고, ALB와 NLB의 설정 하나하나가 무엇을 바꾸는지 봅니다.</p>
+</section>
+
+<section class="slide">
+  <h2>ELB는 계층과 용도에 따라 네 종류다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">항목</th><th scope="col">ALB</th><th scope="col">NLB</th><th scope="col">GWLB</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">계층</th><td>L7: HTTP, HTTPS, gRPC</td><td>L4: TCP, UDP, TLS</td><td>L3: 모든 IP 패킷</td></tr>
+        <tr><th scope="row">라우팅 기준</th><td class="is-flow">호스트, 경로, 헤더 등</td><td>흐름 해시</td><td>흐름 해시(5-튜플)</td></tr>
+        <tr><th scope="row">IP 주소</th><td>바뀜, DNS 이름으로 접근</td><td class="is-flow">AZ별 고정, EIP 가능</td><td>사설 엔드포인트</td></tr>
+        <tr><th scope="row">대표 용도</th><td>웹, REST API</td><td>비 HTTP, 고정 IP, PrivateLink</td><td>방화벽 어플라이언스 삽입</td></tr>
+      </tbody>
+    </table>
+    <p class="small">네 번째인 CLB(Classic Load Balancer)는 L4와 L7을 어설프게 겸하던 1세대 제품으로, 새로 만들 이유가 없는 레거시입니다. 남아 있다면 ALB나 NLB로 옮깁니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>로드 밸런서는 AZ마다 노드를 두고 DNS로 찾는다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>ALB를 만들 때 AZ마다 서브넷을 하나씩 고르면, 그 서브넷마다 로드 밸런서 <strong>노드</strong>가 생깁니다. 클라이언트는 <code>my-alb-123.ap-northeast-2.elb.amazonaws.com</code> 같은 DNS 이름을 조회하고, 응답으로 받은 노드 IP 중 하나로 접속합니다.</p>
+      <p>트래픽이 늘면 AWS가 노드를 키우거나 늘리고 DNS 응답을 바꿉니다. 이 DNS 레코드의 TTL은 <strong>60초</strong>입니다.</p>
+    </div>
+    <div class="prose">
+      <p>그래서 ALB의 IP는 언제든 바뀝니다. 방화벽에 ALB IP를 고정 등록하거나, 앱이 DNS 결과를 영원히 캐시하면 어느 날 갑자기 연결이 실패합니다.</p>
+      <p>로드 밸런서 서브넷에는 확장을 위해 <mark>여유 IP가 최소 8개</mark> 필요하고, AWS는 /27 이상을 권합니다. 고정 IP가 꼭 필요하면 NLB를 쓰거나 16장의 Global Accelerator를 앞에 둡니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>요청은 리스너, 규칙, 대상 그룹 순으로 흐른다</h2>
+  <div class="slide__body">
+    <ol class="flow">
+      <li class="flow__node"><b>클라이언트</b><span>DNS로 노드 IP 획득</span></li>
+      <li class="flow__node"><b>리스너</b><span>:443, TLS 종료</span></li>
+      <li class="flow__node is-flow"><b>규칙</b><span>우선순위 순으로 평가</span></li>
+      <li class="flow__node"><b>대상 그룹</b><span>건강한 대상만 후보</span></li>
+      <li class="flow__node"><b>대상</b><span>EC2, IP, Lambda</span></li>
+    </ol>
+    <div class="prose">
+      <p><dfn title="Listener">리스너</dfn>는 "어느 포트, 어느 프로토콜로 받는가"입니다. 리스너마다 <dfn title="Rule">규칙</dfn> 목록이 있어 우선순위 번호가 낮은 것부터 조건을 맞춰 보고, 처음 맞은 규칙의 액션을 실행합니다. 아무것도 맞지 않으면 지울 수 없는 기본 규칙이 처리합니다.</p>
+      <p><dfn title="Target Group">대상 그룹</dfn>은 같은 일을 하는 서버 묶음이고, 헬스 체크와 분배 알고리즘(기본 라운드 로빈, 또는 최소 미처리 요청)을 대상 그룹마다 따로 정합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>ALB 규칙은 여섯 가지 조건으로 요청을 고른다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">조건</th><th scope="col">예시</th><th scope="col">쓰임</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">host-header</th><td><code>api.example.com</code></td><td>도메인별 서비스 분리</td></tr>
+        <tr><th scope="row">path-pattern</th><td><code>/orders/*</code></td><td>경로별 MSA 라우팅</td></tr>
+        <tr><th scope="row">http-header</th><td><code>X-Canary: true</code></td><td>테스트 트래픽 분리</td></tr>
+        <tr><th scope="row">http-request-method</th><td><code>GET</code></td><td>읽기/쓰기 분리</td></tr>
+        <tr><th scope="row">query-string</th><td><code>version=v2</code></td><td>버전 분기</td></tr>
+        <tr><th scope="row">source-ip</th><td><code>10.0.0.0/8</code></td><td>사내망만 관리자 경로</td></tr>
+      </tbody>
+    </table>
+    <p class="small">한 규칙에 여러 조건을 넣으면 모두 맞아야 합니다(AND). 조건 하나에는 값을 3개까지 넣을 수 있고 그중 하나만 맞으면 됩니다(OR). 와일드카드 <code>*</code>, <code>?</code>와 정규식을 쓸 수 있으며, source-ip는 X-Forwarded-For가 아닌 실제 접속 IP를 봅니다. ALB 하나당 규칙은 기본 100개입니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>액션은 전달, 리다이렉트, 고정 응답, 인증이다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>aws elbv2 create-rule --listener-arn $L443 \
+  --priority 10 \
+  --conditions Field=path-pattern,Values=<span class="s">'/orders/*'</span> \
+  --actions Type=forward,TargetGroupArn=$TG_ORDER
+
+<span class="prompt">$ </span>aws elbv2 create-listener --load-balancer-arn $ALB \
+  --protocol HTTP --port 80 \
+<span class="hl">  --default-actions <span class="s">'Type=redirect,RedirectConfig='</span>\</span>
+<span class="hl"><span class="s">'{Protocol=HTTPS,Port=443,StatusCode=HTTP_301}'</span></span></code></pre>
+    <div class="prose">
+      <p><strong>forward</strong>는 대상 그룹으로 보내고, <strong>redirect</strong>는 클라이언트에게 다른 URL로 가라고 답합니다. 80번 리스너 전체를 HTTPS로 돌리는 것이 대표 용도입니다.</p>
+      <p><strong>fixed-response</strong>는 서버를 거치지 않고 ALB가 직접 답합니다. 점검 중 503 페이지나 막아 둔 경로의 404에 씁니다. 마지막 <strong>authenticate</strong>는 뒤에서 따로 봅니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>가중치 대상 그룹으로 트래픽을 비율대로 나눈다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="forward 액션 (JSON)"><code>{
+  <span class="s">"Type"</span>: <span class="s">"forward"</span>,
+  <span class="s">"ForwardConfig"</span>: {
+    <span class="s">"TargetGroups"</span>: [
+<span class="hl">      { <span class="s">"TargetGroupArn"</span>: <span class="s">"...tg-v1"</span>, <span class="s">"Weight"</span>: <span class="n">90</span> },</span>
+<span class="hl">      { <span class="s">"TargetGroupArn"</span>: <span class="s">"...tg-v2"</span>, <span class="s">"Weight"</span>: <span class="n">10</span> }</span>
+    ],
+    <span class="s">"TargetGroupStickinessConfig"</span>: {
+      <span class="s">"Enabled"</span>: <span class="k">true</span>, <span class="s">"DurationSeconds"</span>: <span class="n">3600</span>
+    }
+  }
+}</code></pre>
+    <div class="prose">
+      <p>forward 액션 하나에 대상 그룹을 여러 개 넣고 가중치를 주면, ALB가 요청을 그 비율로 나눕니다. 새 버전에 10%만 보내는 11장의 Canary를 DNS 캐시 걱정 없이 즉시 바꿀 수 있습니다.</p>
+      <p>대상 그룹 단위 고정을 켜면 한 사용자는 정해진 시간 동안 <mark>같은 버전에만</mark> 머뭅니다. 화면마다 버전이 바뀌는 혼란을 막습니다. AWS 배포 도구와의 연결은 18장에서 봅니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>대상 유형은 instance, ip, lambda</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">유형</th><th scope="col">등록하는 것</th><th scope="col">어울리는 곳</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">instance</th><td>인스턴스 ID(기본 ENI로 전달)</td><td>EC2와 Auto Scaling 그룹</td></tr>
+        <tr><th scope="row">ip</th><td>사설 IP와 포트</td><td class="is-flow">ECS awsvpc, EKS Pod, 사내 서버</td></tr>
+        <tr><th scope="row">lambda</th><td>함수 하나</td><td>가벼운 HTTP 엔드포인트</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>컨테이너 환경에서는 <strong>ip 유형</strong>이 표준입니다. 태스크나 Pod마다 자기 IP를 가지므로 ALB가 노드를 거치지 않고 컨테이너로 바로 보냅니다. ip 유형은 Peering이나 VPN 너머의 사설 IP도 등록할 수 있어, 사내 서버를 같은 ALB 뒤에 섞는 이전 작업에도 씁니다.</p>
+      <p>lambda 유형은 대상 그룹에 함수 하나만 등록되며, ALB가 HTTP 요청을 이벤트 JSON으로 바꿔 함수를 호출합니다. 17장에서 API Gateway와 비교합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>헬스 체크는 다섯 숫자로 동작이 정해진다</h2>
+  <div class="split split--even">
+    <table class="compare">
+      <thead><tr><th scope="col">설정</th><th scope="col">ALB 기본값</th><th scope="col">범위</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">간격</th><td class="num">30초</td><td class="num">5~300초</td></tr>
+        <tr><th scope="row">타임아웃</th><td class="num">5초</td><td class="num">2~120초</td></tr>
+        <tr><th scope="row">정상 임계값</th><td class="num">연속 5회</td><td class="num">2~10</td></tr>
+        <tr><th scope="row">비정상 임계값</th><td class="num">연속 2회</td><td class="num">2~10</td></tr>
+        <tr><th scope="row">성공 코드</th><td class="num">200</td><td class="num">200~499</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>기본값으로 계산하면 죽은 서버는 30초 × 2회, <mark>약 1분 안에 빠지지만</mark> 살아난 서버는 30초 × 5회, 2분 30초가 지나야 돌아옵니다.</p>
+      <p>빨리 빼고 싶으면 간격을 10초로 줄입니다. 다만 대상이 많으면 헬스 체크 요청 자체가 부하가 되므로, 경로는 DB를 건드리지 않는 가벼운 <code>/health</code>로 둡니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>모든 대상이 비정상이면 ALB는 전부에 보낸다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>대상 그룹의 모든 대상이 비정상으로 판정되면, ALB는 요청을 버리는 대신 <strong>비정상 대상 전부에게</strong> 계속 보냅니다. 이를 페일 오픈(fail open)이라 합니다.</p>
+      <p>헬스 체크가 틀렸을 가능성, 예를 들어 헬스 체크 경로만 고장 난 경우를 대비한 설계입니다. 서비스가 실제로 살아 있다면 사용자는 계속 응답을 받습니다.</p>
+    </div>
+    <aside class="callout callout--key">
+      <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>헬스 체크에 DB 확인을 넣지 마세요</p>
+      <p>DB가 잠깐 느려지면 모든 서버가 동시에 비정상이 되고, Auto Scaling이 ELB 헬스 체크를 쓰고 있다면 멀쩡한 서버를 전부 교체하기 시작합니다. 의존성 확인은 별도 지표로 봅니다.</p>
+    </aside>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>등록 해제 지연은 진행 중인 요청을 기다린다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>배포나 스케일 인으로 대상이 빠질 때, ALB는 그 대상에 <strong>새 요청을 보내지 않고</strong> 진행 중인 요청이 끝나기를 기다립니다. 이 상태가 draining이고, 기본 대기 시간이 <mark>300초</mark>입니다.</p>
+      <p>진행 중인 요청과 연결이 없으면 더 기다리지 않고 바로 끝냅니다. 반대로 대기 중에 대상이 먼저 연결을 끊으면 클라이언트는 5xx를 받습니다.</p>
+    </div>
+    <div class="prose">
+      <p>값은 앱의 가장 긴 요청에 맞춥니다. 요청이 수 초인 API라면 30~60초로 줄여 배포를 빠르게 하고, 큰 파일 업로드가 있다면 늘립니다.</p>
+      <p>앱 쪽 종료 대기(11장의 Graceful Shutdown, 10장의 Pod 종료 절차)는 이 값보다 <strong>길게</strong> 둡니다. 그래야 ALB가 손을 뗀 뒤에 앱이 닫힙니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>slow start는 새 서버를 천천히 데운다</h2>
+  <div class="prose">
+    <p>새 대상이 헬스 체크를 통과하면 기본적으로 즉시 자기 몫의 요청을 전부 받습니다. 그런데 JVM 앱은 막 뜬 직후 JIT 컴파일 전이고, 커넥션 풀과 로컬 캐시도 비어 있어 느립니다. 이때 몰리는 요청이 타임아웃을 만듭니다.</p>
+    <p><dfn>slow start</dfn>를 30~900초로 켜면, 그 시간 동안 ALB가 새 대상에 보내는 요청을 <mark>0에서 선형으로 늘립니다</mark>. 5장의 JIT 워밍업 시간을 로드 밸런서가 벌어 주는 셈입니다.</p>
+    <p>제약도 있습니다. 대상 그룹에 이미 정상 대상이 하나는 있어야 적용되고, 최소 미처리 요청 알고리즘과는 함께 쓸 수 없습니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>스티키 세션은 쿠키로 같은 서버에 묶는다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>8장에서 본 Sticky Session을 ALB는 쿠키로 구현합니다. <strong>기간 기반</strong>은 ALB가 만든 <code>AWSALB</code> 쿠키로, <strong>애플리케이션 기반</strong>은 앱이 정한 쿠키 이름을 보고 같은 대상으로 보냅니다.</p>
+      <p>유지 시간은 1초에서 7일까지, 기본 1일입니다. 기본값은 꺼져 있습니다.</p>
+    </div>
+    <aside class="callout callout--key">
+      <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>고정은 부하 불균형을 낳는다</p>
+      <p>새로 추가된 서버는 기존 사용자를 받지 못해 놀고, 서버가 죽으면 그 사용자 세션은 사라집니다. 8장처럼 세션을 Redis로 외부화하고 고정은 끄는 것이 기본입니다.</p>
+    </aside>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>원래 요청은 X-Forwarded 헤더로 읽는다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="ALB가 대상에 보내는 요청"><code>GET /orders/42 HTTP/1.1
+Host: api.example.com
+<span class="hl">X-Forwarded-For: 203.0.113.7</span>
+X-Forwarded-Proto: https
+X-Forwarded-Port: 443
+X-Amzn-Trace-Id: Root=1-67a1b2c3-...</code></pre>
+    <div class="prose">
+      <p>ALB는 클라이언트와의 연결을 끊고 대상과 새 연결을 맺습니다. 그래서 서버가 보는 소스 IP는 <strong>ALB 노드의 사설 IP</strong>입니다.</p>
+      <p>원래 IP는 <code>X-Forwarded-For</code>에, HTTPS였는지는 <code>-Proto</code>에 담깁니다. Spring에서는 <code>server.forward-headers-strategy</code>로 이 헤더를 믿게 해야 리다이렉트 URL이 http로 잘못 만들어지지 않습니다. 헤더는 위조될 수 있으니 ALB 뒤에서만 믿습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>ALB가 로그인을 대신 받아 줄 수도 있다</h2>
+  <div class="split split--wide-left">
+    <div class="seq" role="img" aria-label="로그인하지 않은 사용자가 ALB에 요청하면 ALB가 OIDC 제공자로 리다이렉트하고, 로그인 후 받은 인가 코드를 ALB가 토큰으로 교환해 세션 쿠키를 발급한 뒤 사용자 정보 헤더를 붙여 대상으로 전달한다">
+      <div class="seq__head"><span>브라우저</span><span></span><span>ALB</span></div>
+      <div class="seq__row seq__row--r">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>GET /admin</b> 세션 쿠키 없음</span>
+        <span class="seq__state"></span>
+      </div>
+      <div class="seq__row seq__row--l">
+        <span class="seq__state">IdP 로그인</span>
+        <span class="seq__msg"><b>302</b> OIDC 제공자로 이동</span>
+        <span class="seq__state"></span>
+      </div>
+      <div class="seq__row seq__row--r">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>콜백</b> 인가 코드 전달</span>
+        <span class="seq__state is-key">코드를 토큰으로 교환</span>
+      </div>
+      <div class="seq__row seq__row--l is-back">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>302</b> AWSELBAuthSessionCookie 발급</span>
+        <span class="seq__state"></span>
+      </div>
+      <div class="seq__row seq__row--note">
+        <span></span><span class="seq__msg"><span>이후 요청은 x-amzn-oidc-data 헤더와 함께 대상으로</span></span><span></span>
+      </div>
+    </div>
+    <div class="prose">
+      <p>리스너 규칙의 <strong>authenticate-oidc</strong>나 <strong>authenticate-cognito</strong> 액션은 7장의 OAuth Authorization Code 흐름을 ALB가 대신 처리합니다.</p>
+      <p>사내 관리 도구처럼 <mark>앱에 로그인 기능이 없는 서비스</mark>를 회사 SSO 뒤에 둘 때 유용합니다. 앱은 헤더의 서명된 사용자 정보를 검증해 씁니다. Cognito 자체는 16장에서 다룹니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>NLB는 연결을 열어 보지 않고 넘긴다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p><dfn title="Network Load Balancer">NLB</dfn>는 프로토콜, 출발지·목적지 IP와 포트로 흐름을 해시해 대상을 고르고, 그 흐름의 패킷을 계속 같은 대상으로 보냅니다. 요청을 읽지 않아 지연이 매우 낮습니다.</p>
+      <p>가장 큰 차별점은 <mark>AZ마다 고정 IP</mark>이고, 원하면 내 EIP를 지정합니다. PrivateLink 엔드포인트 서비스도 NLB(또는 GWLB) 뒤에만 만들 수 있습니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 400" role="img" aria-labelledby="f53t">
+        <title id="f53t">ALB는 클라이언트와 ALB 사이, ALB와 대상 사이에 TCP 연결을 각각 맺고 요청을 읽어 라우팅한다. NLB는 클라이언트의 TCP 흐름 하나를 그대로 대상까지 전달한다.</title>
+        <text class="dg-label--sm" x="20" y="26" text-anchor="start">ALB: 연결이 둘</text>
+        <rect class="dg-box" x="20" y="44" width="170" height="60"/>
+        <text x="105" y="74" text-anchor="middle">클라이언트</text>
+        <rect class="dg-box dg-box--flow" x="295" y="44" width="170" height="60"/>
+        <text x="380" y="74" text-anchor="middle">ALB</text>
+        <rect class="dg-box" x="570" y="44" width="170" height="60"/>
+        <text x="655" y="74" text-anchor="middle">대상</text>
+        <path class="dg-arrow dg-arrow--flow" d="M196,74 H287"/>
+        <path class="dg-arrow dg-arrow--flow" d="M471,74 H562"/>
+        <text class="dg-label--sm" x="242" y="130" text-anchor="middle">TCP 연결 1</text>
+        <text class="dg-label--sm" x="517" y="130" text-anchor="middle">TCP 연결 2</text>
+        <text class="dg-label--sm dg-label--flow" x="380" y="160" text-anchor="middle">HTTP를 읽고 규칙으로 고름</text>
+        <line class="dg-line dg-line--thin" x1="20" y1="196" x2="740" y2="196"/>
+        <text class="dg-label--sm" x="20" y="228" text-anchor="start">NLB: 흐름이 하나</text>
+        <rect class="dg-box" x="20" y="246" width="170" height="60"/>
+        <text x="105" y="276" text-anchor="middle">클라이언트</text>
+        <rect class="dg-box dg-box--ghost" x="295" y="246" width="170" height="60"/>
+        <text x="380" y="276" text-anchor="middle">NLB</text>
+        <rect class="dg-box" x="570" y="246" width="170" height="60"/>
+        <text x="655" y="276" text-anchor="middle">대상</text>
+        <path class="dg-arrow dg-arrow--flow" d="M196,276 H287"/>
+        <path class="dg-arrow dg-arrow--flow" d="M471,276 H562"/>
+        <text class="dg-label--sm" x="380" y="336" text-anchor="middle">같은 TCP 흐름이 대상까지 이어짐</text>
+        <text class="dg-label--sm dg-label--flow" x="380" y="366" text-anchor="middle">흐름 해시로 고르고 내용은 읽지 않음</text>
+      </svg>
+      <figcaption>비 HTTP 프로토콜, 초당 수백만 연결, 고정 IP가 필요할 때 NLB를 씁니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>NLB는 클라이언트 IP를 그대로 전달할 수 있다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>ALB와 달리 NLB는 패킷의 출발지 IP를 클라이언트 IP 그대로 둘 수 있습니다. 이 <dfn title="Client IP preservation">클라이언트 IP 보존</dfn>은 instance 유형 대상에서 기본으로 켜져 있고, ip 유형의 TCP·TLS 대상에서는 기본으로 꺼져 있습니다.</p>
+      <p>꺼져 있을 때 원래 IP가 필요하면 Proxy Protocol v2 헤더를 켜서 앱이 읽게 합니다.</p>
+    </div>
+    <div class="prose">
+      <p>보존이 켜져 있으면 대상의 보안 그룹은 <strong>클라이언트 IP</strong>를 기준으로 열려 있어야 합니다. NLB IP만 열어 두면 막힙니다.</p>
+      <p>NLB는 2023년부터 보안 그룹을 지원합니다. 대상 보안 그룹의 소스를 NLB 보안 그룹으로 지정하면 클라이언트 IP 보존과 관계없이 NLB를 거친 트래픽만 받습니다. 단, <mark>보안 그룹은 NLB를 만들 때 붙여야</mark> 하고 나중에 처음 붙일 수는 없습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>NLB의 TLS는 넘기거나 풀거나 둘 중 하나다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p><strong>TCP 리스너(패스스루)</strong>로 443을 받으면 NLB는 암호문을 그대로 대상에 넘기고, 대상이 직접 TLS를 처리합니다. 인증서 관리는 서버 몫이지만 종단 간 암호화가 유지되고 mTLS 클라이언트 인증서도 서버까지 닿습니다.</p>
+      <p><strong>TLS 리스너(종료)</strong>는 NLB가 ACM 인증서로 TLS를 풀고 대상에 평문이나 새 TLS로 보냅니다. TLS 연산을 NLB가 대신합니다.</p>
+    </div>
+    <div class="prose">
+      <p>유휴 타임아웃도 ALB와 다릅니다. NLB의 TCP 흐름은 기본 <strong>350초</strong>(60~6,000초로 변경 가능), TLS 리스너는 350초 고정, UDP는 120초입니다.</p>
+      <p>350초 동안 아무 데이터도 오가지 않으면 NLB는 흐름을 잊고, 그 뒤에 보낸 패킷에는 RST가 돌아옵니다. <mark>오래 쉬는 DB 커넥션 풀</mark>이 NLB 뒤에서 끊기는 원인이므로 TCP keepalive를 그보다 짧게 둡니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>GWLB는 보안 장비를 트래픽 경로에 끼워 넣는다</h2>
+  <div class="prose">
+    <p>회사 정책상 모든 트래픽이 방화벽, IDS 같은 제3자 보안 어플라이언스를 지나야 할 때가 있습니다. 어플라이언스를 한 대만 두면 단일 장애점이 되고, 여러 대를 두면 같은 흐름의 왕복 패킷이 같은 장비를 지나도록 맞추기 어렵습니다.</p>
+    <p><dfn title="Gateway Load Balancer">GWLB</dfn>는 L3에서 모든 IP 패킷을 받아 GENEVE 프로토콜(포트 6081)로 감싸 어플라이언스에 보내고, 흐름마다 같은 장비를 유지합니다. 장비는 검사한 패킷을 다시 GWLB로 돌려보내고, 패킷은 원래 목적지로 갑니다.</p>
+    <p>다른 VPC에서는 GWLB 엔드포인트를 라우팅 테이블의 타깃으로 지정해 트래픽을 끌어옵니다. 직접 운영하기보다 보안 팀의 검사 VPC 설계에서 만나는 경우가 많습니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Cross-Zone은 AZ 간 불균형을 지운다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>클라이언트 트래픽은 DNS 응답에 따라 먼저 AZ별 노드에 대략 반씩 나뉩니다. <dfn>Cross-Zone</dfn>이 꺼져 있으면 각 노드는 <strong>자기 AZ의 대상</strong>에만 보냅니다.</p>
+      <p>AZ a에 2대, b에 8대라면 a의 서버는 각각 25%, b의 서버는 6.25%를 받습니다. 켜면 열 대가 10%씩입니다. ALB는 항상 켜져 있고(대상 그룹에서 끌 수 있음), <mark>NLB와 GWLB는 꺼진 것이 기본</mark>입니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 460" role="img" aria-labelledby="f58t">
+        <title id="f58t">Cross-Zone이 꺼지면 AZ a의 서버 2대는 각각 25%, AZ b의 서버 8대는 각각 6.25%를 받는다. 켜면 10대 모두 10%씩 받는다.</title>
+        <text class="dg-label--sm" x="20" y="24" text-anchor="start">Cross-Zone 꺼짐</text>
+        <rect class="dg-box" x="40" y="40" width="240" height="56"/>
+        <text x="160" y="68" text-anchor="middle">노드 a 50%</text>
+        <rect class="dg-box" x="420" y="40" width="300" height="56"/>
+        <text x="570" y="68" text-anchor="middle">노드 b 50%</text>
+        <rect class="dg-box dg-box--key" x="40" y="140" width="240" height="60"/>
+        <text x="160" y="170" text-anchor="middle">a 2대, 각 25%</text>
+        <rect class="dg-box" x="420" y="140" width="300" height="60"/>
+        <text x="570" y="170" text-anchor="middle">b 8대, 각 6.25%</text>
+        <path class="dg-arrow dg-arrow--flow" d="M160,102 V132"/>
+        <path class="dg-arrow dg-arrow--flow" d="M570,102 V132"/>
+        <line class="dg-line dg-line--thin" x1="20" y1="230" x2="740" y2="230"/>
+        <text class="dg-label--sm" x="20" y="262" text-anchor="start">Cross-Zone 켜짐</text>
+        <rect class="dg-box" x="40" y="278" width="240" height="56"/>
+        <text x="160" y="306" text-anchor="middle">노드 a 50%</text>
+        <rect class="dg-box" x="420" y="278" width="300" height="56"/>
+        <text x="570" y="306" text-anchor="middle">노드 b 50%</text>
+        <rect class="dg-box dg-box--flow" x="40" y="390" width="240" height="60"/>
+        <text x="160" y="420" text-anchor="middle">a 2대, 각 10%</text>
+        <rect class="dg-box dg-box--flow" x="420" y="390" width="300" height="60"/>
+        <text x="570" y="420" text-anchor="middle">b 8대, 각 10%</text>
+        <path class="dg-arrow dg-arrow--flow" d="M160,340 V382"/>
+        <path class="dg-arrow dg-arrow--flow" d="M570,340 V382"/>
+        <path class="dg-arrow dg-arrow--flow" d="M240,340 L470,382"/>
+        <path class="dg-arrow dg-arrow--flow" d="M490,340 L250,382"/>
+      </svg>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>NLB Cross-Zone은 요금과 격리의 문제다</h2>
+  <div class="prose">
+    <p>NLB가 Cross-Zone을 기본으로 끄는 데는 이유가 있습니다. 켜면 노드가 다른 AZ의 대상으로 패킷을 보내고, NLB에서는 이 <strong>AZ 간 데이터 전송에 요금</strong>이 붙습니다(ALB는 붙지 않습니다). 또 한 AZ의 문제가 다른 AZ로 번지지 않는 격리 효과도 있습니다.</p>
+    <p>끈 채로 쓴다면 <mark>AZ마다 대상 수를 같게</mark> 유지하는 것이 핵심입니다. Auto Scaling 그룹의 AZ 균형 기능(14장)이 이 일을 돕습니다. 반대로 대상 수가 적거나 AZ별로 들쭉날쭉한 환경이라면 켜서 균등 분배를 얻는 편이 낫습니다.</p>
+    <p>어느 쪽이든 "한 AZ의 대상이 모두 빠지면 그 AZ의 노드는 어디로 보내는가"를 확인해 둡니다. Cross-Zone이 꺼진 NLB는 그 경우 DNS에서 해당 AZ 노드를 뺍니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>TLS는 로드 밸런서에서 끝낸다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>HTTPS 리스너에 ACM 인증서를 붙이면 ALB가 <dfn title="TLS termination">TLS 종료</dfn>를 맡고, 뒤쪽 서버는 VPC 안에서 HTTP로 받습니다. 2장의 TLS 핸드셰이크 비용과 인증서 갱신을 로드 밸런서가 대신 집니다.</p>
+      <p>ACM 공개 인증서는 무료이고 DNS 검증을 해 두면 자동 갱신됩니다. 상세는 16장에서 봅니다.</p>
+    </div>
+    <div class="prose">
+      <p>리스너 하나에 인증서를 여러 개 붙이면 ALB가 SNI로 도메인에 맞는 인증서를 고릅니다. <strong>보안 정책</strong>은 허용할 TLS 버전과 암호 스위트를 정하는데, 최신 권장 정책은 TLS 1.2 이상만 받습니다.</p>
+      <p>규정상 VPC 안 구간도 암호화해야 하면 대상 그룹 프로토콜을 HTTPS로 둡니다. ALB는 대상 인증서를 검증하지 않으므로 서버에는 자체 서명 인증서를 써도 됩니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 4부 Route 53 ===== -->
+<section class="slide slide--divider" data-section="Route 53" data-depth="core">
+  <p class="divider__no">4부</p>
+  <h2>사용자는 이름으로 찾아온다</h2>
+  <p class="lede">2장의 DNS(재귀 조회, 레코드, TTL)를 AWS에서 운영하는 서비스가 Route 53입니다. 도메인과 영역의 관계, Alias, 라우팅 정책, 헬스 체크 기반 장애 조치를 봅니다.</p>
+</section>
+
+<section class="slide">
+  <h2>도메인 등록과 호스팅 영역은 다른 일이다</h2>
+  <div class="slide__body">
+    <ol class="flow">
+      <li class="flow__node"><b>리졸버</b><span>재귀 조회 시작</span></li>
+      <li class="flow__node"><b>루트 서버</b><span>.com 담당을 알려 줌</span></li>
+      <li class="flow__node is-key"><b>.com 서버</b><span>레지스트라가 등록한 NS</span></li>
+      <li class="flow__node is-flow"><b>Route 53</b><span>호스팅 영역이 답함</span></li>
+    </ol>
+    <div class="prose">
+      <p><strong>도메인 등록</strong>은 이름의 소유권을 레지스트라에서 사는 일이고, <dfn title="Hosted Zone">호스팅 영역</dfn>은 그 도메인의 레코드를 담고 질의에 답하는 권한 있는 DNS 서버 묶음입니다(영역당 월 0.50 USD). 다른 곳에서 산 도메인도 Route 53 영역을 쓸 수 있습니다.</p>
+      <p>둘을 잇는 것이 <strong>NS 위임</strong>입니다. 영역에 배정된 이름 서버 4개를 레지스트라에 등록해야 조회가 Route 53까지 옵니다. 영역을 지우고 다시 만들면 <mark>NS가 바뀌므로</mark> 레지스트라 설정도 고쳐야 합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>프라이빗 호스팅 영역은 VPC 안에서만 보인다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p><strong>퍼블릭 호스팅 영역</strong>은 인터넷 어디서나 조회됩니다. <strong>프라이빗 호스팅 영역</strong>은 연결한 VPC의 리졸버에게만 답합니다. <code>db.internal.example.com</code> 같은 내부 이름을 IP 대신 쓰게 해 줍니다.</p>
+      <p>프라이빗 영역은 여러 VPC, 다른 계정의 VPC에도 연결할 수 있습니다. 1부에서 본 DNS 속성 두 개가 켜져 있어야 동작합니다.</p>
+    </div>
+    <div class="prose">
+      <p>같은 이름으로 퍼블릭과 프라이빗 영역을 동시에 두는 <dfn>split-horizon</dfn> 구성도 가능합니다. VPC 안에서 <code>api.example.com</code>을 물으면 내부 ALB 주소를, 밖에서 물으면 공개 주소를 받습니다.</p>
+      <p>이때 VPC 안에서는 <mark>프라이빗 영역이 우선</mark>하고, 프라이빗 영역에 없는 레코드는 퍼블릭 영역으로 넘어가지 않고 실패합니다. 내부에 필요한 레코드는 프라이빗 쪽에도 모두 만들어야 합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>레코드 타입은 질문의 종류를 정한다</h2>
+  <div class="split split--even">
+    <table class="compare">
+      <thead><tr><th scope="col">타입</th><th scope="col">답하는 것</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">A / AAAA</th><td>IPv4 / IPv6 주소</td></tr>
+        <tr><th scope="row">CNAME</th><td>다른 이름(별칭)</td></tr>
+        <tr><th scope="row">MX</th><td>메일 서버와 우선순위</td></tr>
+        <tr><th scope="row">TXT</th><td>임의 문자열(SPF, 소유 확인)</td></tr>
+        <tr><th scope="row">SRV</th><td>서비스의 호스트와 포트</td></tr>
+      </tbody>
+    </table>
+    <table class="compare">
+      <thead><tr><th scope="col">타입</th><th scope="col">답하는 것</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">NS</th><td>이 영역의 이름 서버</td></tr>
+        <tr><th scope="row">SOA</th><td>영역의 관리 정보, 부정 응답 TTL</td></tr>
+        <tr><th scope="row">CAA</th><td>인증서를 발급할 수 있는 CA</td></tr>
+      </tbody>
+      <caption>NS와 SOA는 영역을 만들 때 자동으로 생깁니다. CAA에 ACM을 빼먹으면 인증서 발급이 실패합니다.</caption>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Alias는 AWS 리소스를 가리키는 A 레코드다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">항목</th><th scope="col">CNAME</th><th scope="col">Alias</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">영역 최상위(zone apex)</th><td class="is-key">불가</td><td class="is-flow">가능</td></tr>
+        <tr><th scope="row">가리킬 수 있는 곳</th><td>아무 도메인 이름</td><td>ELB, CloudFront, S3 등 AWS 리소스</td></tr>
+        <tr><th scope="row">응답 형태</th><td>이름을 주고 재조회 필요</td><td>IP로 바로 답함</td></tr>
+        <tr><th scope="row">조회 요금</th><td>과금</td><td>AWS 리소스 대상이면 무료</td></tr>
+        <tr><th scope="row">TTL</th><td>직접 지정</td><td>대상의 TTL을 따름</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>2장에서 본 대로 CNAME은 다른 레코드와 공존할 수 없어 NS, SOA가 있는 <code>example.com</code> 자체에는 둘 수 없습니다. <dfn>Alias</dfn>는 Route 53 내부에서 대상의 현재 IP를 찾아 A 레코드처럼 답하므로 최상위에도 쓸 수 있고, ALB IP가 바뀌어도 자동으로 따라갑니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>TTL은 바꿀 일을 앞두고 미리 줄인다</h2>
+  <div class="prose">
+    <p>TTL은 리졸버가 답을 캐시해도 되는 시간입니다. 길면 조회가 줄어 빠르고 요금도 줄지만, 레코드를 바꿨을 때 <mark>옛 답이 TTL만큼 남아</mark> 일부 사용자는 계속 옛 서버로 갑니다.</p>
+    <p>그래서 실무 규칙은 이렇습니다. 평소 자주 안 바뀌는 레코드는 3600초 이상, 장애 조치나 가중치 이동에 쓰는 레코드는 60초 안팎으로 둡니다. 서버 이전처럼 계획된 변경은 며칠 전에 TTL을 60초로 낮추고, 기존 TTL이 다 지난 뒤에 값을 바꾸고, 안정되면 다시 올립니다.</p>
+    <p>ELB를 가리키는 Alias는 TTL을 정할 수 없고 ELB 기본값 60초를 씁니다. 클라이언트 쪽 캐시는 TTL을 지키지 않을 수 있다는 점도 기억해 둡니다(5부에서 JVM 사례를 봅니다).</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>라우팅 정책은 같은 이름에 다른 답을 준다</h2>
+  <div class="split split--even">
+    <table class="compare">
+      <thead><tr><th scope="col">정책</th><th scope="col">답을 고르는 기준</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">단순</th><td>정해진 값 그대로</td></tr>
+        <tr><th scope="row">가중치</th><td>레코드별 비율</td></tr>
+        <tr><th scope="row">지연 시간</th><td>측정된 지연이 가장 낮은 리전</td></tr>
+        <tr><th scope="row">장애 조치</th><td class="is-flow">기본이 비정상이면 보조</td></tr>
+      </tbody>
+    </table>
+    <table class="compare">
+      <thead><tr><th scope="col">정책</th><th scope="col">답을 고르는 기준</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">지리 위치</th><td>사용자의 국가, 대륙</td></tr>
+        <tr><th scope="row">지리 근접</th><td>거리 + 편향(bias) 조절</td></tr>
+        <tr><th scope="row">IP 기반</th><td>사용자 IP 대역(CIDR)</td></tr>
+        <tr><th scope="row">다중 값</th><td>건강한 레코드 최대 8개</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>가중치, 지연 시간, 장애 조치가 가장 많이 쓰인다</h2>
+  <div class="prose">
+    <p><strong>가중치</strong>는 같은 이름의 레코드마다 0~255의 가중치를 주고 그 비율로 답합니다. 새 리전이나 새 스택에 5%만 보내는 이전 작업에 씁니다. ALB 가중치와 달리 DNS 캐시 때문에 비율이 즉시, 정확히 맞지는 않습니다.</p>
+    <p><strong>지연 시간</strong>은 AWS가 측정한 "사용자 네트워크에서 각 리전까지의 지연"으로 가장 가까운 리전을 답합니다. 여러 리전에 같은 서비스를 띄운 경우의 기본 선택입니다.</p>
+    <p><strong>장애 조치</strong>는 기본(primary)과 보조(secondary) 레코드를 두고, 기본에 연결된 헬스 체크가 실패하면 보조를 답합니다. 보조는 다른 리전의 대기 환경이나 S3의 점검 안내 페이지가 됩니다. 멀티 리전 DR 전략 전체는 18장에서 봅니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>지리 위치는 규정, 지리 근접은 분산에 쓴다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p><strong>지리 위치</strong>는 사용자의 위치(리졸버 IP나 EDNS Client Subnet으로 추정)가 어느 국가인지로 답합니다. "EU 사용자는 EU 리전으로"처럼 데이터 규정이나 언어별 콘텐츠에 씁니다. 어디에도 해당하지 않는 위치를 위한 <mark>기본(Default) 레코드</mark>를 꼭 둡니다. 없으면 그 사용자는 응답을 못 받습니다.</p>
+    </div>
+    <div class="prose">
+      <p><strong>지리 근접</strong>은 리소스 위치까지의 거리로 고르고, 편향 값으로 한 리전의 담당 영역을 넓히거나 줄입니다. <strong>IP 기반</strong>은 "이 ISP 대역은 이 엔드포인트로"를 직접 지정합니다.</p>
+      <p><strong>다중 값 응답</strong>은 헬스 체크를 통과한 IP를 최대 8개 돌려줘, 클라이언트가 하나가 실패하면 다른 IP를 시도하게 합니다. 로드 밸런서의 대체가 아니라 보조 수단입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>헬스 체크는 세계 여러 곳에서 함께 판정한다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p><strong>엔드포인트 헬스 체크</strong>는 전 세계의 Route 53 검사기가 IP나 도메인에 HTTP, HTTPS, TCP로 요청합니다. 간격은 30초(표준) 또는 10초(빠른), 연속 실패 기준은 기본 3회입니다.</p>
+      <p>검사기 중 <mark>18%를 넘는 곳이 정상이라고 보면 정상</mark>입니다. 일부 지역의 네트워크 문제만으로 비정상 판정이 나지 않게 한 설계입니다. 응답 본문에 특정 문자열이 있는지도 볼 수 있습니다.</p>
+    </div>
+    <div class="prose">
+      <p><strong>계산된 헬스 체크</strong>는 다른 헬스 체크 여러 개를 묶어 "3개 중 2개 이상 정상이면 정상"처럼 판정합니다.</p>
+      <p><strong>CloudWatch 알람 기반</strong>은 알람 상태를 그대로 씁니다. 검사기는 인터넷에서 오므로 <strong>사설 IP를 직접 검사할 수 없는데</strong>, 프라이빗 리소스의 상태는 이 방식으로 연결합니다. 엔드포인트 쪽 방화벽은 Route 53 검사기 IP 대역을 허용해야 합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>DNS 장애 조치는 TTL과 캐시만큼 늦다</h2>
+  <div class="split split--even">
+    <ol class="steps">
+      <li><b>장애 발생</b><p>기본 리전의 엔드포인트가 응답하지 않습니다.</p></li>
+      <li><b>판정</b><p>30초 간격 × 3회 실패, 약 1분 반 뒤 비정상.</p></li>
+      <li><b>응답 전환</b><p>Route 53이 보조 레코드로 답하기 시작합니다.</p></li>
+      <li class="is-key"><b>캐시 만료</b><p>리졸버와 클라이언트가 TTL 동안 옛 답을 씁니다.</p></li>
+      <li><b>복구</b><p>새 조회부터 보조로 연결됩니다.</p></li>
+    </ol>
+    <div class="prose">
+      <p>전체 시간은 판정 시간 + TTL + 클라이언트 캐시입니다. 10초 간격과 TTL 60초로 줄이면 2분 안팎까지 당길 수 있습니다.</p>
+      <p>더 빨라야 하면 DNS 대신 고정 Anycast IP 앞단(16장 Global Accelerator)을 검토합니다. 그리고 보조 쪽이 <mark>실제로 트래픽을 받을 준비가 됐는지</mark>를 평소에 시험해 둡니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>DNSSEC은 응답이 위조되지 않았음을 서명한다</h2>
+  <div class="prose">
+    <p>2장의 DNS는 UDP 응답을 그대로 믿기 때문에, 중간에서 가짜 응답을 끼워 넣는 캐시 포이즈닝 공격에 약합니다. <dfn title="DNS Security Extensions">DNSSEC</dfn>은 영역의 레코드에 디지털 서명을 붙이고, 상위 영역이 하위 영역의 키를 보증하는 신뢰 사슬로 응답의 진위를 검증하게 합니다.</p>
+    <p>Route 53은 퍼블릭 호스팅 영역의 DNSSEC 서명을 지원합니다. 서명 키는 us-east-1의 KMS 고객 관리형 키(16장)로 만들고, 레지스트라에 DS 레코드를 등록해 사슬을 잇습니다. VPC 리졸버 쪽에서 DNSSEC 검증을 켤 수도 있습니다.</p>
+    <p>잘못 운영하면 <mark>도메인 전체가 조회 불능</mark>이 됩니다. KMS 키를 지우거나 비활성화하면 서명이 깨지므로, 켜기 전에 키 관리와 롤백 절차를 먼저 정합니다.</p>
+  </div>
+</section>
+
+<!-- ===== 5부 실무 ===== -->
+<section class="slide slide--divider" data-section="운영에서 부딪히는 문제" data-depth="practice">
+  <p class="divider__no">5부</p>
+  <h2>연결이 안 될 때, 청구서가 클 때</h2>
+  <p class="lede">설정은 맞는 것 같은데 통하지 않는 순간, 이유 없이 튀는 5xx, 예상보다 큰 네트워크 요금. 운영에서 실제로 부딪히는 문제를 순서대로 풉니다.</p>
+  <div class="depth-shift" aria-label="깊이 전환: 원리에서 실무로">
+    <span class="depth-shift__step"><span class="depth" data-depth="core"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>원리</span>
+    <span class="depth-shift__line" aria-hidden="true"></span>
+    <span class="depth-shift__step is-to"><span class="depth" data-depth="practice"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>실무</span>
+    <span class="depth-shift__note">디버깅 순서, 로그 읽기, 비용 계산, 장애 사례를 다룹니다.</span>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>연결이 안 되면 패킷이 지나는 순서대로 본다</h2>
+  <div class="split split--even">
+    <ol class="steps">
+      <li><b>보안 그룹</b><p>목적지 인바운드에 출발지(SG나 CIDR)와 포트가 있나.</p></li>
+      <li><b>NACL</b><p>양쪽 서브넷에서 요청과 응답(임시 포트) 둘 다 허용되나.</p></li>
+      <li class="is-key"><b>라우팅</b><p>출발 서브넷에 목적지 경로가, 돌아올 경로도 있나.</p></li>
+      <li><b>엔드포인트</b><p>IGW, NAT, 엔드포인트, TGW 연결이 살아 있나.</p></li>
+      <li><b>DNS</b><p>이름이 기대한 IP로 풀리나(dig로 확인).</p></li>
+    </ol>
+    <div class="prose">
+      <p>"타임아웃"과 "연결 거부"는 다른 신호입니다. <strong>거부(RST)</strong>는 패킷이 서버까지 갔는데 그 포트에 듣는 프로세스가 없다는 뜻이라 네트워크는 정상입니다.</p>
+      <p><strong>타임아웃</strong>은 중간 어딘가에서 패킷이 조용히 버려진 것이라, 위 순서대로 AWS 쪽 설정을 의심합니다. 9장의 <code>nc -vz</code>와 <code>curl -v</code>로 먼저 어느 쪽인지 가립니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Reachability Analyzer는 설정을 읽는다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p><dfn>Reachability Analyzer</dfn>는 출발지와 목적지(인스턴스, ENI, IGW, TGW 등)와 포트를 주면, 실제 패킷을 보내지 않고 <strong>설정만 분석</strong>해 도달 가능 여부를 알려 줍니다.</p>
+      <p>도달 불가라면 "sg-0abc의 인바운드 규칙이 3306을 허용하지 않음"처럼 막힌 지점을 짚어 줍니다. 위 다섯 단계를 자동으로 따라가는 셈입니다.</p>
+    </div>
+    <div class="prose">
+      <p>설정을 보는 도구이므로 앱이 죽었거나 OS 방화벽이 막은 경우는 잡지 못합니다. 그때는 다음 슬라이드의 Flow Logs로 실제 패킷을 봅니다.</p>
+      <p>분석 한 번마다 요금이 붙지만, 보안 그룹 수십 개와 TGW 라우팅을 사람이 따라가는 시간보다 훨씬 쌉니다. 변경 후 검증 단계에 넣어 두기도 합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Flow Logs는 허용과 거부를 한 줄씩 남긴다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="VPC Flow Logs (기본 형식)"><code><span class="dim">ver acct     eni          src         dst</span>
+<span class="dim">    sport dport proto pkts bytes start end</span> 동작
+
+2 1234... eni-0a1b 10.0.11.5 10.0.21.9
+  41822 3306 6 12 1840 1731... 1731... ACCEPT OK
+<span class="hl">2 1234... eni-0a1b 10.0.12.7 10.0.21.9</span>
+<span class="hl">  51210 3306 6 3 180 1731... 1731... REJECT OK</span></code></pre>
+    <div class="prose">
+      <p><dfn>Flow Logs</dfn>는 VPC, 서브넷, ENI 단위로 켜고 CloudWatch Logs나 S3에 쌓습니다. 패킷 내용은 없고 5-튜플, 패킷 수, 바이트, ACCEPT/REJECT만 남습니다.</p>
+      <p>위 둘째 줄은 10.0.12.7에서 DB 3306으로 가는 연결이 거부된 것입니다. 보안 그룹은 상태를 보므로 요청이 거부되고, NACL이 원인이면 <mark>요청은 ACCEPT인데 응답이 REJECT</mark>로 남는 비대칭이 보입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>ELB의 5xx는 누가 만들었는지부터 가른다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">코드</th><th scope="col">ALB가 본 상황</th><th scope="col">먼저 볼 곳</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">502</th><td>대상이 연결을 끊거나 깨진 응답</td><td>앱 재시작, keep-alive 불일치</td></tr>
+        <tr><th scope="row">503</th><td class="is-key">보낼 정상 대상이 없음</td><td>대상 그룹 비어 있음, 등록 누락</td></tr>
+        <tr><th scope="row">504</th><td>유휴 타임아웃 안에 응답 없음</td><td>느린 쿼리, 스레드 풀 고갈</td></tr>
+        <tr><th scope="row">Target 5XX</th><td>앱이 직접 5xx를 반환</td><td>앱 로그, 예외</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>2장에서 본 대로 502, 503, 504는 프록시가 만든 응답입니다. CloudWatch에서 <code>HTTPCode_ELB_5XX_Count</code>(ALB가 만든 것)와 <code>HTTPCode_Target_5XX_Count</code>(앱이 만든 것)를 나눠 보면 원인을 찾을 곳이 절반으로 줄어듭니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>한가할 때 튀는 502는 타임아웃 순서 문제다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>2장에서 본 keep-alive 경쟁이 ALB 뒤에서 그대로 일어납니다. ALB 유휴 타임아웃은 기본 <strong>60초</strong>(1~4,000초)이고, 대상과의 연결을 재사용합니다. 대상의 keep-alive가 이보다 짧으면, 대상이 닫는 순간과 ALB가 재사용하는 순간이 엇갈려 502가 납니다.</p>
+      <p>AWS 문서도 <mark>앱의 유휴 타임아웃을 ALB보다 길게</mark> 두라고 권합니다.</p>
+    </div>
+    <pre class="code" data-file="application.yml (Spring Boot, Tomcat)"><code>server:
+  tomcat:
+<span class="hl">    keep-alive-timeout: 75s</span>
+    connection-timeout: 20s
+  shutdown: graceful
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 60s</code></pre>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>504는 타임아웃을 늘리기 전에 원인을 본다</h2>
+  <div class="prose">
+    <p>ALB에는 "응답 대기 시간" 설정이 따로 없습니다. 요청을 보낸 뒤 대상이 <strong>유휴 타임아웃</strong> 동안 아무 바이트도 보내지 않으면 ALB는 504를 반환합니다. 그래서 60초가 넘는 리포트 생성 API가 정확히 60초에 실패합니다.</p>
+    <p>유휴 타임아웃을 늘리면 증상은 사라지지만, 느린 요청이 연결과 스레드를 오래 붙잡아 다른 요청까지 밀리게 됩니다. 먼저 4장의 슬로 쿼리, 4장의 커넥션 풀 고갈, 1장과 6장의 스레드 풀 포화 중 무엇인지 봅니다.</p>
+    <p>정말 긴 작업이라면 동기 응답 대신 작업 ID를 바로 돌려주고 결과는 나중에 조회하는 비동기 구조(17장 SQS)로 바꿉니다. 대용량 업로드는 S3 Presigned URL(15장)로 ALB를 우회합니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>액세스 로그는 시간을 구간별로 쪼개 준다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="ALB 액세스 로그 한 줄 (일부)"><code>https 2026-11-17T05:12:03.412Z app/prod-alb/...
+203.0.113.7:51234 10.0.11.5:8080
+<span class="hl"><span class="n">0.001</span> <span class="n">59.998</span> <span class="n">-1</span> 504 - 412 0</span>
+<span class="s">"POST https://api.example.com:443/reports HTTP/1.1"</span>
+... targetgroup/api/... <span class="s">"Root=1-67a1..."</span></code></pre>
+    <div class="prose">
+      <p>액세스 로그는 기본으로 꺼져 있고, 켜면 S3 버킷에 5분 단위로 쌓입니다. 강조한 줄의 세 숫자가 핵심입니다. <strong>요청 처리, 대상 처리, 응답 처리</strong> 시간이고, 대상이 응답하지 않으면 -1입니다.</p>
+      <p>위 줄은 대상이 60초 가까이 답하지 않아 504가 된 경우입니다. 대상 처리 시간이 긴 요청을 Athena로 모아 보면 느린 경로가 드러나고, Trace ID로 앱 로그와 연결합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>네트워크 요금은 경계를 넘을 때 붙는다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">경로</th><th scope="col">요금(us-east-1 기준 예)</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">같은 AZ, 사설 IP</th><td class="is-flow">무료</td></tr>
+        <tr><th scope="row">AZ 간</th><td>방향마다 GB당 0.01 USD</td></tr>
+        <tr><th scope="row">NAT Gateway 경유</th><td class="is-key">GB당 0.045 USD 처리 요금 추가</td></tr>
+        <tr><th scope="row">인터넷으로 나감</th><td>GB당 0.09 USD부터(구간별 할인)</td></tr>
+        <tr><th scope="row">인터넷에서 들어옴</th><td>무료</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>요금표는 리전마다 다르니 숫자보다 구조를 기억합니다. 핵심은 <mark>트래픽이 AZ, NAT, 리전, 인터넷이라는 경계를 하나 넘을 때마다 요금이 붙는다</mark>는 것입니다. 들어오는 것은 대부분 무료이고, 나가는 것과 중간 장치를 지나는 것이 비쌉니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>NAT와 AZ 간 전송 비용을 줄이는 순서</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>Cost Explorer에서 사용 유형 <code>NatGateway-Bytes</code>와 <code>DataTransfer-Regional-Bytes</code>가 크다면 이 두 경계가 문제입니다. Flow Logs로 NAT ENI를 지나는 상위 목적지를 뽑으면 대개 S3, ECR, 외부 SaaS 몇 곳이 대부분을 차지합니다.</p>
+      <p>그다음 순서대로 줄입니다. S3·DynamoDB는 무료 게이트웨이 엔드포인트, ECR·CloudWatch처럼 큰 트래픽은 인터페이스 엔드포인트(GB당 0.01 USD로 NAT보다 쌈)로 돌립니다.</p>
+    </div>
+    <div class="prose">
+      <p>AZ 간 전송은 구조로 줄입니다. 앱이 같은 AZ의 NAT와 엔드포인트를 쓰게 하고, 읽기 트래픽이 많은 DB 복제본이나 캐시는 같은 AZ의 노드를 우선하게 합니다.</p>
+      <p>다만 <strong>AZ 간 전송을 없애려고 단일 AZ로 몰면</strong> 고가용성을 잃습니다. 비용은 Multi-AZ의 대가로 받아들이고, 불필요하게 AZ를 오가는 부분만 걷어 냅니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>IP 고갈은 서브넷이 조용히 꽉 차며 시작된다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>서브넷의 가용 IP가 0이 되면 새 인스턴스, Lambda ENI, 로드 밸런서 노드 확장이 모두 실패합니다. 오류 메시지는 "InsufficientFreeAddressesInSubnet"처럼 나오지만, 증상은 "배포가 안 된다", "스케일 아웃이 안 된다"로 나타납니다.</p>
+      <p>특히 EKS의 VPC CNI는 Pod마다 VPC IP를 주고, 노드마다 <mark>여분 IP를 미리 확보</mark>해 둡니다. Pod 수보다 훨씬 많은 IP가 묶입니다.</p>
+    </div>
+    <div class="prose">
+      <p>대응은 세 단계입니다. 서브넷별 가용 IP를 CloudWatch 지표나 IPAM으로 감시하고, 부족하면 VPC에 보조 CIDR(예: <code>100.64.0.0/16</code>)을 붙여 Pod 전용 서브넷을 만듭니다.</p>
+      <p>EKS 쪽 설정(prefix delegation, 여분 IP 조절)은 14장에서 다룹니다. 근본 해결은 1부에서 본 대로 처음부터 대역을 넉넉히 잡는 것입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>대규모 이벤트 전에는 로드 밸런서도 데워 둔다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>ALB는 트래픽에 맞춰 자동 확장되지만, 확장에는 시간이 걸립니다. 평소 1,000 RPS인 서비스에 판매 시작 순간 수십 배가 몰리면, 확장이 따라오기 전 몇 분 동안 503이나 지연이 생길 수 있습니다.</p>
+      <p>이때 쓰는 기능이 <dfn title="LCU Reservation">LCU 예약</dfn>입니다. 로드 밸런서 용량 단위(LCU)의 최소치를 미리 잡아 두면, 그 아래로는 줄어들지 않습니다.</p>
+    </div>
+    <div class="prose">
+      <p>예약은 최소 100 LCU부터이고, 필요량은 과거 이벤트의 <code>PeakLCUs</code> 지표(분 단위 합계)나 부하 테스트로 정합니다. 예약한 만큼은 쓰지 않아도 과금되니 이벤트가 끝나면 해제합니다.</p>
+      <p>로드 밸런서만 데우면 소용없습니다. 뒤의 Auto Scaling 최소 용량, DB 커넥션, 외부 API 한도까지 <mark>경로 전체</mark>를 같은 기준으로 미리 올려 둡니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>장애 조치 뒤 앱이 옛 IP를 붙잡고 있다면</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>Route 53이나 RDS가 DNS로 장애 조치를 해도, 앱이 옛 IP를 계속 쓰면 복구되지 않습니다. 대표적인 원인이 JVM의 DNS 캐시입니다. 보안 관리자가 설정된 환경에서는 성공한 조회를 <strong>영원히</strong> 캐시합니다.</p>
+      <p>또 커넥션 풀이 맺어 둔 연결은 DNS와 관계없이 옛 서버를 향합니다.</p>
+    </div>
+    <div class="prose">
+      <p>그래서 JVM에는 <code>networkaddress.cache.ttl</code>을 60초 이하로 명시합니다. AWS SDK 문서도 이 설정을 권합니다.</p>
+      <p>커넥션 풀은 연결 최대 수명(<code>maxLifetime</code>)과 검증으로 옛 연결을 주기적으로 버리게 합니다. 이 패턴이 RDS 장애 조치에서 어떻게 나타나는지는 15장에서 이어 봅니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 정리 ===== -->
+<section class="slide slide--summary" data-section="정리" data-depth="none">
+  <h2>정리</h2>
+  <ul class="summary">
+    <li><b>VPC는 리전, 서브넷은 AZ에 묶입니다.</b> Public과 Private의 차이는 라우팅 테이블의 기본 경로 한 줄이고, NAT와 엔드포인트도 AZ별로 맞춥니다.</li>
+    <li><b>보안 그룹은 상태를 기억하고, NACL은 기억하지 않습니다.</b> 보안 그룹 참조 사슬이 주 방어선이고, NACL은 서브넷 단위 차단에만 씁니다.</li>
+    <li><b>VPC 밖과 잇는 길은 대상마다 다릅니다.</b> AWS 서비스는 엔드포인트, 서비스 하나는 PrivateLink, VPC 여러 개와 사내망은 TGW, 전용선은 DX에 VPN 백업입니다.</li>
+    <li><b>ALB는 요청을 읽고, NLB는 흐름을 넘깁니다.</b> 헬스 체크, 등록 해제 지연, 유휴 타임아웃 같은 숫자를 앱의 동작에 맞춰야 5xx가 사라집니다.</li>
+    <li><b>Route 53은 같은 이름에 상황별로 다른 답을 줍니다.</b> Alias로 AWS 리소스를 가리키고, 헬스 체크와 TTL이 DNS 장애 조치의 속도를 정합니다.</li>
+  </ul>
+</section>
+
+<!-- ===== 스스로 점검 ===== -->
+<section class="slide" data-section="부록: 스스로 점검" data-depth="none">
+  <h2>스스로 점검 (1)</h2>
+  <ol class="selfcheck">
+    <li><details><summary>Private 서브넷의 서버에 퍼블릭 IP를 붙이면 인터넷에서 접속할 수 있나요?</summary>
+      <div class="answer"><p>아닙니다. 그 서브넷의 기본 경로가 NAT로 가므로 응답이 IGW로 돌아가지 못합니다. 들어오는 연결에는 IGW 경로가 필요합니다.</p></div></details></li>
+    <li><details><summary>세 AZ가 NAT Gateway 하나를 같이 쓰면 무엇이 문제인가요?</summary>
+      <div class="answer"><p>NAT가 있는 AZ가 장애 나면 나머지 AZ도 외부로 나가지 못하고, 평소에도 AZ 간 전송 요금이 붙습니다.</p></div></details></li>
+    <li><details><summary>NACL에 인바운드 443만 허용했더니 웹 요청이 타임아웃됩니다. 왜일까요?</summary>
+      <div class="answer"><p>NACL은 상태를 보지 않으므로 클라이언트 임시 포트로 나가는 응답이 아웃바운드에서 막힙니다. 1024–65535 아웃바운드 허용이 필요합니다.</p></div></details></li>
+    <li><details><summary>VPC A–B, B–C가 Peering으로 이어져 있을 때 A에서 C로 갈 수 있나요?</summary>
+      <div class="answer"><p>갈 수 없습니다. Peering은 전이되지 않으므로 A–C를 직접 잇거나 Transit Gateway로 묶어야 합니다.</p></div></details></li>
+    <li><details><summary>Isolated 서브넷의 서버가 Secrets Manager를 쓰려면 무엇이 필요한가요?</summary>
+      <div class="answer"><p>Secrets Manager 인터페이스 엔드포인트와 프라이빗 DNS, 그리고 엔드포인트 보안 그룹의 443 허용입니다. VPC의 DNS 속성 두 개도 켜져 있어야 합니다.</p></div></details></li>
+  </ol>
+</section>
+
+<section class="slide" data-section="부록: 스스로 점검" data-depth="none">
+  <h2>스스로 점검 (2)</h2>
+  <ol class="selfcheck">
+    <li><details><summary>ALB 기본 헬스 체크로 죽은 서버가 빠지고, 살아난 서버가 돌아오기까지 각각 얼마나 걸리나요?</summary>
+      <div class="answer"><p>30초 간격에 비정상 2회라 약 1분, 정상 5회라 약 2분 30초입니다.</p></div></details></li>
+    <li><details><summary>트래픽이 적은 새벽에만 ALB 502가 간헐적으로 생깁니다. 무엇을 의심하나요?</summary>
+      <div class="answer"><p>대상의 keep-alive 타임아웃이 ALB 유휴 타임아웃(60초)보다 짧은 경우입니다. 앱 쪽을 ALB보다 길게 둡니다.</p></div></details></li>
+    <li><details><summary>파트너사가 방화벽에 등록할 고정 IP를 요구합니다. ALB만으로 될까요?</summary>
+      <div class="answer"><p>ALB 노드 IP는 바뀌므로 안 됩니다. EIP를 붙인 NLB를 앞에 두거나 Global Accelerator의 고정 IP를 씁니다.</p></div></details></li>
+    <li><details><summary>example.com 자체를 ALB로 보내려면 CNAME과 Alias 중 무엇을 쓰나요?</summary>
+      <div class="answer"><p>Alias입니다. 영역 최상위에는 CNAME을 둘 수 없고, Alias는 A 레코드로 답하며 AWS 리소스 대상 조회는 무료입니다.</p></div></details></li>
+    <li><details><summary>Route 53 장애 조치를 설정했는데 전환에 10분 넘게 걸렸습니다. 어디를 보나요?</summary>
+      <div class="answer"><p>헬스 체크 간격과 실패 횟수, 레코드 TTL, 그리고 JVM DNS 캐시처럼 TTL을 무시하는 클라이언트 캐시를 차례로 봅니다.</p></div></details></li>
+  </ol>
+</section>
+
+<!-- ===== 다음 장 ===== -->
+<section class="slide" data-section="다음 단계" data-depth="none">
+  <h2>다음으로 올라갈 층</h2>
+  <div class="slide__body">
+    <p class="lede">네트워크라는 길을 깔았으니, 이제 그 길 위에서 실제로 코드를 돌리는 서버를 고릅니다. EC2부터 컨테이너까지, 서브넷에 놓일 컴퓨팅 자원을 봅니다.</p>
+    <div class="nav-pair">
+      <a class="next" href="14-aws-compute.html">
+        <span class="next__text">
+          <span class="next__label">다음 장</span>
+          <span class="next__title">14장 AWS 컴퓨팅</span>
+          <span class="next__desc">EC2, EBS, Auto Scaling, ECR, ECS, EKS, Fargate</span>
+        </span>
+        <div class="stackmap stackmap--mini" data-current="14"></div>
+      </a>
+      <a class="next next--prev" href="12-aws-iam.html">
+        <span class="next__text">
+          <span class="next__label">이전 장</span>
+          <span class="next__title">12장 AWS 기초와 IAM</span>
+        </span>
+      </a>
+    </div>
+    <p class="small"><a href="index.html">전체 학습 지도로 돌아가기</a></p>
+  </div>
+</section>
+
+</main>
+<script src="assets/deck.js"></script>
+</body>
+</html>

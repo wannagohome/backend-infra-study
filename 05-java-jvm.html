@@ -1017,7 +1017,7 @@ lock.tryLock(<span class="n">1</span>, TimeUnit.SECONDS);</code></pre>
 <span class="dim">=============================</span></code></pre>
     <div class="prose">
       <p>"서버가 응답이 없다"면 스레드 덤프를 몇 초 간격으로 2~3번 뜹니다. 각 스레드의 상태(RUNNABLE, BLOCKED, WAITING)와 호출 스택이 보입니다.</p>
-      <p>요청 스레드 대부분이 같은 락에서 BLOCKED이거나 커넥션 풀 대기에서 WAITING이면 원인이 거기에 있습니다. JVM은 데드락을 감지해 직접 알려 줍니다. 전체 진단 순서는 11장에서 다룹니다.</p>
+      <p>요청 스레드 대부분이 같은 락에서 BLOCKED이거나 커넥션 풀 대기에서 WAITING이면 원인이 거기에 있습니다. JVM은 데드락을 감지해 직접 알려 줍니다. 전체 진단 순서는 18장에서 다룹니다.</p>
     </div>
   </div>
 </section>

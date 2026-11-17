@@ -395,7 +395,7 @@ summary, .next, .stackmap__layer a { touch-action: manipulation; }
 
 /* ---------- 9. Stack map (the bold element) ----------------------------- */
 /* Logical order is bottom → top: first <li> is the foundation (hardware/OS). */
-.stackmap { --sm-h: 46px; --sm-gap: 6px; --sm-step: 2.6%; position: relative; }
+.stackmap { --sm-h: 29px; --sm-gap: 4px; --sm-step: 1.5%; position: relative; }
 .stackmap__cap {
   font-size: 17px; color: var(--ink-3); margin: 0 0 18px; line-height: 1.5;
 }
@@ -413,12 +413,12 @@ summary, .next, .stackmap__layer a { touch-action: manipulation; }
   display: flex; align-items: center; gap: 14px;
   padding: 0 16px;
   border-radius: 2px;
-  font-size: 18px; line-height: 1.25;
+  font-size: 16px; line-height: 1.2;
   color: var(--ink-3);
   border: 1px dashed var(--rule);
   background: transparent;
   transition: background 300ms ease, color 300ms ease, border-color 300ms ease;
-  transition-delay: calc(var(--i, 0) * 70ms);
+  transition-delay: calc(var(--i, 0) * 45ms);
 }
 .stackmap__layer::before {             /* rail segment */
   content: ""; position: absolute; left: -22px; width: 2px;
@@ -426,8 +426,8 @@ summary, .next, .stackmap__layer a { touch-action: manipulation; }
   background: repeating-linear-gradient(to bottom, var(--rule) 0 5px, transparent 5px 9px);
 }
 .stackmap__layer::after {              /* node on the rail */
-  content: ""; position: absolute; left: -27px; top: 50%; width: 12px; height: 12px;
-  margin-top: -6px; border-radius: 50%;
+  content: ""; position: absolute; left: -26px; top: 50%; width: 10px; height: 10px;
+  margin-top: -5px; border-radius: 50%;
   background: var(--panel); border: 2px solid var(--rule);
 }
 .stackmap__no {
@@ -447,7 +447,7 @@ summary, .next, .stackmap__layer a { touch-action: manipulation; }
   width: calc(var(--w) + 28px); margin-right: -28px;
   min-height: calc(var(--sm-h) + 14px);
   border: 1px solid var(--flow); background: var(--flow); color: var(--on-flow);
-  font-size: 20px; font-weight: 600;
+  font-size: 19px; font-weight: 600;
 }
 .stackmap__layer.is-current .stackmap__no { opacity: 1; }
 .stackmap__layer.is-current::before {
@@ -467,6 +467,26 @@ summary, .next, .stackmap__layer a { touch-action: manipulation; }
 .stackmap__layer a { color: inherit; text-decoration: none; display: flex; align-items: center; gap: 14px; flex: 1; align-self: stretch; }
 .stackmap__layer a:hover .stackmap__name { text-decoration: underline; text-underline-offset: 0.2em; }
 .stackmap__desc { display: none; }
+
+/* group heading (CS·백엔드 1–8 / 인프라·AWS 9–18): sits above each bundle's
+   top layer and keeps the rail running through it */
+.stackmap__group {
+  position: relative; display: flex; align-items: baseline; gap: 10px;
+  padding: 8px 16px 0; font-size: 14px; line-height: 1.2; color: var(--ink-3);
+}
+.stackmap__group.is-top { padding-top: 0; }
+.stackmap__group-label { font-weight: 600; color: var(--ink-2); letter-spacing: 0.01em; }
+.stackmap__group-range { font-variant-numeric: tabular-nums; }
+.stackmap__group::before {
+  content: ""; position: absolute; left: -22px; width: 2px;
+  top: calc(var(--sm-gap) / -2); bottom: calc(var(--sm-gap) / -2);
+  background: repeating-linear-gradient(to bottom, var(--rule) 0 5px, transparent 5px 9px);
+}
+.stackmap__group.is-top::before { display: none; }
+.stackmap__group.is-below::before { background: var(--flow); }
+.frame:not(.is-active) .stackmap__group.is-below::before { background: repeating-linear-gradient(to bottom, var(--rule) 0 5px, transparent 5px 9px); }
+.is-overview .frame:not(.is-active) .stackmap__group.is-below::before,
+.is-scroll .frame:not(.is-active) .stackmap__group.is-below::before { background: var(--flow); }
 
 /* entrance: layers fill bottom → current when the cover becomes active */
 .frame:not(.is-active) .stackmap__layer.is-below,
@@ -490,15 +510,18 @@ summary, .next, .stackmap__layer a { touch-action: manipulation; }
 .stackmap--index .stackmap__layer.is-below { background: var(--flow-wash); border-color: transparent; }
 .stackmap--index .stackmap__layer.is-current { background: var(--flow); color: var(--on-flow); border-color: var(--flow); }
 .stackmap--index .stackmap__layer.is-current .stackmap__desc { color: var(--on-flow); opacity: 0.85; }
+.stackmap--index .stackmap__group { font-size: 15px; padding-top: 18px; }
+.stackmap--index .stackmap__group.is-top { padding-top: 0; }
+.stackmap--index .stackmap__group::before { background: var(--flow-line); }
 
-/* mini variant: 11 thin bars, used in next-chapter block */
-.stackmap--mini { --sm-h: 5px; --sm-gap: 3px; --sm-step: 4%; width: 64px; }
+/* mini variant: one thin bar per layer (18), used in next-chapter block */
+.stackmap--mini { --sm-h: 3px; --sm-gap: 2px; --sm-step: 2.4%; width: 64px; }
 .stackmap--mini .stackmap__list { padding: 0; }
-.stackmap--mini .stackmap__layer { padding: 0; min-height: 5px; height: 5px; border: 0; background: var(--rule); font-size: 0; }
+.stackmap--mini .stackmap__layer { padding: 0; min-height: 3px; height: 3px; border: 0; background: var(--rule); font-size: 0; }
 .stackmap--mini .stackmap__layer::before, .stackmap--mini .stackmap__layer::after { display: none; }
 .stackmap--mini .stackmap__layer > * { display: none !important; }
 .stackmap--mini .stackmap__layer.is-below { background: var(--flow-line); }
-.stackmap--mini .stackmap__layer.is-current { background: var(--flow); width: calc(var(--w) + 10px); margin-right: -10px; min-height: 7px; height: 7px; border: 0; }
+.stackmap--mini .stackmap__layer.is-current { background: var(--flow); width: calc(var(--w) + 10px); margin-right: -10px; min-height: 5px; height: 5px; border: 0; }
 
 /* ---------- 10. Section divider ----------------------------------------- */
 .slide--divider { justify-content: center; padding-left: 176px; }
@@ -791,7 +814,7 @@ svg.dg { font-family: var(--font-sans); }
    orientation, small tablets in portrait). Re-evaluated on resize/rotation. */
 .is-scroll {
   --fs-cover: 34px; --fs-h2: 25px; --fs-h3: 20px; --fs-lede: 18px; --fs-body: 17px;
-  --fs-small: 14.5px; --fs-code: 14px; --pad-x: 16px; --pad-top: 32px; --pad-bottom: 36px;
+  --fs-small: 16px; --fs-code: 14px; --pad-x: 16px; --pad-top: 32px; --pad-bottom: 36px;
   --gap: 24px; --gap-sm: 16px;
 }
 .is-scroll body { background: var(--bg); }
@@ -811,10 +834,12 @@ svg.dg { font-family: var(--font-sans); }
 @media (min-width: 600px) {
   .is-scroll {
     --fs-cover: 44px; --fs-h2: 30px; --fs-h3: 22px; --fs-lede: 20px; --fs-body: 18px;
-    --fs-small: 15px; --fs-code: 14.5px; --pad-x: 36px; --pad-top: 44px; --pad-bottom: 44px;
+    --fs-small: 16px; --fs-code: 14.5px; --pad-x: 36px; --pad-top: 44px; --pad-bottom: 44px;
   }
 }
 .is-scroll .slide::before, .is-scroll .slide::after { display: none; }
+/* phones: keep running text (tables, lists, small notes) at 16px or larger */
+.is-scroll .slide td, .is-scroll .slide th, .is-scroll .slide li, .is-scroll .slide .small, .is-scroll .slide figcaption { font-size: max(16px, 1em); }
 .is-scroll .slide > h2, .is-scroll .slide__title { margin-bottom: 20px; }
 .is-scroll .edge, .is-scroll .hud__btn[data-act="overview"], .is-scroll .hud__btn[data-act="fullscreen"] { display: none; }
 .is-scroll .hud { gap: 10px; padding: 0 calc(8px + var(--safe-r)) var(--safe-b) calc(16px + var(--safe-l)); }
@@ -846,11 +871,13 @@ svg.dg { font-family: var(--font-sans); }
 .is-scroll .cover h1 { margin-bottom: 18px; }
 .is-scroll .cover__meta { margin-top: 28px; gap: 24px; font-size: 15px; flex-wrap: wrap; }
 .is-scroll .cover__map { border-left: 0; border-top: 1px solid var(--rule); padding: 28px calc(var(--pad-x) + var(--safe-r)) 32px calc(var(--pad-x) + var(--safe-l)); }
-.is-scroll .stackmap { --sm-h: 34px; --sm-gap: 4px; }
+.is-scroll .stackmap { --sm-h: 32px; --sm-gap: 4px; --sm-step: 0.9%; }
+.is-scroll .stackmap__group { font-size: 13px; padding-left: 12px; }
 .is-scroll .stackmap__layer { font-size: 14.5px; gap: 10px; padding: 0 12px; }
 .is-scroll .stackmap__layer.is-current { font-size: 15.5px; width: var(--w); margin-right: 0; min-height: 42px; }
 .is-scroll .stackmap__cap { font-size: 14px; }
 .is-scroll .stackmap__layer.is-current .stackmap__tag { font-size: 12px; }
+.is-scroll .stackmap--mini .stackmap__layer.is-current { min-height: 5px; width: calc(var(--w) + 10px); margin-right: -10px; }
 .is-scroll .slide--divider { padding-left: var(--pad-x); padding-top: 56px; padding-bottom: 56px; }
 .is-scroll .slide--divider h2 { font-size: 30px; }
 .is-scroll .divider__no { font-size: 15px; }

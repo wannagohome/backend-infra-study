@@ -15,9 +15,22 @@
     { no: 6,  name: "Spring과 JPA",          file: "06-spring-jpa.html",            desc: "DI, AOP, 트랜잭션, 영속성 컨텍스트" },
     { no: 7,  name: "웹 API 설계와 보안",      file: "07-api-security.html",          desc: "REST, 인증과 인가, 웹 취약점" },
     { no: 8,  name: "대규모 시스템 설계",      file: "08-system-design.html",         desc: "확장, 캐시, 메시지 큐, 분산 트랜잭션" },
-    { no: 9,  name: "Linux, 컨테이너, 배포",   file: "09-linux-container-deploy.html", desc: "Linux, Docker, Kubernetes, CI/CD" },
-    { no: 10, name: "AWS 핵심 서비스",         file: "10-aws-fundamentals.html",      desc: "IAM, VPC, EC2, ELB, S3, RDS" },
-    { no: 11, name: "AWS 아키텍처와 운영",      file: "11-aws-architecture-ops.html",  desc: "고가용성, 관측성, 장애 대응, 비용" }
+    { no: 9,  name: "Linux와 컨테이너", file: "09-linux-container.html", desc: "Linux 운영, Docker, 이미지, 컨테이너 네트워크" },
+    { no: 10, name: "Kubernetes", file: "10-kubernetes.html", desc: "Pod, 워크로드, Service, 스케줄링, 오토스케일링" },
+    { no: 11, name: "CI/CD와 IaC", file: "11-cicd-iac.html", desc: "파이프라인, 배포 전략, GitOps, Terraform" },
+    { no: 12, name: "AWS 기초와 IAM", file: "12-aws-iam.html", desc: "글로벌 인프라, 계정, IAM, STS, Organizations" },
+    { no: 13, name: "AWS 네트워킹", file: "13-aws-network.html", desc: "VPC, 라우팅, ELB, Route 53, 하이브리드 연결" },
+    { no: 14, name: "AWS 컴퓨팅", file: "14-aws-compute.html", desc: "EC2, EBS, Auto Scaling, ECR, ECS, EKS, Fargate" },
+    { no: 15, name: "AWS 스토리지와 데이터베이스", file: "15-aws-data.html", desc: "S3, EFS, RDS, Aurora, DynamoDB, ElastiCache" },
+    { no: 16, name: "AWS 엣지와 보안", file: "16-aws-edge-security.html", desc: "CloudFront, WAF, Shield, ACM, KMS, CloudTrail" },
+    { no: 17, name: "AWS 서버리스와 메시징", file: "17-aws-serverless-messaging.html", desc: "Lambda, API Gateway, SQS, SNS, EventBridge, Kinesis" },
+    { no: 18, name: "AWS 아키텍처와 운영", file: "18-aws-architecture-ops.html", desc: "고가용성, DR, 관측성, 장애 대응, 비용" }
+  ];
+  /* Two bundles of the stack, shown as small headings on cover/index maps.
+     `from`/`to` are inclusive layer numbers in STACK. */
+  var GROUPS = [
+    { from: 1, to: 8,  label: "CS·백엔드" },
+    { from: 9, to: 18, label: "인프라·AWS" }
   ];
   var DEPTH = {
     basic:    { label: "기초", level: 1 },
@@ -25,6 +38,7 @@
     practice: { label: "실무", level: 3 }
   };
   window.DECK_STACK = STACK;
+  window.DECK_GROUPS = GROUPS;
   window.DECK_DEPTH = DEPTH;
 
   var doc = document, root = doc.documentElement;
@@ -83,6 +97,7 @@
       var cur = parseInt(map.getAttribute("data-current"), 10) || 0;
       var links = map.hasAttribute("data-links");
       var tag = map.getAttribute("data-tag") || "이 장";
+      var mini = map.classList.contains("stackmap--mini");
       var ol = el("ol", "stackmap__list");
       STACK.forEach(function (layer, i) {
         var li = el("li", "stackmap__layer");
@@ -98,6 +113,20 @@
         }
         if (layer.no === cur) li.setAttribute("aria-current", "step");
         ol.appendChild(li);
+        /* group heading sits above the group's top layer (list is column-reverse,
+           so it is appended right after that layer) */
+        if (mini) return;
+        GROUPS.forEach(function (g) {
+          if (g.to !== layer.no) return;
+          var gi = el("li", "stackmap__group");
+          gi.setAttribute("aria-hidden", "true");
+          gi.style.setProperty("--i", i);
+          if (layer.no === STACK.length) gi.classList.add("is-top");
+          else if (cur && cur > layer.no) gi.classList.add("is-below");
+          gi.innerHTML = '<span class="stackmap__group-label">' + esc(g.label) + "</span>" +
+            '<span class="stackmap__group-range">' + g.from + "–" + g.to + "장</span>";
+          ol.appendChild(gi);
+        });
       });
       if (!map.hasAttribute("aria-label") && !map.classList.contains("stackmap--mini")) {
         map.setAttribute("aria-label", "학습 스택" + (cur ? ": " + cur + "단계 " + STACK[cur - 1].name + " 위치" : ""));

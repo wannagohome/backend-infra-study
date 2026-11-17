@@ -1,6 +1,6 @@
 # 백엔드와 인프라: CS 기초에서 AWS 운영까지
 
-운영체제와 네트워크에서 출발해 데이터베이스, Java와 Spring, 시스템 설계, 컨테이너를 거쳐 AWS 운영까지 아래층부터 쌓아 올리는 HTML 학습 슬라이드입니다. 각 장은 기초 → 원리 → 실무 순서로 깊어집니다.
+운영체제와 네트워크에서 출발해 데이터베이스, Java와 Spring, 시스템 설계, 컨테이너와 Kubernetes를 거쳐 AWS 운영까지 18개 장으로 아래층부터 쌓아 올리는 HTML 학습 슬라이드입니다. 1~8장은 CS·백엔드, 9~18장은 인프라·AWS입니다. 각 장은 기초 → 원리 → 실무 순서로 깊어집니다.
 
 슬라이드 보기: https://wannagohome.github.io/backend-infra-study/
 
@@ -14,8 +14,15 @@
 | 6 | [Spring과 JPA](06-spring-jpa.html) |
 | 7 | [웹 API 설계와 보안](07-api-security.html) |
 | 8 | [대규모 시스템 설계](08-system-design.html) |
-| 9 | [Linux, 컨테이너, 배포](09-linux-container-deploy.html) |
-| 10 | [AWS 핵심 서비스](10-aws-fundamentals.html) |
-| 11 | [AWS 아키텍처와 운영](11-aws-architecture-ops.html) |
+| 9 | [Linux와 컨테이너](09-linux-container.html) |
+| 10 | [Kubernetes](10-kubernetes.html) |
+| 11 | [CI/CD와 IaC](11-cicd-iac.html) |
+| 12 | [AWS 기초와 IAM](12-aws-iam.html) |
+| 13 | [AWS 네트워킹](13-aws-network.html) |
+| 14 | [AWS 컴퓨팅](14-aws-compute.html) |
+| 15 | [AWS 스토리지와 데이터베이스](15-aws-data.html) |
+| 16 | [AWS 엣지와 보안](16-aws-edge-security.html) |
+| 17 | [AWS 서버리스와 메시징](17-aws-serverless-messaging.html) |
+| 18 | [AWS 아키텍처와 운영](18-aws-architecture-ops.html) |
 
 조작: ←/→ 이동, `o` 전체 보기, `t` 테마 전환, `f` 전체 화면. 모바일에서는 세로 스크롤로 읽습니다.

@@ -146,7 +146,7 @@
         <tr><th scope="row">10.0.1.0/24</th><td>255.255.255.0</td><td class="num">256</td><td class="is-flow">서브넷 하나로 흔한 크기</td></tr>
         <tr><th scope="row">10.0.1.0/28</th><td>255.255.255.240</td><td class="num">16</td><td>아주 작은 서브넷</td></tr>
       </tbody>
-      <caption>위 세 개는 RFC 1918이 정한 사설 대역으로, 인터넷에서 라우팅되지 않습니다. 10장의 VPC 설계는 큰 대역(/16)을 잡고 겹치지 않는 서브넷(/24)으로 쪼개는 일입니다.</caption>
+      <caption>위 세 개는 RFC 1918이 정한 사설 대역으로, 인터넷에서 라우팅되지 않습니다. 13장의 VPC 설계는 큰 대역(/16)을 잡고 겹치지 않는 서브넷(/24)으로 쪼개는 일입니다.</caption>
     </table>
   </div>
 </section>
@@ -163,7 +163,7 @@
     <div class="slide__body">
       <div class="prose">
         <p>IP 주소는 <strong>최종 목적지</strong>, MAC 주소는 <strong>바로 다음 장비</strong>를 가리킵니다. 그래서 라우터를 지날 때마다 IP 헤더는 그대로이고 이더넷 헤더만 바뀝니다.</p>
-        <p><dfn title="routing table">라우팅 테이블</dfn>은 "이 대역은 저쪽으로"라는 규칙 목록입니다. 10장의 VPC 라우팅 테이블이 바로 이것입니다.</p>
+        <p><dfn title="routing table">라우팅 테이블</dfn>은 "이 대역은 저쪽으로"라는 규칙 목록입니다. 13장의 VPC 라우팅 테이블이 바로 이것입니다.</p>
       </div>
       <aside class="callout callout--note">
         <p>IP, 마스크, 게이트웨이, DNS 서버 주소는 부팅 때 <strong>DHCP</strong>로 받습니다. 아직 내 IP가 없으므로 UDP 브로드캐스트로 요청합니다.</p>
@@ -177,7 +177,7 @@
   <div class="split split--center">
     <div class="prose">
       <p>사설 IP는 인터넷에서 길을 찾을 수 없습니다. <dfn title="Network Address Translation">NAT</dfn> 장비는 나가는 패킷의 출발지 주소와 포트를 자신의 공인 주소와 새 포트로 바꾸고, 그 짝을 변환 표에 적어 둡니다.</p>
-      <p>응답이 돌아오면 표를 보고 원래 주소로 되돌립니다. 표에 없는 연결, 즉 <mark>밖에서 먼저 시작한 연결은 들어올 수 없습니다</mark>. 10장의 Private Subnet과 NAT Gateway가 이 원리입니다.</p>
+      <p>응답이 돌아오면 표를 보고 원래 주소로 되돌립니다. 표에 없는 연결, 즉 <mark>밖에서 먼저 시작한 연결은 들어올 수 없습니다</mark>. 13장의 Private Subnet과 NAT Gateway가 이 원리입니다.</p>
     </div>
     <figure class="figure">
       <svg class="dg" viewBox="0 0 760 400" role="img" aria-labelledby="f9t">
@@ -823,7 +823,7 @@ Cache-Control: no-store
 <section class="slide">
   <h2>L4는 주소를 보고, L7은 내용을 본다</h2>
   <div class="slide__body">
-    <p class="prose">로드 밸런서는 패킷 봉투를 어디까지 열어 보느냐로 나뉩니다. 앞서 본 캡슐화에서 L4는 TCP 헤더까지, L7은 HTTP 메시지까지 엽니다. 분배 알고리즘은 8장, AWS 구현체는 10장에서 다룹니다.</p>
+    <p class="prose">로드 밸런서는 패킷 봉투를 어디까지 열어 보느냐로 나뉩니다. 앞서 본 캡슐화에서 L4는 TCP 헤더까지, L7은 HTTP 메시지까지 엽니다. 분배 알고리즘은 8장, AWS 구현체는 13장에서 다룹니다.</p>
     <table class="compare">
       <thead><tr><th scope="col">기준</th><th scope="col">L4 로드 밸런서</th><th scope="col">L7 로드 밸런서</th></tr></thead>
       <tbody>
@@ -868,7 +868,7 @@ Cache-Control: no-store
         <text class="dg-label--sm" x="300" y="112" text-anchor="start">이름 → IP</text>
 
         <rect class="dg-zone" x="276" y="140" width="1110" height="200"/>
-        <text class="dg-label--sm dg-label--muted" x="1370" y="330" text-anchor="end">서비스 네트워크(10장의 VPC)</text>
+        <text class="dg-label--sm dg-label--muted" x="1370" y="330" text-anchor="end">서비스 네트워크(13장의 VPC)</text>
 
         <rect class="dg-box" x="20" y="180" width="180" height="72"/>
         <text class="dg-label--lg" x="110" y="216" text-anchor="middle">브라우저</text>
@@ -927,7 +927,7 @@ Cache-Control: no-store
     </ol>
     <div class="prose">
       <p>이 경로는 이후 장의 지도이기도 합니다. DB 안쪽은 4장, WAS 내부는 5장과 6장, 인증은 7장, 서버를 늘리는 법은 8장입니다.</p>
-      <p>이 구성을 AWS의 ALB, EC2, RDS로 옮긴 모습은 10장과 11장에서 봅니다. 3부에서는 이 경로가 실제로 <strong>어디서 끊기는지</strong>를 봅니다.</p>
+      <p>이 구성을 AWS의 ALB, EC2, RDS로 옮긴 모습은 13~15장과 18장에서 봅니다. 3부에서는 이 경로가 실제로 <strong>어디서 끊기는지</strong>를 봅니다.</p>
     </div>
   </div>
 </section>

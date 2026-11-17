@@ -1,0 +1,1830 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>9장 Linux와 컨테이너</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="assets/deck.css">
+</head>
+<body>
+<main class="deck" data-chapter="9" data-chapter-title="Linux와 컨테이너">
+
+<!-- ===== Cover ===== -->
+<section class="slide slide--cover">
+  <div class="cover">
+    <div class="cover__main">
+      <p class="cover__chapter"><b>9장</b> Linux와 컨테이너</p>
+      <h1>서버 한 대를 이해해야 컨테이너가 보인다</h1>
+      <p class="cover__lede">설계도의 상자는 결국 Linux 위의 프로세스입니다. 서버를 다루는 기본기에서 시작해, 컨테이너가 커널 기능으로 만들어지는 원리와 Docker 실전까지 따라갑니다.</p>
+      <dl class="cover__meta">
+        <div><dt>선수 지식</dt><dd>1장 프로세스와 fd, 2장 TCP와 DNS</dd></div>
+        <div><dt>슬라이드</dt><dd>89장</dd></div>
+        <div><dt>예상 학습 시간</dt><dd>210분</dd></div>
+      </dl>
+    </div>
+    <div class="cover__map">
+      <p class="stackmap__cap">아래층부터 위로 쌓아 올라가는 순서입니다. 지금은 9단계입니다.</p>
+      <div class="stackmap" data-current="9"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Part 1: basic ===== -->
+<section class="slide slide--divider" data-section="Linux 기본기" data-depth="basic">
+  <p class="divider__no">1부</p>
+  <h2>설계는 어딘가에서 돌아가야 한다</h2>
+  <p class="lede">8장에서 그린 무상태 서버, 캐시, 큐는 모두 Linux 서버 위의 프로세스입니다. 서버 한 대를 다루는 기본기를 먼저 쌓고, 커널의 집계 방식, 컨테이너의 원리, Docker 실전 순서로 올라갑니다.</p>
+</section>
+
+<section class="slide">
+  <h2>커널은 자원을, 셸은 사람의 말을 맡는다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p><dfn title="kernel">커널</dfn>은 CPU, 메모리, 디스크, 네트워크를 관리하는 OS의 핵심이고, 프로그램은 시스템 콜로만 커널에 부탁할 수 있습니다(1장).</p>
+      <p><dfn title="shell">셸</dfn>은 사람이 입력한 명령을 해석해 프로그램을 실행해 주는 평범한 프로그램입니다. 서버에서는 보통 bash를 씁니다.</p>
+      <p>Linux라는 이름은 엄밀히 커널만 가리킵니다. 커널에 셸, 기본 도구, 패키지 관리자를 묶어 배포하는 것이 <dfn title="distribution">배포판</dfn>입니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 420" role="img" aria-labelledby="f9k">
+        <title id="f9k">하드웨어 위에 커널이 있고, 그 위에서 셸과 애플리케이션이 시스템 콜로 커널을 부른다. 배포판은 커널과 사용자 공간 도구 묶음이다.</title>
+        <rect class="dg-box" x="40" y="40" width="200" height="64"/>
+        <text x="140" y="72" text-anchor="middle">bash (셸)</text>
+        <rect class="dg-box" x="280" y="40" width="200" height="64"/>
+        <text x="380" y="72" text-anchor="middle">java, nginx</text>
+        <rect class="dg-box" x="520" y="40" width="200" height="64"/>
+        <text x="620" y="72" text-anchor="middle">apt, systemd</text>
+        <path class="dg-arrow dg-arrow--flow" d="M140,112 V170"/>
+        <path class="dg-arrow dg-arrow--flow" d="M380,112 V170"/>
+        <path class="dg-arrow dg-arrow--flow" d="M620,112 V170"/>
+        <text class="dg-label--sm dg-label--flow" x="396" y="148" text-anchor="start">시스템 콜</text>
+        <rect class="dg-box dg-box--solid" x="40" y="180" width="680" height="68"/>
+        <text class="dg-label--on" x="380" y="214" text-anchor="middle">Linux 커널</text>
+        <rect class="dg-box dg-box--muted" x="40" y="264" width="680" height="60"/>
+        <text class="dg-label--muted" x="380" y="294" text-anchor="middle">하드웨어 (CPU, 메모리, 디스크, NIC)</text>
+        <rect class="dg-zone" x="24" y="24" width="712" height="236"/>
+        <text class="dg-label--sm" x="380" y="372" text-anchor="middle">점선 범위 = 배포판이 묶어 주는 것 (커널 + 사용자 공간 도구)</text>
+      </svg>
+      <figcaption>셸도 java도 커널 입장에서는 똑같은 사용자 공간 프로세스입니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>디렉터리마다 맡은 역할이 정해져 있다</h2>
+  <div class="slide__body">
+    <p class="lede">파일 위치는 FHS(Filesystem Hierarchy Standard)라는 관례를 따릅니다. 처음 들어간 서버에서도 어디를 볼지 알 수 있는 이유입니다.</p>
+    <table class="compare">
+      <thead><tr><th scope="col">경로</th><th scope="col">담는 것</th><th scope="col">운영에서 보는 이유</th></tr></thead>
+      <tbody>
+        <tr><th scope="row"><code>/etc</code></th><td>시스템과 서비스 설정</td><td>nginx, systemd, sysctl 설정</td></tr>
+        <tr><th scope="row"><code>/var</code></th><td>로그, 캐시 등 자주 바뀌는 것</td><td class="is-key">/var/log가 차면 쓰기 실패</td></tr>
+        <tr><th scope="row"><code>/proc</code>, <code>/sys</code></th><td>커널이 만든 가상 파일</td><td>프로세스와 커널 상태 조회</td></tr>
+        <tr><th scope="row"><code>/usr</code>, <code>/opt</code></th><td>설치 프로그램, 직접 배포한 앱</td><td>앱은 보통 /opt/앱이름</td></tr>
+        <tr><th scope="row"><code>/home</code>, <code>/root</code></th><td>사용자, root의 홈</td><td>SSH 키(~/.ssh) 위치</td></tr>
+        <tr><th scope="row"><code>/tmp</code></th><td>임시 파일</td><td>재부팅 때 지워질 수 있음</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>경로는 루트에서 쓰거나 지금 위치에서 쓴다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>pwd
+/opt/api
+<span class="prompt">$ </span>cat /etc/hostname     <span class="c"># 절대 경로</span>
+<span class="prompt">$ </span>cat ./conf/app.yml    <span class="c"># 상대 경로</span>
+<span class="prompt">$ </span>cd ../logs            <span class="c"># 한 단계 위</span>
+<span class="prompt">$ </span>cd ~                  <span class="c"># 내 홈</span>
+<span class="prompt">$ </span>cd -                  <span class="c"># 직전 위치</span></code></pre>
+    <div class="prose">
+      <p><dfn title="absolute path">절대 경로</dfn>는 <code>/</code>로 시작해 어디서 실행해도 같은 파일을 가리킵니다. <dfn title="relative path">상대 경로</dfn>는 현재 디렉터리를 기준으로 해석되며 <code>.</code>은 여기, <code>..</code>은 한 단계 위입니다.</p>
+      <p>cron이나 systemd가 실행하는 스크립트는 현재 디렉터리가 예상과 다를 수 있습니다. 그래서 <mark>자동 실행되는 설정에는 절대 경로</mark>를 씁니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>하드 링크는 inode를, 심볼릭 링크는 경로를</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>파일 이름은 inode 번호를 가리키는 디렉터리 항목일 뿐입니다(1장). <dfn title="hard link">하드 링크</dfn>는 같은 inode에 이름을 하나 더 붙인 것이라, 원본 이름을 지워도 데이터가 남습니다. 다른 파일 시스템이나 디렉터리에는 걸 수 없습니다.</p>
+      <p><dfn title="symbolic link">심볼릭 링크</dfn>는 경로 문자열을 담은 작은 파일입니다. 대상이 사라지면 끊어진 링크가 됩니다. 배포에서 <code>current → releases/v42</code>처럼 버전을 바꿔 끼울 때 씁니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 400" role="img" aria-labelledby="f9ln">
+        <title id="f9ln">두 이름 app.jar와 backup.jar가 같은 inode를 가리키는 하드 링크, current라는 심볼릭 링크는 releases/v42라는 경로를 거쳐 다른 inode를 가리킨다.</title>
+        <rect class="dg-box" x="30" y="40" width="200" height="60"/>
+        <text class="dg-mono" x="130" y="70" text-anchor="middle">app.jar</text>
+        <rect class="dg-box" x="30" y="120" width="200" height="60"/>
+        <text class="dg-mono" x="130" y="150" text-anchor="middle">backup.jar</text>
+        <path class="dg-arrow dg-arrow--flow" d="M238,70 H330 Q350,70 350,90 V100"/>
+        <path class="dg-arrow dg-arrow--flow" d="M238,150 H330 Q350,150 350,130 V120"/>
+        <rect class="dg-box dg-box--flow" x="360" y="80" width="170" height="60"/>
+        <text x="445" y="110" text-anchor="middle">inode 812</text>
+        <path class="dg-arrow" d="M538,110 H592"/>
+        <rect class="dg-box dg-box--muted" x="600" y="80" width="130" height="60"/>
+        <text class="dg-label--muted" x="665" y="110" text-anchor="middle">데이터</text>
+        <text class="dg-label--sm" x="380" y="200" text-anchor="middle">하드 링크: 이름 둘, inode 하나 (링크 수 2)</text>
+        <rect class="dg-box" x="30" y="250" width="200" height="60"/>
+        <text class="dg-mono" x="130" y="280" text-anchor="middle">current</text>
+        <path class="dg-arrow dg-arrow--back" d="M238,280 H292"/>
+        <rect class="dg-box dg-box--ghost" x="300" y="250" width="210" height="60"/>
+        <text class="dg-mono" x="405" y="280" text-anchor="middle">releases/v42</text>
+        <path class="dg-arrow" d="M518,280 H592"/>
+        <rect class="dg-box dg-box--muted" x="600" y="250" width="130" height="60"/>
+        <text class="dg-label--muted" x="665" y="280" text-anchor="middle">inode 977</text>
+        <text class="dg-label--sm" x="380" y="350" text-anchor="middle">심볼릭 링크: 경로를 따라가서 찾음 (대상 삭제 시 끊김)</text>
+      </svg>
+      <figcaption><code>ln app.jar backup.jar</code>는 하드 링크, <code>ln -sfn releases/v42 current</code>는 심볼릭 링크입니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>앱은 전용 계정으로, 관리는 sudo로</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>id
+uid=1000(ubuntu) groups=…,27(sudo)
+<span class="prompt">$ </span>grep app /etc/passwd
+<span class="hl">app:x:998:998::/opt/api:/usr/sbin/nologin</span>
+<span class="prompt">$ </span>sudo useradd -r -s /usr/sbin/nologin app
+<span class="prompt">$ </span>sudo usermod -aG docker ubuntu
+<span class="prompt">$ </span>sudo -u app ls /opt/api
+<span class="prompt">$ </span>sudo visudo   <span class="c"># sudoers 안전 편집</span></code></pre>
+    <div class="prose">
+      <p>Linux는 사용자를 숫자 <dfn title="user id">UID</dfn>로, 묶음을 <dfn title="group">그룹</dfn>으로 구분합니다. UID 0인 root는 권한 검사를 건너뜁니다.</p>
+      <p>그래서 앱은 로그인 셸이 없는 전용 계정(<code>nologin</code>)으로 돌리고, 사람은 일반 계정으로 들어와 필요할 때만 <dfn>sudo</dfn>로 권한을 빌립니다. 누가 무엇을 했는지 로그에도 남습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>권한은 소유자, 그룹, 나머지의 rwx다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>ls -l /opt/api
+-rw-r----- 1 app app  51M app.jar
+<span class="hl">-rw------- 1 app app  812 db.env</span>
+drwxr-x--- 2 app app 4.0K logs
+-rwxr-xr-x 1 app app  1.2K start.sh</code></pre>
+    <div class="prose">
+      <p>맨 앞 글자는 종류(<code>-</code> 파일, <code>d</code> 디렉터리, <code>l</code> 링크)이고, 뒤 아홉 글자가 <strong>소유자, 그룹, 나머지</strong> 순서의 읽기 r, 쓰기 w, 실행 x입니다.</p>
+      <p>디렉터리에서는 의미가 조금 다릅니다. r은 목록 보기, w는 안에 파일 만들기와 지우기, x는 <mark>안으로 들어가기</mark>입니다. 그래서 파일 권한이 넉넉해도 상위 디렉터리에 x가 없으면 열 수 없습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>권한은 숫자로 더하고, 기본값은 umask가 뺀다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>chmod 600 db.env      <span class="c"># rw- --- ---</span>
+<span class="prompt">$ </span>chmod 750 logs        <span class="c"># rwx r-x ---</span>
+<span class="prompt">$ </span>chmod u+x start.sh    <span class="c"># 기호 방식</span>
+<span class="prompt">$ </span>chown -R app:app /opt/api
+<span class="prompt">$ </span>umask
+<span class="hl"><span class="n">0022</span></span>
+<span class="prompt">$ </span>touch a; mkdir b; ls -ld a b
+-rw-r--r-- … a
+drwxr-xr-x … b</code></pre>
+    <div class="prose">
+      <p>r=4, w=2, x=1을 더하면 세 자리 8진수가 됩니다. <code>640</code>은 소유자 rw-, 그룹 r--, 나머지 ---입니다. <code>chown</code>은 소유자와 그룹을 바꿉니다.</p>
+      <p>새 파일은 666, 디렉터리는 777에서 <dfn>umask</dfn>만큼 뺀 권한으로 만들어집니다. umask 022면 파일 644, 디렉터리 755입니다. 비밀 파일을 다루는 서비스는 077로 둡니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>setuid는 실행하는 동안 소유자의 권한을 빌린다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>ls -l /usr/bin/passwd
+<span class="hl">-rwsr-xr-x 1 root root … /usr/bin/passwd</span>
+<span class="prompt">$ </span>ls -ld /tmp
+drwxrwxrwt … /tmp
+<span class="prompt">$ </span>find / -perm -4000 -type f 2&gt;/dev/null</code></pre>
+    <div class="prose">
+      <p>소유자 x 자리의 <code>s</code>가 <dfn>setuid</dfn>입니다. 일반 사용자가 <code>passwd</code>를 실행해도 root 권한으로 돌아 <code>/etc/shadow</code>를 고칠 수 있습니다. 그룹 자리면 setgid입니다.</p>
+      <p><code>/tmp</code>의 <code>t</code>는 sticky bit로, 누구나 쓰되 자기 파일만 지우게 합니다. setuid 파일은 권한 상승 통로가 되므로 함부로 만들지 않고, 4부의 컨테이너 보안 설정도 이를 막습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>배포판마다 패키지 관리자가 다르다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">계열</th><th scope="col">대표 배포판</th><th scope="col">패키지 관리자</th><th scope="col">주로 보는 곳</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Debian 계열</th><td>Ubuntu, Debian</td><td><code>apt</code> (.deb)</td><td>범용 서버, 개발 PC</td></tr>
+        <tr><th scope="row">Red Hat 계열</th><td>RHEL, Rocky, Amazon Linux 2023</td><td><code>dnf</code> (.rpm)</td><td class="is-flow">기업 서버, EC2 기본 AMI</td></tr>
+        <tr><th scope="row">경량</th><td>Alpine</td><td><code>apk</code></td><td>컨테이너 베이스 이미지</td></tr>
+      </tbody>
+    </table>
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>sudo apt update &amp;&amp; sudo apt install -y nginx   <span class="c"># 목록 갱신 후 설치</span>
+<span class="prompt">$ </span>sudo dnf install -y nginx; dnf info nginx
+<span class="prompt">$ </span>sudo dnf upgrade --security                     <span class="c"># 보안 패치만</span></code></pre>
+    <div class="prose">
+      <p>패키지는 프로그램과 설정, 그리고 의존성 목록을 묶은 파일이고, 패키지 관리자는 저장소에서 의존성까지 함께 받아 설치하고 지웁니다. <code>apt update</code>는 목록만 새로 받고 <code>upgrade</code>가 실제로 올립니다. 운영 서버는 장기 지원(LTS) 버전을 골라 버전을 고정하고 보안 업데이트를 계획적으로 적용합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>모든 프로세스는 fd 0, 1, 2를 갖고 태어난다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>java -jar app.jar &gt; out.log        <span class="c"># 1번만</span>
+<span class="prompt">$ </span>java -jar app.jar &gt;&gt; out.log       <span class="c"># 이어 쓰기</span>
+<span class="prompt">$ </span>java -jar app.jar 2&gt; err.log       <span class="c"># 2번만</span>
+<span class="hl"><span class="prompt">$ </span>java -jar app.jar &gt; all.log 2&gt;&amp;1</span>
+<span class="prompt">$ </span>java -jar app.jar 2&gt;&amp;1 &gt; all.log    <span class="c"># 다름!</span>
+<span class="prompt">$ </span>cmd &lt; input.txt                    <span class="c"># 0번</span>
+<span class="prompt">$ </span>cmd &gt; /dev/null 2&gt;&amp;1               <span class="c"># 버림</span></code></pre>
+    <div class="prose">
+      <p>표준 입력(0), 표준 출력(1), 표준 오류(2)는 미리 열린 fd입니다. <dfn title="redirection">리다이렉션</dfn>은 셸이 프로그램을 띄우기 전에 이 fd를 파일로 바꿔 끼우는 일입니다.</p>
+      <p><code>2&gt;&amp;1</code>은 "2번을 지금 1번이 가리키는 곳으로"라는 뜻이라 <mark>왼쪽부터 순서대로</mark> 적용됩니다. 그래서 다섯째 줄은 오류가 여전히 화면으로 나갑니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>파이프는 작은 도구를 이어 붙인다</h2>
+  <div class="slide__body">
+    <ol class="flow">
+      <li class="flow__node"><b>cat access.log</b><span>파일을 흘려보냄</span></li>
+      <li class="flow__node"><b>grep " 500 "</b><span>500 응답만 남김</span></li>
+      <li class="flow__node"><b>awk '{print $7}'</b><span>URL 열만 뽑음</span></li>
+      <li class="flow__node"><b>sort | uniq -c</b><span>URL별 개수</span></li>
+      <li class="flow__node is-flow"><b>sort -rn | head</b><span>많은 순 상위 10</span></li>
+    </ol>
+    <div class="prose">
+      <p><dfn title="pipe">파이프</dfn> <code>|</code>는 앞 프로세스의 표준 출력을 뒤 프로세스의 표준 입력에 커널 버퍼로 연결합니다(1장 IPC). 각 단계가 동시에 돌기 때문에 수 GB 로그도 메모리에 다 올리지 않고 처리합니다.</p>
+      <p>"한 가지 일을 잘하는 도구를 조합한다"는 Unix 철학이 여기서 나옵니다. 장애 중에 대시보드가 없어도 로그 몇 줄로 "어떤 URL이 500을 내는가"에 바로 답할 수 있습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>환경 변수는 부모에서 자식으로만 흐른다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>PROFILE=prod          <span class="c"># 셸 변수</span>
+<span class="prompt">$ </span>export PROFILE        <span class="c"># 자식에게 전달</span>
+<span class="prompt">$ </span>SPRING_PROFILES_ACTIVE=prod java -jar app.jar
+<span class="prompt">$ </span>echo $PATH
+/usr/local/bin:/usr/bin:/bin
+<span class="prompt">$ </span>which java
+/usr/bin/java
+<span class="prompt">$ </span>cat /proc/4211/environ | tr '\0' '\n'</code></pre>
+    <div class="prose">
+      <p><dfn title="environment variable">환경 변수</dfn>는 프로세스가 시작할 때 부모에게서 복사받는 이름=값 목록입니다. <code>export</code>한 변수만 자식에게 넘어가고, 자식이 바꾼 값은 부모에게 돌아오지 않습니다.</p>
+      <p><dfn>PATH</dfn>는 명령 이름을 찾을 디렉터리 목록으로 앞에서부터 찾습니다. cron과 systemd는 로그인 셸의 PATH를 쓰지 않아 "터미널에선 되는데"가 생깁니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>grep으로 찾고, awk로 세고, sed로 고친다</h2>
+  <div class="slide__body">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>grep -i -C 3 timeout app.log        <span class="c"># 앞뒤 3줄 문맥</span>
+<span class="prompt">$ </span>grep -v healthcheck access.log      <span class="c"># 반대로 거르기</span>
+<span class="prompt">$ </span>grep -rl "jdbc:" /etc/api/          <span class="c"># 파일 이름만</span>
+<span class="prompt">$ </span>less +F app.log                     <span class="c"># 큰 파일 열기</span>
+<span class="hl"><span class="prompt">$ </span>tail -F app.log | grep --line-buffered ERROR</span>
+<span class="prompt">$ </span>awk '{c[$9]++} END {for(k in c) print k, c[k]}' access.log
+<span class="prompt">$ </span>awk '{s+=$NF; n++} END {print s/n}' access.log  <span class="c"># 평균</span>
+<span class="prompt">$ </span>sed -i.bak 's/^port=.*/port=8081/' app.conf
+<span class="prompt">$ </span>sed -n '10,20p' app.log</code></pre>
+    <div class="prose">
+      <p><code>grep</code>은 패턴에 맞는 줄을 찾습니다. 큰 파일은 편집기 대신 <code>less</code>로 열어야 GB 단위도 바로 열리고, <code>tail -F</code>는 logrotate로 파일이 바뀌어도 새 파일을 따라갑니다. <code>awk</code>는 줄을 공백으로 나눠 <code>$1</code>, <code>$2</code>로 열을 다루며 합계와 그룹별 개수를 한 줄로 냅니다. <code>sed -i</code>는 파일을 직접 고치므로 <code>.bak</code> 백업을 남기는 습관을 들입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>프로세스는 fork로 태어나 exec로 바뀐다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>ps -ef | grep java
+app  4211     1  … java -jar app.jar
+<span class="prompt">$ </span>ps -eo pid,ppid,stat,rss,cmd --sort=-rss \
+    | head -5
+<span class="prompt">$ </span>pstree -p 1 | head
+systemd(1)─┬─sshd(812)───bash(990)
+<span class="hl">           └─java(4211)─┬─{java}(4212)</span>
+<span class="prompt">$ </span>top -H -p 4211   <span class="c"># 스레드별 CPU</span></code></pre>
+    <div class="prose">
+      <p>새 프로세스는 부모가 자신을 복제(<code>fork</code>)한 뒤 그 자식이 다른 프로그램으로 갈아타는(<code>exec</code>) 방식으로 생깁니다. 그래서 모든 프로세스에는 부모(PPID)가 있고, 맨 위에는 PID 1이 있습니다.</p>
+      <p><code>ps</code>의 STAT 열은 상태입니다. R은 실행 중이거나 실행 대기, S는 잠듦, <strong>D는 디스크 I/O 등을 기다리는 중단 불가 잠듦</strong>, Z는 좀비입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>좀비는 못 거둔 자식, 고아는 부모 잃은 자식</h2>
+  <div class="split split--even">
+    <ol class="steps">
+      <li><b>자식 종료</b><p>자식이 끝나면 커널은 종료 코드를 담은 작은 기록만 남깁니다.</p></li>
+      <li class="is-key"><b>좀비(Z)</b><p>부모가 <code>wait()</code>로 읽어 가기 전까지 이 기록이 남은 상태입니다.</p></li>
+      <li><b>회수</b><p>부모가 wait를 부르면 기록이 지워지고 PID가 반납됩니다.</p></li>
+      <li><b>고아</b><p>부모가 먼저 죽으면 자식은 PID 1에 입양되고, PID 1이 대신 거둡니다.</p></li>
+    </ol>
+    <div class="prose">
+      <p>좀비는 메모리를 거의 쓰지 않지만 <strong>PID 번호</strong>를 차지합니다. 부모 코드가 wait를 빠뜨리면 좀비가 쌓여 결국 새 프로세스를 못 만듭니다. 좀비는 kill로 지울 수 없고 부모를 고치거나 끝내야 합니다.</p>
+      <p>고아를 거두는 PID 1의 역할은 컨테이너에서 다시 중요해집니다. 컨테이너 안에서는 우리 앱이 PID 1이기 때문입니다(4부).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>터미널을 닫아도 살아남게 하려면</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>./batch.sh &amp;        <span class="c"># 백그라운드 실행</span>
+[1] 5120
+<span class="prompt">$ </span>jobs; fg %1         <span class="c"># 다시 앞으로</span>
+<span class="prompt">$ </span>Ctrl+Z; bg          <span class="c"># 멈추고 뒤로 보냄</span>
+<span class="hl"><span class="prompt">$ </span>nohup ./batch.sh &gt; batch.log 2&gt;&amp;1 &amp;</span>
+<span class="prompt">$ </span>disown %1           <span class="c"># 셸 작업 목록에서 뺌</span>
+<span class="prompt">$ </span>tmux new -s deploy  <span class="c"># 세션 유지</span></code></pre>
+    <div class="prose">
+      <p><code>&amp;</code>를 붙이면 셸이 기다리지 않고 프롬프트를 돌려줍니다. 하지만 SSH가 끊기면 셸이 자식들에게 <strong>SIGHUP</strong>을 보내 대부분 함께 죽습니다.</p>
+      <p><code>nohup</code>은 SIGHUP을 무시하게 하고 출력을 파일로 돌립니다. 잠깐 도는 작업이면 충분하지만, 죽으면 아무도 다시 살리지 않으므로 <mark>서비스는 systemd에 맡깁니다</mark>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>시그널은 프로세스에 보내는 짧은 통지다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">시그널</th><th scope="col">번호</th><th scope="col">보내는 상황</th><th scope="col">프로세스가 잡을 수 있나</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">SIGTERM</th><td class="num">15</td><td><code>kill</code> 기본값, 정상 종료 요청</td><td class="is-flow">잡아서 정리 후 종료</td></tr>
+        <tr><th scope="row">SIGKILL</th><td class="num">9</td><td><code>kill -9</code>, 유예 시간 초과</td><td class="is-key">불가, 커널이 즉시 제거</td></tr>
+        <tr><th scope="row">SIGINT</th><td class="num">2</td><td>터미널에서 Ctrl+C</td><td>가능</td></tr>
+        <tr><th scope="row">SIGHUP</th><td class="num">1</td><td>터미널 끊김, 설정 재로드 관례</td><td>가능</td></tr>
+              </tbody>
+    </table>
+    <div class="prose">
+      <p><dfn title="signal">시그널</dfn>은 커널이 프로세스에 전달하는 번호 하나짜리 통지로, <code>kill -신호 PID</code>로 보냅니다. SIGTERM을 받은 앱은 새 요청을 멈추고 처리 중인 일을 마친 뒤 스스로 끝날 수 있지만(Spring의 Graceful Shutdown, 11장), SIGKILL은 커널이 바로 제거해 정리할 기회가 없습니다. 그래서 모든 도구가 <mark>TERM을 보내고 기다린 뒤 KILL</mark>합니다. 시그널로 죽으면 종료 코드는 128+번호(143, 137)입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>systemd가 서버의 프로세스를 지킨다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p><dfn>systemd</dfn>는 부팅 때 커널이 처음 띄우는 PID 1입니다. 서비스를 순서대로 띄우고, 죽으면 다시 살리고, 출력을 journald로 모으고, 각 서비스를 cgroup에 넣어 자원을 묶어 관리합니다.</p>
+      <p>관리 대상 하나하나를 <dfn title="unit">유닛</dfn>이라 하고, 종류는 파일 확장자로 구분합니다. 서비스는 <code>.service</code>, 주기 작업은 <code>.timer</code>, 마운트는 <code>.mount</code>, 묶음 목표는 <code>.target</code>입니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 400" role="img" aria-labelledby="f9sd">
+        <title id="f9sd">systemd가 PID 1로서 nginx, api, cron 서비스를 각자의 cgroup에 넣어 띄우고, 출력은 journald로 모은다. api가 죽으면 다시 시작한다.</title>
+        <rect class="dg-box dg-box--solid" x="250" y="30" width="260" height="64"/>
+        <text class="dg-label--on" x="380" y="62" text-anchor="middle">systemd (PID 1)</text>
+        <path class="dg-arrow" d="M300,100 Q300,130 130,140 V164"/>
+        <path class="dg-arrow dg-arrow--flow" d="M380,100 V164"/>
+        <path class="dg-arrow" d="M460,100 Q460,130 630,140 V164"/>
+        <rect class="dg-zone" x="40" y="170" width="180" height="96"/>
+        <rect class="dg-box" x="56" y="186" width="148" height="60"/>
+        <text x="130" y="216" text-anchor="middle">nginx</text>
+        <rect class="dg-zone" x="290" y="170" width="180" height="96"/>
+        <rect class="dg-box dg-box--flow" x="306" y="186" width="148" height="60"/>
+        <text x="380" y="216" text-anchor="middle">api (java)</text>
+        <rect class="dg-zone" x="540" y="170" width="180" height="96"/>
+        <rect class="dg-box" x="556" y="186" width="148" height="60"/>
+        <text x="630" y="216" text-anchor="middle">cron</text>
+        <path class="dg-arrow dg-arrow--key dg-arrow--back" d="M380,252 V286 Q380,300 366,300 H284 Q270,300 270,286 V102"/>
+        <text class="dg-label--key" x="400" y="290" text-anchor="start">죽으면 Restart=</text>
+        <text class="dg-label--sm" x="130" y="300" text-anchor="middle">점선 = 서비스별 cgroup</text>
+        <rect class="dg-box dg-box--muted" x="40" y="340" width="680" height="48"/>
+        <text class="dg-label--muted" x="380" y="364" text-anchor="middle">stdout, stderr → journald (journalctl로 조회)</text>
+      </svg>
+      <figcaption>서비스마다 cgroup이 따로 있어 자식 프로세스까지 한꺼번에 멈추고 자원을 셉니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>service 파일 하나가 실행 방법의 전부다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="/etc/systemd/system/api.service"><code>[Unit]
+Description=Order API
+After=network-online.target
+
+[Service]
+User=app
+WorkingDirectory=/opt/api
+EnvironmentFile=/etc/api/env
+ExecStart=/usr/bin/java -jar /opt/api/app.jar
+<span class="hl">Restart=on-failure</span>
+RestartSec=5
+TimeoutStopSec=30
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target</code></pre>
+    <div class="prose">
+      <p><code>[Unit]</code>은 순서와 의존 관계, <code>[Service]</code>는 실행 방법, <code>[Install]</code>은 부팅 때 어느 목표에 붙일지입니다.</p>
+      <p><code>User</code>로 전용 계정을, <code>EnvironmentFile</code>로 비밀 값을 코드 밖에 둡니다. <code>TimeoutStopSec</code>은 SIGTERM 뒤 SIGKILL까지 기다릴 시간(기본 90초)이고, <code>LimitNOFILE</code>이 이 서비스의 fd 한도입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>enable은 부팅, Restart=는 죽었을 때</h2>
+  <div class="slide__body">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>sudo systemctl enable --now api       <span class="c"># 부팅 등록 + 지금 시작</span>
+<span class="prompt">$ </span>systemctl status api; systemctl list-units --failed
+<span class="hl"><span class="prompt">$ </span>journalctl -u api -f --since "10 min ago" -p err</span></code></pre>
+    <table class="compare">
+      <thead><tr><th scope="col">Restart= 값</th><th scope="col">다시 시작하는 경우</th><th scope="col">어울리는 곳</th></tr></thead>
+      <tbody>
+        <tr><th scope="row"><code>no</code> (기본)</th><td>다시 시작하지 않음</td><td>한 번 돌고 끝나는 작업</td></tr>
+        <tr><th scope="row"><code>on-failure</code></th><td>0이 아닌 종료 코드, 시그널, 타임아웃</td><td class="is-flow">대부분의 앱 서버</td></tr>
+        <tr><th scope="row"><code>always</code></th><td>정상 종료여도 항상</td><td>멈추면 안 되는 에이전트</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p><code>enable</code>은 부팅 목표에 링크만 걸고 <code>start</code>는 지금만 띄우므로 둘 다 하려면 <code>enable --now</code>입니다. 유닛을 고친 뒤 <code>daemon-reload</code>를 빠뜨리면 옛 설정으로 돕니다. 기본값으로 10초 안에 5번 시작하면 systemd가 포기하고 failed가 되니, <code>RestartSec</code>으로 간격을 두고 실패 알림을 겁니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>cron은 다섯 칸으로 시각을 적는다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="crontab -e"><code><span class="c"># 분 시 일 월 요일  명령</span>
+<span class="n">30</span> <span class="n">3</span> * * *   /opt/api/bin/cleanup.sh
+*/<span class="n">5</span> * * * *  /opt/api/bin/health.sh
+<span class="n">0</span> <span class="n">9</span> * * <span class="n">1-5</span> /opt/api/bin/report.sh
+
+<span class="c"># 환경과 겹침 실행 대비</span>
+PATH=/usr/local/bin:/usr/bin:/bin
+<span class="hl"><span class="n">*/10</span> * * * * flock -n /tmp/sync.lock \</span>
+<span class="hl">  /opt/api/bin/sync.sh &gt;&gt; /var/log/sync.log 2&gt;&amp;1</span></code></pre>
+    <div class="prose">
+      <p><dfn>cron</dfn>은 정해진 시각에 명령을 실행하는 데몬입니다. 다섯 칸은 분, 시, 일, 월, 요일이고 <code>*/5</code>는 5분마다입니다.</p>
+      <p>함정은 세 가지입니다. 최소한의 PATH로 돌고, 출력을 버리면 실패를 모르며, 이전 실행이 안 끝났는데 다음이 겹칩니다. <code>flock</code>으로 겹침을 막습니다. 서버가 여러 대면 모든 서버에서 돌므로 분산 스케줄링은 8장의 분산 락이나 관리형 스케줄러를 씁니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>SSH 키 인증은 비밀키를 보내지 않는다</h2>
+  <div class="split split--wide-left">
+    <div class="seq" role="img" aria-label="클라이언트가 접속하면 서버가 호스트 키로 자신을 증명하고, 클라이언트는 known_hosts와 비교한 뒤, 자기 비밀키로 서명해 보내고 서버가 authorized_keys의 공개키로 검증한다">
+      <div class="seq__head"><span>내 PC</span><span></span><span>서버 sshd</span></div>
+      <div class="seq__row seq__row--r">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>접속 요청</b> 키 교환 시작</span>
+        <span class="seq__state"></span>
+      </div>
+      <div class="seq__row seq__row--l">
+        <span class="seq__state is-key">known_hosts 확인</span>
+        <span class="seq__msg"><b>호스트 키 서명</b> 서버가 자신을 증명</span>
+        <span class="seq__state"></span>
+      </div>
+      <div class="seq__row seq__row--r">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>사용자 인증</b> 비밀키로 만든 서명<small>비밀키 자체는 PC를 떠나지 않음</small></span>
+        <span class="seq__state is-key">authorized_keys로 검증</span>
+      </div>
+      <div class="seq__row seq__row--l is-back">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>셸 세션</b> 암호화된 채널</span>
+        <span class="seq__state"></span>
+      </div>
+    </div>
+    <div class="prose">
+      <p>SSH는 두 방향으로 신원을 확인합니다. 먼저 서버가 <dfn title="host key">호스트 키</dfn>로 "내가 그 서버가 맞다"를 증명하고, 그다음 사용자가 비밀키로 서명해 "내가 이 공개키의 주인"임을 증명합니다.</p>
+      <p>비밀번호와 달리 서버에 비밀이 저장되지 않아 서버가 털려도 키가 새지 않습니다. 운영 서버는 <code>PasswordAuthentication no</code>로 비밀번호 로그인을 끕니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>호스트 키 경고는 무시하지 않는다</h2>
+  <div class="slide__body">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>ssh-keygen -t ed25519 &amp;&amp; ssh-copy-id ubuntu@10.0.1.12
+<span class="prompt">$ </span>chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys
+<span class="hl">WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!</span>
+<span class="prompt">$ </span>ssh-keygen -R 10.0.1.12        <span class="c"># 서버 재생성이 확실할 때만</span>
+<span class="prompt">$ </span>scp app.jar api1:/opt/api/
+<span class="prompt">$ </span>rsync -avz --delete --dry-run dist/ api1:/srv/web/
+<span class="c"># ~/.ssh/config의 ProxyJump로 배스천 자동 경유</span></code></pre>
+    <div class="prose">
+      <p>처음 접속한 서버의 호스트 키는 <code>known_hosts</code>에 저장되고 다음부터 비교됩니다. 키가 바뀌었다는 경고는 <mark>중간자 공격일 수도</mark> 있습니다. sshd는 <code>~/.ssh</code>가 남에게 쓰기 가능하면 키 인증을 거부하니, 키를 넣었는데 비밀번호를 묻는다면 권한부터 봅니다.</p>
+      <p><code>scp</code>는 매번 전체를 복사하고 <code>rsync</code>는 바뀐 부분만 보냅니다. <code>--delete</code>는 원본에 없는 파일을 지우므로 <code>--dry-run</code>으로 먼저 확인합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>포트 포워딩은 SSH 안으로 다른 연결을 통과시킨다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>Private Subnet의 DB는 인터넷에서 직접 닿지 않습니다. 접속 가능한 중계 서버(배스천)에 SSH로 들어가 그 안에서 DB로 연결을 이어 주는 것이 <dfn title="local port forwarding">로컬 포트 포워딩</dfn>입니다.</p>
+      <p><code>-L</code>은 내 포트를 원격 목적지로, <code>-R</code>은 원격 포트를 내 쪽으로 엽니다. <code>-D</code>는 SOCKS 프록시를 만듭니다. AWS에서는 SSM Session Manager로 배스천 자체를 없애는 방법도 씁니다(14장).</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 380" role="img" aria-labelledby="f9pf">
+        <title id="f9pf">내 PC의 3307 포트로 들어온 연결이 SSH 터널을 타고 배스천 서버에 도착한 뒤, 배스천이 사설망의 DB 3306 포트로 연결을 이어 준다.</title>
+        <rect class="dg-box" x="20" y="150" width="170" height="68"/>
+        <text x="105" y="178" text-anchor="middle">내 PC</text>
+        <text class="dg-mono dg-label--sm" x="105" y="204" text-anchor="middle">localhost:3307</text>
+        <rect class="dg-zone" x="280" y="60" width="460" height="260"/>
+        <text class="dg-label--sm" x="510" y="86" text-anchor="middle">VPC</text>
+        <rect class="dg-box dg-box--flow" x="300" y="150" width="170" height="68"/>
+        <text x="385" y="184" text-anchor="middle">배스천</text>
+        <rect class="dg-box" x="550" y="150" width="170" height="68"/>
+        <text x="635" y="178" text-anchor="middle">DB</text>
+        <text class="dg-mono dg-label--sm" x="635" y="204" text-anchor="middle">db.internal:3306</text>
+        <path class="dg-arrow dg-arrow--flow" d="M198,184 H292"/>
+        <text class="dg-label--sm dg-label--flow" x="245" y="140" text-anchor="middle">SSH 22</text>
+        <path class="dg-arrow dg-arrow--flow" d="M478,184 H542"/>
+        <text class="dg-label--sm" x="510" y="250" text-anchor="middle">사설망 안의 평범한 TCP</text>
+        <text class="dg-mono" x="380" y="358" text-anchor="middle">ssh -N -L 3307:db.internal:3306 bastion</text>
+      </svg>
+      <figcaption>DB 클라이언트는 <code>localhost:3307</code>에 붙지만 실제로는 사설망의 DB와 말합니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ===== Part 2: core (Linux internals for ops) ===== -->
+<section class="slide slide--divider" data-section="서버 안을 들여다보기" data-depth="core">
+  <p class="divider__no">2부</p>
+  <h2>숫자 뒤에 있는 커널의 사정</h2>
+  <p class="lede">명령어가 내놓는 숫자는 커널이 집계한 값입니다. 그 숫자가 무엇을 세는지 알아야 "느리다", "꽉 찼다"를 정확히 읽습니다.</p>
+  <div class="depth-shift" aria-label="깊이 전환: 기초에서 원리로">
+    <span class="depth-shift__step"><span class="depth" data-depth="basic"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>기초</span>
+    <span class="depth-shift__line" aria-hidden="true"></span>
+    <span class="depth-shift__step is-to"><span class="depth" data-depth="core"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>원리</span>
+    <span class="depth-shift__note">여기부터는 네트워크, 메모리, 디스크, 커널 파라미터가 내부에서 어떻게 집계되는지 봅니다.</span>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>/proc은 커널이 열어 둔 상태 창이다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>cat /proc/loadavg
+<span class="n">3.12 2.80 2.41</span> 4/812 5120
+<span class="prompt">$ </span>grep -E 'MemTotal|MemAvail' /proc/meminfo
+<span class="prompt">$ </span>cat /proc/4211/status | grep -E 'State|VmRSS'
+<span class="prompt">$ </span>ls -l /proc/4211/fd | wc -l
+<span class="prompt">$ </span>cat /proc/4211/limits
+<span class="prompt">$ </span>cat /proc/sys/net/core/somaxconn
+<span class="hl"><span class="prompt">$ </span>cat /sys/fs/cgroup/…/memory.current</span></code></pre>
+    <div class="prose">
+      <p><code>/proc</code>은 디스크에 없는 가상 파일 시스템입니다. 파일을 읽는 순간 커널이 내부 상태를 글자로 만들어 돌려줍니다. <code>top</code>, <code>free</code>, <code>ps</code>도 결국 여기를 읽습니다.</p>
+      <p><code>/proc/PID/</code>에는 프로세스별 정보가, <code>/proc/sys/</code>에는 바꿀 수 있는 커널 파라미터가, <code>/sys/fs/cgroup</code>에는 cgroup별 사용량이 있습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>ip로 주소와 경로를, ss로 소켓을 본다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>ip -br addr
+eth0   UP   10.0.2.15/24
+<span class="prompt">$ </span>ip route
+default via 10.0.2.1 dev eth0
+<span class="prompt">$ </span>ip route get 10.0.9.20   <span class="c"># 어느 길로?</span>
+<span class="hl"><span class="prompt">$ </span>ss -ltnp</span>
+LISTEN 0 4096  127.0.0.1:8080  … java
+<span class="prompt">$ </span>ss -tn state established '( dport = :3306 )'
+<span class="prompt">$ </span>ss -s</code></pre>
+    <div class="prose">
+      <p><code>ip</code>는 예전 <code>ifconfig</code>, <code>route</code>를 대신합니다. 주소, 기본 게이트웨이, 특정 목적지로 가는 경로를 확인합니다(서브넷과 게이트웨이는 2장).</p>
+      <p><code>ss -ltnp</code>는 듣고 있는 TCP 포트와 프로세스를 보여 줍니다. 위 예처럼 <mark>127.0.0.1에만 묶여 있으면</mark> 외부에서 닿지 않습니다. "포트는 열렸는데 접속이 안 된다"의 흔한 원인입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>연결 문제는 계층 순서로 잘라 본다</h2>
+  <div class="slide__body">
+    <ol class="flow">
+      <li class="flow__node"><b>dig</b><span>이름이 맞는 IP로 풀리나</span></li>
+      <li class="flow__node"><b>nc -zv</b><span>포트까지 TCP가 닿나</span></li>
+      <li class="flow__node"><b>curl -v</b><span>TLS와 HTTP 응답은</span></li>
+      <li class="flow__node is-flow"><b>curl -w</b><span>어느 단계가 느린가</span></li>
+    </ol>
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>dig +short api.internal.example.com
+<span class="prompt">$ </span>nc -zv 10.0.3.21 5432     <span class="c"># succeeded / timed out / refused</span>
+<span class="prompt">$ </span>curl -sv https://api.example.com/health -o /dev/null
+<span class="hl"><span class="prompt">$ </span>curl -so /dev/null \</span>
+<span class="hl">    -w '%{time_connect} %{time_appconnect} %{time_total}\n' URL</span></code></pre>
+    <div class="prose">
+      <p>계층별로 잘라야 원인이 보입니다. <code>refused</code>는 호스트에 닿았지만 듣는 프로세스가 없다는 뜻이고, <code>timed out</code>은 중간에서 패킷이 버려진다는 뜻이라 방화벽이나 보안 그룹을 의심합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>경로는 traceroute, 패킷은 tcpdump</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>traceroute -n 8.8.8.8
+<span class="prompt">$ </span>mtr -rwc 50 api.example.com
+<span class="hl"><span class="prompt">$ </span>sudo tcpdump -i any -nn port 8080</span>
+<span class="prompt">$ </span>sudo tcpdump -i eth0 -nn \
+    'tcp[tcpflags] &amp; tcp-syn != 0'
+<span class="prompt">$ </span>sudo tcpdump -i eth0 -w cap.pcap \
+    host 10.0.3.21   <span class="c"># Wireshark로 분석</span></code></pre>
+    <div class="prose">
+      <p><code>traceroute</code>는 TTL을 1씩 늘려 보내며 중간 라우터의 응답으로 경로를 그립니다. 응답하지 않는 구간 <code>* * *</code>은 ICMP를 막았을 뿐 끊긴 것이 아닐 수 있습니다.</p>
+      <p><code>tcpdump</code>는 NIC를 지나는 패킷을 그대로 봅니다. SYN만 오고 SYN+ACK가 안 나간다면 앱이 아니라 커널이나 방화벽 단계에서 막힌 것입니다. 추측을 사실로 바꾸는 마지막 도구입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>방화벽은 커널 안의 체인에서 패킷을 거른다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>Linux 방화벽은 커널의 <dfn>netfilter</dfn>에 걸린 규칙입니다. 패킷은 도착하면 <code>PREROUTING</code>을 지나, 내 프로세스로 가면 <code>INPUT</code>, 다른 곳으로 넘기면 <code>FORWARD</code>를 거칩니다. 내가 보내는 패킷은 <code>OUTPUT</code>과 <code>POSTROUTING</code>을 지납니다.</p>
+      <p>규칙은 표(table)로 나뉩니다. <code>filter</code>는 허용과 차단, <code>nat</code>은 주소 변환입니다. Docker의 포트 매핑도 바로 이 nat 표에 규칙을 넣는 방식입니다(4부).</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 420" role="img" aria-labelledby="f9nf">
+        <title id="f9nf">들어온 패킷은 PREROUTING을 거쳐 라우팅 결정 후 로컬 프로세스로 가면 INPUT, 다른 곳으로 가면 FORWARD를 지나 POSTROUTING으로 나간다. 로컬 프로세스가 보내는 패킷은 OUTPUT과 POSTROUTING을 지난다.</title>
+        <rect class="dg-box" x="20" y="60" width="160" height="60"/>
+        <text x="100" y="90" text-anchor="middle">PREROUTING</text>
+        <path class="dg-arrow dg-arrow--flow" d="M188,90 H242"/>
+        <rect class="dg-box dg-box--muted" x="250" y="60" width="130" height="60"/>
+        <text class="dg-label--sm" x="315" y="90" text-anchor="middle">라우팅 결정</text>
+        <path class="dg-arrow dg-arrow--flow" d="M388,90 H412"/>
+        <rect class="dg-box" x="420" y="60" width="140" height="60"/>
+        <text x="490" y="90" text-anchor="middle">FORWARD</text>
+        <path class="dg-arrow dg-arrow--flow" d="M568,90 H582"/>
+        <rect class="dg-box" x="590" y="60" width="150" height="60"/>
+        <text x="665" y="90" text-anchor="middle">POSTROUTING</text>
+        <path class="dg-arrow dg-arrow--flow" d="M315,128 V182"/>
+        <rect class="dg-box dg-box--flow" x="240" y="190" width="150" height="60"/>
+        <text x="315" y="220" text-anchor="middle">INPUT</text>
+        <path class="dg-arrow dg-arrow--flow" d="M315,258 V302"/>
+        <rect class="dg-box dg-box--solid" x="220" y="310" width="190" height="60"/>
+        <text class="dg-label--on" x="315" y="340" text-anchor="middle">로컬 프로세스</text>
+        <path class="dg-arrow" d="M418,340 H500 Q530,340 530,310 V258"/>
+        <rect class="dg-box" x="460" y="190" width="140" height="60"/>
+        <text x="530" y="220" text-anchor="middle">OUTPUT</text>
+        <path class="dg-arrow" d="M600,206 Q665,206 665,170 V128"/>
+        <text class="dg-label--sm" x="100" y="40" text-anchor="middle">패킷 도착</text>
+        <text class="dg-label--sm" x="665" y="40" text-anchor="middle">패킷 나감</text>
+        <text class="dg-label--sm" x="650" y="360" text-anchor="middle">DNAT은 PREROUTING,</text>
+        <text class="dg-label--sm" x="650" y="384" text-anchor="middle">SNAT은 POSTROUTING</text>
+      </svg>
+      <figcaption>내 서버로 오는 트래픽은 INPUT, 컨테이너로 넘기는 트래픽은 FORWARD를 지납니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>iptables는 앞 규칙부터 맞춰 보고 멈춘다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>sudo iptables -L INPUT -n -v --line-numbers
+<span class="prompt">$ </span>sudo iptables -A INPUT -m conntrack \
+    --ctstate ESTABLISHED,RELATED -j ACCEPT
+<span class="prompt">$ </span>sudo iptables -A INPUT -p tcp --dport 22 \
+    -s 10.0.0.0/16 -j ACCEPT
+<span class="hl"><span class="prompt">$ </span>sudo iptables -P INPUT DROP</span>
+<span class="prompt">$ </span>sudo nft list ruleset    <span class="c"># nftables</span>
+<span class="prompt">$ </span>sudo ufw allow 443/tcp   <span class="c"># 쉬운 앞단</span></code></pre>
+    <div class="prose">
+      <p>규칙은 위에서부터 비교해 처음 맞은 규칙의 동작(ACCEPT, DROP, REJECT)을 따르고, 아무것도 맞지 않으면 체인의 기본 정책을 씁니다. <code>conntrack</code>은 연결 상태를 기억해 응답 패킷을 자동으로 허용합니다.</p>
+      <p><dfn>nftables</dfn>는 iptables의 후속으로 최신 배포판의 기본 백엔드입니다. 클라우드에서는 보안 그룹이 앞에서 먼저 거릅니다(13장). 원격에서 DROP 정책을 걸 때는 SSH 허용 규칙을 먼저 넣습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>로드 애버리지는 CPU 사용률이 아니라 줄의 길이다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>uptime; nproc
+<span class="hl">load average: 7.92, 6.10, 3.05</span>
+<span class="n">4</span>
+<span class="prompt">$ </span>top -bn1 | head -3
+%Cpu(s): 31.0 us, 4.2 sy, 0.0 id, <span class="n">63.5</span> wa
+<span class="prompt">$ </span>ps -eo stat,pid,cmd | awk '$1 ~ /^D/'</code></pre>
+    <div class="prose">
+      <p><dfn title="load average">로드 애버리지</dfn>는 실행 중이거나 실행을 기다리는(R) 작업 수의 1, 5, 15분 지수 이동 평균입니다. Linux는 여기에 <strong>D 상태(I/O를 기다리며 깨울 수 없는 잠)</strong>도 더합니다.</p>
+      <p>그래서 코어 4개에 7.92는 "CPU가 바쁘다"가 아닐 수 있습니다. 위 예처럼 <code>wa</code>(I/O 대기)가 높다면 <mark>디스크나 NFS를 기다리는 줄</mark>입니다. 숫자를 코어 수와 비교하고, 세 값의 추세로 악화 중인지 봅니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>메모리는 free가 아니라 available을 본다</h2>
+  <div class="slide__body">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>free -h
+       total   used   free  buff/cache  available
+<span class="hl">Mem:    15Gi    9Gi  320Mi       5.9Gi      5.6Gi</span>
+<span class="prompt">$ </span>vmstat 1 3          <span class="c"># si/so가 계속 0이 아니면 스왑 중</span>
+ r b  swpd  free  si  so   bi  bo  wa
+ 6 3  812k  102k 420 980 1500 220  41
+<span class="prompt">$ </span>sysctl vm.swappiness   <span class="c"># 기본 60</span></code></pre>
+    <div class="prose">
+      <p>Linux는 남는 메모리를 디스크 파일을 담아 두는 <dfn title="page cache">페이지 캐시</dfn>로 써서 <code>free</code> 열은 늘 작습니다. 캐시는 앱이 요구하면 즉시 비워 줄 수 있으므로, 이를 감안한 <mark>available</mark>이 실제로 쓸 수 있는 양입니다.</p>
+      <p><dfn>swap</dfn>은 덜 쓰는 페이지를 디스크로 내보내 죽음을 늦추지만, 수천 배 느려 스래싱(1장)을 부릅니다. <code>vm.swappiness</code>는 그 적극성이고, 지연이 중요한 서버와 Kubernetes 노드는 전통적으로 swap을 끕니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>메모리가 바닥나면 OOM Killer가 고른다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>dmesg -T | grep -i -A2 'killed process'
+<span class="hl">Out of memory: Killed process 4211 (java)</span>
+  total-vm:9.1G, anon-rss:7.4G …
+<span class="prompt">$ </span>cat /proc/4211/oom_score
+<span class="n">812</span>
+<span class="prompt">$ </span>echo -500 | sudo tee /proc/4211/oom_score_adj
+<span class="c"># systemd: OOMScoreAdjust=-500</span></code></pre>
+    <div class="prose">
+      <p>페이지 캐시를 비우고 swap까지 써도 메모리를 못 구하면, 커널의 <dfn>OOM Killer</dfn>가 프로세스 하나를 SIGKILL로 죽여 메모리를 확보합니다. 대상은 <code>oom_score</code>가 가장 높은 프로세스이고, 주로 메모리를 가장 많이 쓰는 것입니다.</p>
+      <p><code>oom_score_adj</code>(-1000~1000)로 우선순위를 조정합니다. 앱 로그에는 흔적이 없고 <mark>커널 로그(dmesg)에만</mark> 남는다는 점이 함정입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>디스크는 용량과 inode 둘 다 바닥난다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>df -h /
+/dev/nvme0n1p1  50G  31G  19G  62% /
+<span class="prompt">$ </span>df -i /
+<span class="hl">/dev/nvme0n1p1  3.2M 3.2M  0  100% /</span>
+<span class="prompt">$ </span>du -xh /var --max-depth=1 | sort -h | tail
+<span class="prompt">$ </span>find /var/spool -xdev -type f | wc -l
+<span class="prompt">$ </span>ncdu -x /     <span class="c"># 대화형 탐색</span></code></pre>
+    <div class="prose">
+      <p><code>df</code>는 파일 시스템 단위 사용량, <code>du</code>는 디렉터리 단위 사용량입니다. <code>du</code>를 큰 순으로 정렬해 내려가면 범인을 찾습니다.</p>
+      <p>파일 하나에 inode 하나가 필요하고, ext4는 포맷할 때 inode 개수가 정해집니다. 작은 세션 파일이나 메일 큐가 수백만 개 쌓이면 <mark>용량이 남아도 "No space left on device"</mark>가 납니다. <code>df -i</code>로 구분합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>로그를 지웠는데 디스크가 그대로인 이유</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>rm /var/log/api/app.log
+<span class="prompt">$ </span>df -h /     <span class="c"># 그대로 100%</span>
+<span class="prompt">$ </span>sudo lsof +L1
+COMMAND PID  FD  SIZE/OFF NLINK NAME
+<span class="hl">java   4211  7w 21474836480 0 app.log (deleted)</span>
+<span class="c"># 재시작 없이 비우기</span>
+<span class="prompt">$ </span>: &gt; /proc/4211/fd/7</code></pre>
+    <div class="prose">
+      <p><code>rm</code>은 디렉터리에서 이름만 지웁니다. 프로세스가 그 파일을 fd로 열고 있으면 inode와 데이터는 <strong>마지막 fd가 닫힐 때까지</strong> 남습니다. 20GB 로그를 지웠는데 공간이 돌아오지 않는 이유입니다.</p>
+      <p><code>lsof +L1</code>로 링크 수 0인 열린 파일을 찾아 앱을 재시작하거나 fd를 비웁니다. 애초에 지우지 말고 <code>: &gt; app.log</code>로 비우고, logrotate의 <code>copytruncate</code>나 앱의 로그 롤링을 씁니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>I/O 대기는 vmstat와 iostat로 본다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>vmstat 1
+ r  b   si so   bi    bo   us sy id wa st
+ 1 <span class="n">7</span>    0  0  120 <span class="n">88000</span>  5  3 30 <span class="n">62</span>  0
+<span class="prompt">$ </span>iostat -xz 1
+Device  r/s  w/s r_await w_await aqu-sz %util
+<span class="hl">nvme1n1 12 3400   0.9    48.2    160   100</span>
+<span class="prompt">$ </span>pidstat -d 1   <span class="c"># 프로세스별 I/O</span></code></pre>
+    <div class="prose">
+      <p><code>vmstat</code>의 <code>b</code>는 I/O를 기다리며 막힌 프로세스 수, <code>wa</code>는 CPU가 I/O를 기다리며 논 시간 비율입니다. <code>st</code>는 하이퍼바이저가 다른 VM에 CPU를 빼앗긴 시간입니다.</p>
+      <p><code>iostat</code>에서는 <code>await</code>(요청당 대기 ms)와 <code>aqu-sz</code>(큐 길이)를 봅니다. SSD는 병렬 처리라 <code>%util</code> 100%가 곧 한계는 아닙니다. 지연이 함께 뛰는지가 기준입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>fd 한도는 세 겹으로 걸려 있다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">층</th><th scope="col">설정</th><th scope="col">적용 범위</th><th scope="col">확인</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">시스템 전체</th><td><code>fs.file-max</code></td><td>커널 전체가 여는 파일 수</td><td><code>/proc/sys/fs/file-nr</code></td></tr>
+        <tr><th scope="row">프로세스 상한의 상한</th><td><code>fs.nr_open</code></td><td>hard 한도로 줄 수 있는 최대</td><td><code>sysctl fs.nr_open</code></td></tr>
+        <tr><th scope="row">프로세스</th><td>soft / hard 한도</td><td>프로세스마다, 자식에게 상속</td><td><code>/proc/PID/limits</code></td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>프로세스 한도를 정하는 곳은 띄운 주체마다 다릅니다. 로그인 셸은 <code>ulimit -n</code>과 <code>/etc/security/limits.conf</code>를, systemd 서비스는 <mark>유닛의 <code>LimitNOFILE</code></mark>을, Docker 컨테이너는 <code>--ulimit nofile=65535:65535</code>를 따릅니다. limits.conf를 고쳐도 systemd 서비스에는 적용되지 않는 것이 흔한 실수입니다. 한도를 올리기 전에 누수인지부터 가르는 방법은 1장에서 다뤘습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>sysctl로 커널의 기본값을 서버에 맞춘다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">파라미터</th><th scope="col">의미</th><th scope="col">기본값</th><th scope="col">언제 손대나</th></tr></thead>
+      <tbody>
+        <tr><th scope="row"><code>net.core.somaxconn</code></th><td>accept 큐 길이 상한</td><td class="num">4096 (5.4+)</td><td>순간 연결 폭주, 큐 넘침</td></tr>
+        <tr><th scope="row"><code>net.ipv4.ip_local_port_range</code></th><td>나가는 연결의 포트 범위</td><td class="num">32768–60999</td><td>외부 호출 많은 서버</td></tr>
+        <tr><th scope="row"><code>net.ipv4.tcp_tw_reuse</code></th><td>TIME_WAIT 포트 재사용</td><td class="num">2 (루프백만)</td><td class="is-key">풀 도입이 먼저</td></tr>
+        <tr><th scope="row"><code>fs.file-max</code></th><td>시스템 전체 fd 상한</td><td>메모리 비례</td><td>대량 연결 서버</td></tr>
+        <tr><th scope="row"><code>vm.swappiness</code></th><td>swap 적극성</td><td class="num">60</td><td>지연 민감 서버</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>accept 큐는 <code>listen()</code>의 backlog와 <code>somaxconn</code> 중 작은 값이라, 커널만 올리고 앱 설정(Tomcat <code>accept-count</code> 등)을 그대로 두면 효과가 없습니다. 포트와 TIME_WAIT 원리는 2장에서 다뤘습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>sysctl 변경은 파일에 남겨야 재부팅을 견딘다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>sysctl net.core.somaxconn
+<span class="prompt">$ </span>sudo sysctl -w net.core.somaxconn=8192
+<span class="c"># 영구 적용</span>
+<span class="prompt">$ </span>cat /etc/sysctl.d/90-api.conf
+net.core.somaxconn = 8192
+net.ipv4.ip_local_port_range = 10240 65000
+<span class="hl"><span class="prompt">$ </span>sudo sysctl --system</span>
+<span class="c"># 컨테이너별 (net namespace 단위)</span>
+<span class="prompt">$ </span>docker run --sysctl net.core.somaxconn=8192 …</code></pre>
+    <div class="prose">
+      <p><code>sysctl -w</code>는 지금 커널 메모리의 값만 바꿔 재부팅하면 사라집니다. <code>/etc/sysctl.d/</code>에 파일로 두고 <code>--system</code>으로 다시 읽어야 영구 적용되고 코드처럼 관리됩니다.</p>
+      <p><code>net.*</code> 파라미터 상당수는 네트워크 namespace마다 따로 있어서, 컨테이너 안에서는 호스트 값이 아니라 자기 값이 적용됩니다. 다음 부의 namespace가 바로 그 이유입니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Part 3: core (container internals) ===== -->
+<section class="slide slide--divider" data-section="컨테이너의 원리" data-depth="core">
+  <p class="divider__no">3부</p>
+  <h2>컨테이너는 커널 기능의 조합이다</h2>
+  <p class="lede">커널 안에 "컨테이너"라는 객체는 없습니다. 2부에서 본 프로세스, 파일 시스템, 네트워크를 namespace로 나눠 보이고, cgroup으로 양을 제한하고, 레이어 파일 시스템을 씌운 평범한 프로세스입니다.</p>
+</section>
+
+<section class="slide">
+  <h2>VM은 하드웨어를, 컨테이너는 OS를 나눈다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>"내 PC에선 되는데 서버에선 안 된다"는 문제는 실행 환경 차이에서 옵니다. 두 기술 모두 환경을 통째로 묶어 옮기지만, 어디를 나누는지가 다릅니다.</p>
+      <p><dfn title="Virtual Machine">VM</dfn>은 <dfn title="hypervisor">하이퍼바이저</dfn>가 가상 하드웨어를 만들고 그 위에 게스트 OS를 통째로 올립니다. <dfn>컨테이너</dfn>는 <mark>호스트 커널을 공유</mark>하고 프로세스만 격리합니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 420" role="img" aria-labelledby="f9vm">
+        <title id="f9vm">왼쪽 VM 구조는 하드웨어 위 하이퍼바이저와 VM마다 게스트 OS가 있고, 오른쪽 컨테이너 구조는 하드웨어 위 하나의 호스트 커널을 여러 컨테이너가 공유한다.</title>
+        <text class="dg-label--sm" x="190" y="20" text-anchor="middle">VM</text>
+        <rect class="dg-zone" x="26" y="40" width="156" height="156"/>
+        <rect class="dg-zone" x="198" y="40" width="156" height="156"/>
+        <rect class="dg-box" x="34" y="52" width="140" height="60"/>
+        <text x="104" y="82" text-anchor="middle">앱 A</text>
+        <rect class="dg-box dg-box--key" x="34" y="124" width="140" height="60"/>
+        <text x="104" y="154" text-anchor="middle">게스트 OS</text>
+        <rect class="dg-box" x="206" y="52" width="140" height="60"/>
+        <text x="276" y="82" text-anchor="middle">앱 B</text>
+        <rect class="dg-box dg-box--key" x="206" y="124" width="140" height="60"/>
+        <text x="276" y="154" text-anchor="middle">게스트 OS</text>
+        <rect class="dg-box" x="26" y="212" width="328" height="60"/>
+        <text x="190" y="242" text-anchor="middle">하이퍼바이저</text>
+        <rect class="dg-box dg-box--muted" x="26" y="284" width="328" height="60"/>
+        <text class="dg-label--muted" x="190" y="314" text-anchor="middle">하드웨어</text>
+        <text class="dg-label--key" x="190" y="376" text-anchor="middle">VM마다 커널 전체</text>
+        <text class="dg-label--sm" x="570" y="20" text-anchor="middle">컨테이너</text>
+        <rect class="dg-zone" x="406" y="40" width="156" height="156"/>
+        <rect class="dg-zone" x="578" y="40" width="156" height="156"/>
+        <rect class="dg-box" x="414" y="52" width="140" height="60"/>
+        <text x="484" y="82" text-anchor="middle">앱 C</text>
+        <rect class="dg-box dg-box--muted" x="414" y="124" width="140" height="60"/>
+        <text class="dg-label--muted" x="484" y="154" text-anchor="middle">라이브러리</text>
+        <rect class="dg-box" x="586" y="52" width="140" height="60"/>
+        <text x="656" y="82" text-anchor="middle">앱 D</text>
+        <rect class="dg-box dg-box--muted" x="586" y="124" width="140" height="60"/>
+        <text class="dg-label--muted" x="656" y="154" text-anchor="middle">라이브러리</text>
+        <rect class="dg-box dg-box--flow" x="406" y="212" width="328" height="60"/>
+        <text class="dg-label--lg" x="570" y="242" text-anchor="middle">호스트 커널 (공유)</text>
+        <rect class="dg-box dg-box--muted" x="406" y="284" width="328" height="60"/>
+        <text class="dg-label--muted" x="570" y="314" text-anchor="middle">하드웨어</text>
+        <text class="dg-label--flow" x="570" y="376" text-anchor="middle">컨테이너는 격리된 프로세스</text>
+      </svg>
+      <figcaption>점선 상자가 격리 단위입니다. VM은 커널까지 따로 갖고, 컨테이너는 커널 하나를 나눠 씁니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>커널을 공유하면 가볍지만 경계는 얇아진다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">항목</th><th scope="col">VM</th><th scope="col">컨테이너</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">격리 단위</th><td>가상 하드웨어 + 게스트 OS</td><td>프로세스 (namespace, cgroup)</td></tr>
+        <tr><th scope="row">시작 시간</th><td>OS 부팅, 수십 초 이상</td><td class="is-flow">프로세스 시작, 보통 1초 안팎</td></tr>
+        <tr><th scope="row">이미지 크기</th><td>GB 단위</td><td>수십~수백 MB</td></tr>
+        <tr><th scope="row">다른 OS 실행</th><td>가능 (Linux 위 Windows)</td><td>호스트 커널과 같은 계열만</td></tr>
+        <tr><th scope="row">보안 경계</th><td class="is-flow">하이퍼바이저, 두꺼움</td><td class="is-key">커널 취약점이 곧 탈출 경로</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>그래서 실무에서는 둘을 겹쳐 씁니다. 클라우드 VM(EC2) 위에 컨테이너 여러 개를 올리는 구성이 가장 흔하고, macOS에서 Docker를 쓸 때도 내부에서 작은 Linux VM이 돕니다. Fargate나 Lambda처럼 남과 섞이는 환경은 Firecracker 같은 경량 VM으로 컨테이너를 한 겹 더 감쌉니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>namespace는 프로세스가 보는 세상을 나눈다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">namespace</th><th scope="col">나누는 것</th><th scope="col">컨테이너 안에서 보이는 모습</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">pid</th><td>프로세스 번호</td><td>내 앱이 PID 1, 남의 프로세스 안 보임</td></tr>
+        <tr><th scope="row">net</th><td>NIC, IP, 라우팅, 포트, iptables</td><td>자기만의 eth0, 8080을 따로 씀</td></tr>
+        <tr><th scope="row">mnt</th><td>마운트 목록</td><td>이미지가 루트(/)로 보임</td></tr>
+        <tr><th scope="row">uts / ipc</th><td>호스트 이름 / 공유 메모리</td><td>호스트 이름이 컨테이너 ID</td></tr>
+        <tr><th scope="row">user</th><td>UID 매핑</td><td class="is-flow">안의 root가 밖에선 일반 UID</td></tr>
+        <tr><th scope="row">cgroup / time</th><td>cgroup 경로 / 시계 오프셋</td><td>자기 cgroup이 루트로 보임</td></tr>
+      </tbody>
+    </table>
+    <p class="small">프로세스는 namespace 종류마다 하나씩에 속합니다. <code>ls -l /proc/PID/ns</code>로 어느 namespace에 속했는지 확인합니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>같은 프로세스가 안과 밖에서 다른 번호를 갖는다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>pid namespace 안에서 처음 뜬 프로세스는 PID 1을 받지만, 호스트에서 보면 평범한 PID 4211입니다. 두 컨테이너는 서로를 보지 못해도 호스트의 <code>ps</code>에는 모두 보입니다.</p>
+      <p>Docker 없이도 <code>sudo unshare --pid --fork --mount-proc bash</code>로 새 pid namespace에서 셸을 띄우면 <code>ps</code>에 프로세스가 둘만 보입니다. <mark>컨테이너의 정체는 커널 기능을 조합한 프로세스</mark>라는 것을 직접 확인하는 방법입니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 440" role="img" aria-labelledby="f9ns">
+        <title id="f9ns">두 컨테이너가 각자 PID, 네트워크, 파일 시스템 namespace와 cgroup 제한을 가진 채 하나의 호스트 커널 위에서 실행된다.</title>
+        <rect class="dg-zone" x="20" y="20" width="340" height="300"/>
+        <text class="dg-label--sm" x="190" y="44" text-anchor="middle">컨테이너 A</text>
+        <rect class="dg-box dg-box--flow" x="44" y="62" width="292" height="68"/>
+        <text x="190" y="86" text-anchor="middle">PID 1: java</text>
+        <text class="dg-label--sm" x="190" y="112" text-anchor="middle">호스트에서는 PID 4211</text>
+        <rect class="dg-box" x="44" y="142" width="292" height="56"/>
+        <text x="190" y="170" text-anchor="middle">자기만의 eth0, 포트</text>
+        <rect class="dg-box" x="44" y="210" width="292" height="56"/>
+        <text x="190" y="238" text-anchor="middle">자기만의 / 파일 시스템</text>
+        <text class="dg-label--key" x="190" y="296" text-anchor="middle">cgroup: CPU 1, 메모리 1GiB</text>
+        <rect class="dg-zone" x="400" y="20" width="340" height="300"/>
+        <text class="dg-label--sm" x="570" y="44" text-anchor="middle">컨테이너 B</text>
+        <rect class="dg-box dg-box--flow" x="424" y="62" width="292" height="68"/>
+        <text x="570" y="86" text-anchor="middle">PID 1: node</text>
+        <text class="dg-label--sm" x="570" y="112" text-anchor="middle">호스트에서는 PID 5307</text>
+        <rect class="dg-box" x="424" y="142" width="292" height="56"/>
+        <text x="570" y="170" text-anchor="middle">자기만의 eth0, 포트</text>
+        <rect class="dg-box" x="424" y="210" width="292" height="56"/>
+        <text x="570" y="238" text-anchor="middle">자기만의 / 파일 시스템</text>
+        <text class="dg-label--key" x="570" y="296" text-anchor="middle">cgroup: CPU 0.5, 메모리 512MiB</text>
+        <line class="dg-arrow" x1="190" y1="324" x2="190" y2="356"/>
+        <line class="dg-arrow" x1="570" y1="324" x2="570" y2="356"/>
+        <rect class="dg-box dg-box--solid" x="20" y="364" width="720" height="60"/>
+        <text class="dg-label--on" x="380" y="394" text-anchor="middle">하나의 호스트 Linux 커널</text>
+      </svg>
+      <figcaption>격리는 namespace, 제한은 cgroup입니다. 커널은 하나뿐입니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>cgroup은 프로세스 묶음이 쓰는 양을 제한한다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>stat -fc %T /sys/fs/cgroup
+cgroup2fs          <span class="c"># v2</span>
+<span class="prompt">$ </span>cd /sys/fs/cgroup/system.slice/\
+docker-&lt;id&gt;.scope
+<span class="prompt">$ </span>cat cpu.max
+<span class="hl"><span class="n">50000 100000</span></span>
+<span class="prompt">$ </span>cat memory.max memory.current
+<span class="n">536870912</span>
+<span class="n">402653184</span>
+<span class="prompt">$ </span>cat memory.events | grep oom_kill</code></pre>
+    <div class="prose">
+      <p><dfn title="control group">cgroup</dfn>은 프로세스를 묶어 CPU, 메모리, I/O, PID 수를 세고 제한하는 커널 기능입니다. 설정은 <code>/sys/fs/cgroup</code> 아래 파일을 쓰는 것으로 끝납니다.</p>
+      <p><strong>v1</strong>은 자원마다 계층이 따로라 관리가 복잡했고, <strong>v2</strong>는 하나의 계층으로 통합했습니다. 최신 배포판(Ubuntu 22.04, Amazon Linux 2023 등)은 v2가 기본이며, 오래된 JVM은 v2를 못 읽는 문제가 있었습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>CPU 상한은 죽이지 않고 멈춰 세운다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p><code>cpu.max = 50000 100000</code>은 100ms 주기마다 CPU 시간 50ms, 즉 0.5코어를 쓸 수 있다는 뜻입니다. 다 쓰면 남은 주기 동안 <dfn title="throttling">스로틀링</dfn>되어 아예 실행되지 않습니다.</p>
+      <p>함정은 스레드가 여럿일 때입니다. 스레드 4개가 동시에 돌면 50ms를 12.5ms 만에 소진하고 87.5ms를 멈춥니다. 평균 CPU 사용률은 낮은데 <mark>p99 지연이 100ms씩 튀는</mark> 이유입니다. <code>cpu.stat</code>의 <code>nr_throttled</code>로 확인합니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 360" role="img" aria-labelledby="f9th">
+        <title id="f9th">0.5코어 상한에서 스레드 4개가 동시에 돌면 100ms 주기의 처음 12.5ms에 할당량을 모두 쓰고 나머지 87.5ms 동안 스로틀링된다.</title>
+        <text class="dg-label--sm" x="40" y="40" text-anchor="start">스레드 4개, 상한 0.5코어 (주기 100ms당 50ms)</text>
+        <rect class="dg-box dg-box--flow" x="40" y="70" width="80" height="56"/>
+        <rect class="dg-box dg-box--key" x="124" y="70" width="276" height="56"/>
+        <text class="dg-label--key" x="262" y="98" text-anchor="middle">스로틀링 87.5ms</text>
+        <rect class="dg-box dg-box--flow" x="404" y="70" width="80" height="56"/>
+        <rect class="dg-box dg-box--key" x="488" y="70" width="248" height="56"/>
+        <text class="dg-label--key" x="612" y="98" text-anchor="middle">스로틀링</text>
+        <line class="dg-line dg-line--thin" x1="40" y1="150" x2="736" y2="150"/>
+        <line class="dg-line" x1="40" y1="142" x2="40" y2="158"/>
+        <line class="dg-line" x1="404" y1="142" x2="404" y2="158"/>
+        <text class="dg-label--sm" x="40" y="182" text-anchor="middle">0</text>
+        <text class="dg-label--sm" x="404" y="182" text-anchor="middle">100ms</text>
+        <line class="dg-line" x1="124" y1="142" x2="124" y2="158"/>
+        <text class="dg-label--sm" x="124" y="208" text-anchor="middle">12.5ms</text>
+        <rect class="dg-box dg-box--ghost" x="40" y="250" width="696" height="64"/>
+        <text x="388" y="282" text-anchor="middle">평균 사용률은 50%, 하지만 요청은 최대 87.5ms 멈춤</text>
+      </svg>
+      <figcaption>파란 칸이 실제 실행, 호박색 칸이 할당량 소진 후 대기입니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>메모리 상한을 넘으면 그 cgroup 안에서 죽인다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>메모리는 빌려 쓰고 나중에 갚을 수 없는 자원이라 CPU처럼 멈춰 세울 수 없습니다. cgroup이 <code>memory.max</code>에 닿으면 커널은 먼저 그 cgroup의 페이지 캐시를 회수하고, 그래도 모자라면 <strong>cgroup 안의 프로세스</strong>를 OOM Killer로 죽입니다.</p>
+      <p>호스트에는 메모리가 남아 있어도 일어납니다. 종료 코드는 137, <code>docker inspect</code>에 <code>OOMKilled: true</code>, Kubernetes에서는 <code>OOMKilled</code>로 보입니다(10장).</p>
+    </div>
+    <div class="slide__body">
+      <aside class="callout callout--key">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>상한에는 힙 밖 메모리도 들어간다</p>
+        <p>JVM이면 힙에 메타스페이스, 스레드 스택, 다이렉트 버퍼, GC 자료구조가 더해집니다. 힙을 상한 가까이 잡으면 GC 로그는 멀쩡한데 컨테이너가 죽습니다.</p>
+      </aside>
+      <aside class="callout callout--note">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>페이지 캐시도 사용량에 잡힌다</p>
+        <p>파일을 많이 읽는 컨테이너는 사용량이 상한 근처에 붙어 보입니다. 회수 가능한 캐시이므로 working set(사용량 − 비활성 캐시)을 기준으로 봅니다.</p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>이미지는 읽기 전용 레이어의 겹침이다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>이미지는 파일 변경분을 담은 <dfn title="layer">레이어</dfn>를 차례로 쌓은 것입니다. <dfn>OverlayFS</dfn>는 아래 레이어들(lowerdir)과 맨 위 쓰기 레이어(upperdir)를 겹쳐 하나의 디렉터리(merged)로 보여 줍니다. Docker의 기본 저장 드라이버 overlay2가 이것입니다.</p>
+      <p>같은 경로의 파일이 여러 층에 있으면 위층이 이깁니다. 파일 삭제는 위층에 "지워졌음" 표시(whiteout)를 남기는 방식이라 <mark>아래 레이어의 용량은 줄지 않습니다</mark>.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 460" role="img" aria-labelledby="f9ly">
+        <title id="f9ly">베이스 이미지, 의존성, 앱 JAR 레이어가 아래부터 쌓인 읽기 전용 이미지 위에, 컨테이너마다 얇은 쓰기 레이어가 올라간다.</title>
+        <text class="dg-label--sm" x="270" y="30" text-anchor="middle">컨테이너마다 쓰기 레이어 (upperdir)</text>
+        <rect class="dg-box dg-box--flow" x="40" y="52" width="220" height="60"/>
+        <text x="150" y="82" text-anchor="middle">컨테이너 1</text>
+        <rect class="dg-box dg-box--flow" x="280" y="52" width="220" height="60"/>
+        <text x="390" y="82" text-anchor="middle">컨테이너 2</text>
+        <line class="dg-arrow" x1="150" y1="116" x2="150" y2="168"/>
+        <line class="dg-arrow" x1="390" y1="116" x2="390" y2="168"/>
+        <text class="dg-label--sm" x="270" y="150" text-anchor="middle">같은 레이어를 공유</text>
+        <rect class="dg-zone" x="28" y="176" width="484" height="264"/>
+        <text class="dg-label--sm" x="270" y="198" text-anchor="middle">이미지 (읽기 전용, lowerdir)</text>
+        <rect class="dg-box" x="40" y="216" width="460" height="60"/>
+        <text x="270" y="246" text-anchor="middle">앱 JAR</text>
+        <rect class="dg-box" x="40" y="288" width="460" height="60"/>
+        <text x="270" y="318" text-anchor="middle">의존성 라이브러리</text>
+        <rect class="dg-box dg-box--muted" x="40" y="360" width="460" height="60"/>
+        <text class="dg-label--muted" x="270" y="390" text-anchor="middle">베이스 이미지 (OS + JRE)</text>
+        <text class="dg-mono" x="540" y="246" text-anchor="start">COPY app.jar</text>
+        <text class="dg-mono" x="540" y="318" text-anchor="start">COPY libs/</text>
+        <text class="dg-mono" x="540" y="390" text-anchor="start">FROM …-jre</text>
+      </svg>
+      <figcaption>레이어는 내용의 해시로 식별되어, 같은 레이어는 디스크에도 레지스트리에도 한 번만 저장됩니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>쓰기 레이어는 복사 후 쓰기라서 무겁고 사라진다</h2>
+  <div class="split split--even">
+    <ol class="steps">
+      <li><b>읽기</b><p>위층부터 찾아 내려가 처음 발견한 파일을 그대로 읽습니다.</p></li>
+      <li class="is-key"><b>첫 수정</b><p>아래층 파일을 통째로 쓰기 레이어에 복사한 뒤 고칩니다(copy-up).</p></li>
+      <li><b>이후 수정</b><p>쓰기 레이어의 사본만 고칩니다.</p></li>
+      <li><b>컨테이너 삭제</b><p>쓰기 레이어가 함께 지워지고 변경 내용도 사라집니다.</p></li>
+    </ol>
+    <div class="prose">
+      <p>이 방식을 <dfn title="Copy-on-Write">CoW</dfn>라 합니다. 덕분에 컨테이너 100개가 이미지 하나를 공유하고 1초 만에 뜹니다.</p>
+      <p>대가도 있습니다. 1GB 파일의 한 바이트만 고쳐도 1GB가 복사되고, 쓰기 레이어는 느리며 컨테이너와 운명을 같이합니다. 그래서 DB 데이터나 업로드 파일처럼 <mark>남아야 하거나 많이 쓰는 것은 볼륨</mark>에 둡니다(4부).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>OCI 표준 덕분에 어떤 도구로 만들어도 돌아간다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">OCI 명세</th><th scope="col">정하는 것</th><th scope="col">덕분에 가능한 일</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Image Spec</th><td>매니페스트, 레이어 tar, 설정 JSON 형식</td><td>Docker로 빌드, containerd로 실행</td></tr>
+        <tr><th scope="row">Runtime Spec</th><td>풀어 놓은 파일 묶음을 실행하는 방법</td><td>runc, crun, gVisor 교체</td></tr>
+        <tr><th scope="row">Distribution Spec</th><td>레지스트리 HTTP API</td><td>Docker Hub, ECR, GHCR 호환</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p><dfn title="Open Container Initiative">OCI</dfn>는 Docker가 만든 형식을 업계 공통 표준으로 정리한 것입니다. 그래서 "Docker 이미지"라는 말은 사실 OCI 이미지를 뜻하고, Jib처럼 Docker 없이 만든 이미지도 Kubernetes에서 그대로 돕니다. 이미지의 각 레이어와 매니페스트는 sha256 해시로 주소가 정해지는 <strong>내용 주소 방식</strong>입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>docker run은 네 단계를 거쳐 runc로</h2>
+  <div class="slide__body">
+    <ol class="flow">
+      <li class="flow__node"><b>docker CLI</b><span>REST API로 요청</span></li>
+      <li class="flow__node"><b>dockerd</b><span>빌드, 네트워크, 볼륨</span></li>
+      <li class="flow__node"><b>containerd</b><span>이미지와 생명주기</span></li>
+      <li class="flow__node"><b>shim</b><span>컨테이너마다 하나</span></li>
+      <li class="flow__node is-flow"><b>runc</b><span>namespace, cgroup 생성</span></li>
+    </ol>
+    <div class="prose">
+      <p>CLI는 <code>/var/run/docker.sock</code>으로 데몬 <code>dockerd</code>에 부탁만 합니다. dockerd는 이미지 관리와 실행을 <code>containerd</code>에 맡기고, containerd는 컨테이너마다 <code>containerd-shim</code>을 띄워 <code>runc</code>를 부릅니다.</p>
+      <p>runc는 namespace와 cgroup을 만들고 앱을 실행한 뒤 바로 빠집니다. 그 뒤로는 shim이 부모로 남아 있어서 <mark>dockerd를 재시작해도 컨테이너가 죽지 않습니다</mark>(<code>live-restore</code> 설정 시).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>K8s 노드는 containerd로 돌린다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">도구</th><th scope="col">위치</th><th scope="col">특징</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Docker Engine</th><td>개발자 PC, 단일 서버</td><td>빌드, Compose, 네트워크까지 다 갖춤</td></tr>
+        <tr><th scope="row">containerd</th><td class="is-flow">EKS 등 대부분의 K8s 노드</td><td>실행에 필요한 것만, CRI 지원</td></tr>
+        <tr><th scope="row">CRI-O</th><td>OpenShift 등</td><td>Kubernetes 전용으로 만든 런타임</td></tr>
+        <tr><th scope="row">Podman</th><td>개발자 PC, RHEL 서버</td><td>데몬 없음, rootless 기본, docker 명령 호환</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>Kubernetes의 kubelet은 <dfn title="Container Runtime Interface">CRI</dfn>라는 규격으로 런타임과 말합니다. Docker는 CRI를 직접 지원하지 않아 중간 어댑터(dockershim)가 필요했고, 1.24에서 제거되었습니다. 이미지는 OCI 표준이라 <strong>Docker로 빌드한 이미지는 그대로 돕니다</strong>. 노드에서 디버깅할 때 <code>docker</code> 대신 <code>crictl</code>을 쓰는 이유입니다(10장).</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Part 4: practice (Docker) ===== -->
+<section class="slide slide--divider" data-section="Docker 실전" data-depth="practice">
+  <p class="divider__no">4부</p>
+  <h2>좋은 이미지를 만들고 안전하게 띄우기</h2>
+  <p class="lede">원리를 알았으니 손에 쥘 차례입니다. Dockerfile 한 줄 한 줄이 레이어와 PID 1, 보안에 어떤 결과를 남기는지 따져 가며 씁니다.</p>
+  <div class="depth-shift" aria-label="깊이 전환: 원리에서 실무로">
+    <span class="depth-shift__step"><span class="depth" data-depth="core"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>원리</span>
+    <span class="depth-shift__line" aria-hidden="true"></span>
+    <span class="depth-shift__step is-to"><span class="depth" data-depth="practice"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>실무</span>
+    <span class="depth-shift__note">Dockerfile, 이미지 선택, 네트워크와 저장소, 보안, 디버깅과 장애 사례를 다룹니다.</span>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>태그는 바뀔 수 있고, digest는 바뀌지 않는다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="c"># 저장소/이름:태그</span>
+docker.io/library/eclipse-temurin:21-jre
+123456789012.dkr.ecr.ap-northeast-2…
+  …/order-api:3f9c2e1
+<span class="prompt">$ </span>docker images --digests
+<span class="hl"><span class="c"># 내용 해시로 고정</span></span>
+<span class="hl">eclipse-temurin@sha256:5f1c…a9</span>
+<span class="prompt">$ </span>docker buildx imagetools inspect \
+    eclipse-temurin:21-jre</code></pre>
+    <div class="prose">
+      <p>태그는 이미지를 가리키는 이름표라 누군가 같은 태그로 다시 push하면 가리키는 대상이 바뀝니다. <code>latest</code>는 "가장 최신"이 아니라 태그를 안 붙였을 때의 기본 이름일 뿐입니다.</p>
+      <p><dfn>digest</dfn>는 매니페스트 내용의 sha256 해시라 절대 바뀌지 않습니다. 운영 배포는 <mark>커밋 SHA 태그나 digest</mark>로 고정해야 어떤 코드가 도는지 추적되고, 롤백도 정확합니다(11장).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Docker Hub pull에는 한도가 있다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">사용자</th><th scope="col">pull 한도 (6시간당)</th><th scope="col">실무 영향</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">로그인 안 함</th><td class="num">IP(IPv4)당 100회</td><td class="is-key">NAT 뒤 노드 전체가 한 IP로 셈</td></tr>
+        <tr><th scope="row">무료 계정 (Personal)</th><td class="num">200회</td><td>CI는 로그인해서 pull</td></tr>
+        <tr><th scope="row">유료 (Pro, Team, Business)</th><td>무제한 (공정 사용 조건)</td><td>조직 단위 운영</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>사설 서브넷의 노드들은 NAT Gateway 하나의 공인 IP로 나가므로, 로그인 없이 pull하면 클러스터 전체가 한도를 나눠 씁니다. 대규모 배포나 노드 교체 중에 <code>toomanyrequests</code>로 이미지가 안 받아지는 사고가 여기서 납니다. 운영에서는 자주 쓰는 베이스 이미지를 사설 레지스트리로 미러링하거나 pull-through cache를 씁니다. AWS의 ECR과 그 캐시 기능은 14장에서 다룹니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Dockerfile 한 장을 위에서부터 읽는다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="Dockerfile"><code><span class="k">FROM</span> eclipse-temurin:21-jre
+<span class="k">ARG</span> APP_VERSION=dev
+<span class="k">ENV</span> TZ=Asia/Seoul \
+    JAVA_OPTS="-XX:MaxRAMPercentage=75"
+<span class="k">WORKDIR</span> /app
+<span class="k">RUN</span> useradd -r -u 10001 app
+<span class="k">COPY</span> --chown=app build/libs/app.jar app.jar
+<span class="k">USER</span> app
+<span class="k">EXPOSE</span> 8080
+<span class="k">HEALTHCHECK</span> CMD curl -fs localhost:8080/health \
+  || exit 1
+<span class="k">LABEL</span> version=$APP_VERSION
+<span class="hl"><span class="k">ENTRYPOINT</span> ["sh","-c","exec java $JAVA_OPTS \</span>
+<span class="hl">  -jar app.jar"]</span></code></pre>
+    <div class="prose">
+      <p><code>docker build</code>가 이 파일로 읽기 전용 <dfn>이미지</dfn>를 만들고, <code>docker run</code>이 쓰기 레이어를 얹어 <dfn>컨테이너</dfn>로 띄웁니다. 클래스와 인스턴스 관계입니다. 파일 시스템을 바꾸는 <code>RUN</code>, <code>COPY</code>, <code>ADD</code>만 레이어를 만들고 나머지는 설정만 바꿉니다.</p>
+      <p>이 짧은 파일에 베이스 선택, 비 root 실행, 헬스 체크, PID 1까지 결정이 담겨 있습니다. 명령 하나씩 왜 이렇게 쓰는지 봅니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>설치와 청소는 한 RUN에서, 복사는 COPY로</h2>
+  <div class="slide__body">
+    <pre class="code" data-file="Dockerfile"><code><span class="c"># 나쁜 예: 레이어 3개, 지운 캐시가 앞 레이어에 그대로</span>
+<span class="dim">RUN apt-get update</span>
+<span class="dim">RUN apt-get install -y curl</span>
+<span class="dim">RUN rm -rf /var/lib/apt/lists/*</span>
+<span class="c"># 좋은 예: 한 레이어에서 설치와 청소</span>
+<span class="hl"><span class="k">RUN</span> apt-get update \</span>
+<span class="hl"> &amp;&amp; apt-get install -y --no-install-recommends curl \</span>
+<span class="hl"> &amp;&amp; rm -rf /var/lib/apt/lists/*</span>
+<span class="k">COPY</span> --chown=app:app build/libs/app.jar /app/app.jar
+<span class="k">ADD</span> vendor.tar.gz /opt/vendor/                <span class="c"># 자동 압축 해제</span>
+<span class="k">ADD</span> --checksum=sha256:&lt;hash&gt; https://example.com/agent.jar /opt/</code></pre>
+    <div class="prose">
+      <p><code>FROM</code>은 출발점이 될 베이스 이미지를, <code>RUN</code>은 빌드 중 명령을 실행해 결과를 레이어로 남깁니다. 레이어는 겹치기만 하므로 <mark>다음 RUN에서 지워도 앞 레이어 용량은 그대로</mark>라서, 설치와 정리는 한 RUN에서 합니다. <code>ADD</code>는 <code>COPY</code>에 tar 자동 해제와 URL 다운로드가 더해진 것이라, 기본은 COPY를 쓰고 URL은 <code>--checksum</code>으로 고정합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>ENTRYPOINT는 실행 파일, CMD는 인자</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">Dockerfile</th><th scope="col"><code>docker run img</code></th><th scope="col"><code>docker run img --debug</code></th></tr></thead>
+      <tbody>
+        <tr><th scope="row">CMD만 <code>["java","-jar","app.jar"]</code></th><td>java -jar app.jar</td><td class="is-key">--debug (CMD 통째 교체)</td></tr>
+        <tr><th scope="row">ENTRYPOINT만 <code>["java","-jar","app.jar"]</code></th><td>java -jar app.jar</td><td>java -jar app.jar --debug</td></tr>
+        <tr><th scope="row">ENTRYPOINT <code>["java","-jar","app.jar"]</code> + CMD <code>["--port=8080"]</code></th><td class="is-flow">… app.jar --port=8080</td><td>… app.jar --debug</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>최종 실행 명령은 <code>ENTRYPOINT + CMD</code>입니다. <code>docker run</code> 뒤에 붙인 인자는 CMD를 대체하고, ENTRYPOINT는 <code>--entrypoint</code>로만 바꿉니다. 그래서 "무엇을 실행하나"는 ENTRYPOINT에, "기본 옵션"은 CMD에 두면 사용자가 옵션만 바꿔 실행할 수 있습니다. Kubernetes에서는 <code>command</code>가 ENTRYPOINT를, <code>args</code>가 CMD를 덮어씁니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>shell form은 셸을 PID 1로 만든다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="Dockerfile"><code><span class="c"># shell form: /bin/sh -c "java …" 로 실행</span>
+<span class="dim">ENTRYPOINT java -jar app.jar</span>
+<span class="c"># PID 1 = sh, java는 자식</span>
+
+<span class="c"># exec form: JSON 배열, 셸 없음</span>
+<span class="hl"><span class="k">ENTRYPOINT</span> ["java", "-jar", "app.jar"]</span>
+<span class="c"># PID 1 = java</span>
+
+<span class="c"># 변수 확장이 필요하면 exec로 넘김</span>
+<span class="k">ENTRYPOINT</span> ["sh","-c","exec java $JAVA_OPTS \
+  -jar app.jar"]</code></pre>
+    <div class="prose">
+      <p>명령을 문자열로 쓰는 <dfn>shell form</dfn>은 <code>/bin/sh -c</code>로 감싸 실행되어 셸이 PID 1이 됩니다. <code>sh</code>는 받은 SIGTERM을 자식에게 넘겨주지 않을 수 있습니다.</p>
+      <p>JSON 배열로 쓰는 <dfn>exec form</dfn>은 앱이 곧바로 PID 1입니다. 환경 변수 확장이 필요해 셸을 거친다면 마지막에 <code>exec</code>로 셸을 앱으로 갈아 끼웁니다. 왜 이것이 중요한지는 PID 1 슬라이드에서 이어집니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>ARG는 빌드에서 끝나고, ENV는 실행까지 남는다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">명령</th><th scope="col">하는 일</th><th scope="col">꼭 알아 둘 점</th></tr></thead>
+      <tbody>
+        <tr><th scope="row"><code>ARG</code></th><td>빌드 중에만 쓰는 변수 (<code>--build-arg</code>)</td><td class="is-key">이미지 이력에 값이 남음, 비밀 금지</td></tr>
+        <tr><th scope="row"><code>ENV</code></th><td>이미지와 컨테이너의 환경 변수</td><td>실행 시 <code>-e</code>로 덮어씀</td></tr>
+        <tr><th scope="row"><code>WORKDIR</code></th><td>이후 명령의 작업 디렉터리, 없으면 생성</td><td><code>RUN cd</code>는 다음 줄에 안 이어짐</td></tr>
+        <tr><th scope="row"><code>EXPOSE</code></th><td>쓰는 포트를 문서로 남김</td><td>실제 공개는 <code>-p</code>가 함</td></tr>
+        <tr><th scope="row"><code>USER</code></th><td>이후 명령과 실행 계정 지정</td><td>숫자 UID가 K8s 검사에 유리</td></tr>
+        <tr><th scope="row"><code>HEALTHCHECK</code></th><td>주기적으로 상태 확인 명령 실행</td><td>기본 30초 간격, 3회 실패 시 unhealthy</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p><code>FROM</code> 앞의 ARG는 베이스 태그를 고를 때만 쓰이고 FROM 뒤에서는 다시 선언해야 합니다. HEALTHCHECK 상태는 Docker와 Compose가 쓰고, Kubernetes는 무시하고 자체 probe를 씁니다(10장).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>레이어 캐시는 명령 순서가 결정한다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="Dockerfile"><code><span class="c"># 나쁜 순서: 코드 한 줄에도 의존성 재설치</span>
+<span class="dim">COPY . .</span>
+<span class="dim">RUN ./gradlew bootJar</span>
+
+<span class="c"># 좋은 순서: 잘 안 바뀌는 것부터</span>
+<span class="k">COPY</span> gradlew settings.gradle build.gradle ./
+<span class="k">COPY</span> gradle ./gradle
+<span class="hl"><span class="k">RUN</span> ./gradlew dependencies --no-daemon</span>
+<span class="k">COPY</span> src ./src
+<span class="k">RUN</span> ./gradlew bootJar --no-daemon</code></pre>
+    <div class="prose">
+      <p>Docker는 명령 문자열과 복사할 파일 내용이 이전 빌드와 같으면 레이어를 재사용합니다. 하지만 <mark>한 레이어가 바뀌면 그 아래 모든 명령이 다시 실행</mark>됩니다.</p>
+      <p>그래서 빌드 설정만 먼저 복사해 의존성을 받고, 자주 바뀌는 소스는 나중에 복사합니다. 코드만 고친 빌드는 의존성 다운로드를 건너뛰어 수 분이 수십 초로 줄어듭니다. BuildKit의 <code>RUN --mount=type=cache</code>로 Gradle 캐시를 빌드 간에 유지하는 방법도 있습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>.dockerignore로 빌드 컨텍스트를 줄인다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file=".dockerignore"><code>.git
+.gradle
+build/
+!build/libs/*.jar
+**/*.log
+.idea
+node_modules
+<span class="hl">.env</span>
+<span class="hl">*.pem</span></code></pre>
+    <div class="prose">
+      <p><code>docker build .</code>의 점은 <dfn title="build context">빌드 컨텍스트</dfn>입니다. 이 디렉터리 전체가 빌더로 전송되고, <code>COPY . .</code>은 그 전부를 이미지에 넣습니다.</p>
+      <p><code>.dockerignore</code>가 없으면 수백 MB의 <code>.git</code>이 전송되어 빌드가 느려지고, 무관한 파일 변경이 캐시를 깨뜨리며, <mark><code>.env</code>나 키 파일이 이미지에 섞여</mark> 레지스트리로 새어 나갑니다. <code>!</code>로 예외를 둡니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>멀티 스테이지로 빌드 도구를 버린다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="Dockerfile"><code><span class="c"># 1단계: 빌드 (JDK, Gradle 포함)</span>
+<span class="hl"><span class="k">FROM</span> eclipse-temurin:21-jdk AS build</span>
+<span class="k">WORKDIR</span> /src
+<span class="k">COPY</span> gradlew settings.gradle build.gradle ./
+<span class="k">COPY</span> gradle ./gradle
+<span class="k">RUN</span> ./gradlew dependencies --no-daemon
+<span class="k">COPY</span> src ./src
+<span class="k">RUN</span> ./gradlew bootJar --no-daemon
+
+<span class="c"># 2단계: 실행 (JRE만)</span>
+<span class="k">FROM</span> eclipse-temurin:21-jre
+<span class="k">WORKDIR</span> /app
+<span class="hl"><span class="k">COPY</span> --from=build /src/build/libs/*.jar app.jar</span>
+<span class="k">USER</span> 10001
+<span class="k">ENTRYPOINT</span> ["java", "-jar", "app.jar"]</code></pre>
+    <div class="prose">
+      <p>빌드에는 JDK와 Gradle, 소스가 필요하지만 실행에는 JRE와 JAR만 있으면 됩니다. <dfn title="multi-stage build">멀티 스테이지 빌드</dfn>는 앞 단계의 결과물만 마지막 단계로 복사하고 나머지를 버립니다.</p>
+      <p>최종 이미지가 수백 MB 줄어 배포와 스케일 아웃이 빨라지고, 컴파일러나 소스 같은 공격 표면도 사라집니다. 빌드 환경이 이미지 안에 고정되어 "내 PC의 JDK 버전" 문제도 없어집니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>베이스 이미지는 크기와 디버깅 편의의 교환이다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">베이스</th><th scope="col">들어 있는 것</th><th scope="col">장점</th><th scope="col">주의점</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">일반 (debian, ubuntu)</th><td>패키지 관리자, 셸, 도구</td><td>디버깅 쉬움</td><td>크고 취약점 많음</td></tr>
+        <tr><th scope="row">slim</th><td>필수 패키지만 남긴 Debian</td><td class="is-flow">무난한 기본값</td><td>일부 도구 직접 설치</td></tr>
+        <tr><th scope="row">alpine</th><td>musl libc, BusyBox</td><td>5MB 남짓, 작음</td><td class="is-key">glibc 전제 바이너리 문제</td></tr>
+        <tr><th scope="row">distroless</th><td>런타임만, 셸 없음</td><td>공격 표면 최소</td><td>exec 디버깅 불가</td></tr>
+        <tr><th scope="row">scratch</th><td>아무것도 없음</td><td>정적 바이너리(Go)용</td><td>CA 인증서도 직접</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>Alpine은 C 표준 라이브러리로 glibc 대신 musl을 씁니다. glibc를 전제로 빌드된 네이티브 라이브러리가 안 뜨거나, DNS 해석 방식과 메모리 할당 성능이 달라 미묘한 차이를 냅니다. Java라면 Temurin의 JRE 이미지나 distroless Java 이미지가 무난합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>JVM은 컨테이너 상한을 읽지만 기본값이 작다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>docker run --rm -m 2g --cpus 2 \
+    eclipse-temurin:21-jre \
+    java -XX:+PrintFlagsFinal -version \
+    | grep -E 'MaxHeapSize|UseG1GC'
+<span class="c"># 최대 힙 = 2GB × 25% = 512MB</span>
+<span class="hl">JAVA_OPTS="-XX:MaxRAMPercentage=75"</span>
+<span class="prompt">$ </span>java -XshowSettings:system -version
+Operating System Metrics:
+  Memory Limit: 2.00G</code></pre>
+    <div class="prose">
+      <p>최신 JDK(10 이상, 8u191 이상)는 호스트 메모리가 아니라 <strong>cgroup 상한</strong>을 읽어 힙과 GC 스레드 수를 정합니다. cgroup v2 인식은 더 뒤의 버전(JDK 15, 11.0.16, 8u372)부터라 오래된 JDK는 v2 호스트에서 상한을 못 봅니다.</p>
+      <p>기본 최대 힙은 상한의 25%뿐이라 2GB 컨테이너가 512MB만 씁니다. 보통 <code>MaxRAMPercentage</code>를 70~75로 둡니다. GC 선택 기준은 5장에서 다뤘습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>레이어드 JAR는 의존성과 내 코드를 나눈다</h2>
+  <div class="slide__body">
+    <pre class="code" data-file="Dockerfile"><code><span class="k">FROM</span> eclipse-temurin:21-jre AS builder
+<span class="k">WORKDIR</span> /builder
+<span class="k">COPY</span> build/libs/*.jar application.jar
+<span class="hl"><span class="k">RUN</span> java -Djarmode=tools -jar application.jar \</span>
+<span class="hl">    extract --layers --destination extracted</span>
+<span class="k">FROM</span> eclipse-temurin:21-jre
+<span class="k">WORKDIR</span> /application
+<span class="k">COPY</span> --from=builder /builder/extracted/dependencies/ ./
+<span class="k">COPY</span> --from=builder /builder/extracted/spring-boot-loader/ ./
+<span class="k">COPY</span> --from=builder /builder/extracted/snapshot-dependencies/ ./
+<span class="k">COPY</span> --from=builder /builder/extracted/application/ ./
+<span class="k">ENTRYPOINT</span> ["java", "-jar", "application.jar"]</code></pre>
+    <div class="prose">
+      <p>Spring Boot의 fat JAR는 의존성 수십 MB와 내 코드 수백 KB가 한 파일이라 코드 한 줄만 고쳐도 통째로 push·pull됩니다. Boot 3.3부터의 <code>jarmode=tools</code>로 풀어 잘 안 바뀌는 순서대로 COPY하면 배포마다 <mark>바뀐 application 레이어만</mark> 전송됩니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Dockerfile 없이 이미지를 만드는 길도 있다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="c"># Jib: Docker 데몬 없이 레지스트리로 바로</span>
+<span class="prompt">$ </span>./gradlew jib \
+    --image=ghcr.io/acme/order-api:3f9c2e1
+
+<span class="c"># Cloud Native Buildpacks (Paketo)</span>
+<span class="hl"><span class="prompt">$ </span>./gradlew bootBuildImage \</span>
+<span class="hl">    --imageName=order-api:3f9c2e1</span></code></pre>
+    <div class="prose">
+      <p><dfn>Jib</dfn>은 Gradle/Maven 플러그인으로, 의존성·리소스·클래스를 알아서 레이어로 나눠 OCI 이미지를 만듭니다. Docker 데몬이 필요 없어 CI에서 편하고 같은 입력이면 같은 이미지가 나옵니다.</p>
+      <p><dfn>Buildpacks</dfn>는 소스를 보고 JRE 선택, 메모리 설정까지 해 주는 방식으로 Spring Boot에 내장되어 있습니다. 둘 다 세밀한 제어는 줄어드는 대신 Dockerfile 실수를 없앱니다. CI 파이프라인에서 이미지를 빌드하고 태그를 붙이는 흐름은 11장입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>bridge 네트워크는 veth 한 쌍으로 시작한다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>기본 <dfn>bridge</dfn> 모드에서 Docker는 호스트에 가상 스위치 <code>docker0</code>을 만들고, 컨테이너마다 <dfn title="virtual ethernet">veth</dfn> 쌍을 만듭니다. 한쪽 끝은 컨테이너의 net namespace에 <code>eth0</code>으로, 다른 끝은 브리지에 꽂힙니다.</p>
+      <p>컨테이너는 172.17.0.0/16 같은 사설 IP를 받고, 밖으로 나갈 때는 호스트 IP로 주소가 바뀝니다(SNAT, 2장의 NAT). 들어오는 쪽은 다음 슬라이드의 포트 매핑이 맡습니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 440" role="img" aria-labelledby="f9br">
+        <title id="f9br">두 컨테이너의 eth0이 각각 veth 쌍으로 호스트의 docker0 브리지에 연결되고, docker0은 iptables NAT를 거쳐 호스트의 eth0으로 나간다.</title>
+        <rect class="dg-zone" x="30" y="20" width="300" height="120"/>
+        <text class="dg-label--sm" x="180" y="44" text-anchor="middle">컨테이너 A (net ns)</text>
+        <rect class="dg-box dg-box--flow" x="60" y="62" width="240" height="60"/>
+        <text class="dg-mono" x="180" y="92" text-anchor="middle">eth0 172.17.0.2</text>
+        <rect class="dg-zone" x="430" y="20" width="300" height="120"/>
+        <text class="dg-label--sm" x="580" y="44" text-anchor="middle">컨테이너 B (net ns)</text>
+        <rect class="dg-box dg-box--flow" x="460" y="62" width="240" height="60"/>
+        <text class="dg-mono" x="580" y="92" text-anchor="middle">eth0 172.17.0.3</text>
+        <path class="dg-line" d="M180,140 V200"/>
+        <path class="dg-line" d="M580,140 V200"/>
+        <text class="dg-label--sm" x="200" y="176" text-anchor="start">veth 쌍</text>
+        <text class="dg-label--sm" x="600" y="176" text-anchor="start">veth 쌍</text>
+        <rect class="dg-box dg-box--solid" x="120" y="204" width="520" height="60"/>
+        <text class="dg-label--on" x="380" y="234" text-anchor="middle">docker0 브리지 172.17.0.1</text>
+        <path class="dg-arrow dg-arrow--flow dg-arrow--both" d="M380,272 V310"/>
+        <rect class="dg-box dg-box--key" x="220" y="316" width="320" height="56"/>
+        <text x="380" y="344" text-anchor="middle">iptables NAT (DNAT, SNAT)</text>
+        <path class="dg-arrow dg-arrow--flow dg-arrow--both" d="M380,380 V400"/>
+        <rect class="dg-box" x="240" y="404" width="280" height="30"/>
+        <text class="dg-label--sm dg-mono" x="380" y="420" text-anchor="middle">호스트 eth0 10.0.2.15</text>
+      </svg>
+      <figcaption>같은 브리지의 컨테이너끼리는 L2로 바로 통하고, 바깥과는 NAT를 거칩니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>컨테이너끼리는 사용자 정의 네트워크로 잇는다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">모드</th><th scope="col">동작</th><th scope="col">쓰는 곳</th></tr></thead>
+      <tbody>
+        <tr><th scope="row"><code>bridge</code> (기본)</th><td>자기 net ns + veth + NAT, 이름 조회 없음</td><td>단독 컨테이너</td></tr>
+        <tr><th scope="row">사용자 정의 bridge</th><td>위와 같고 내장 DNS로 이름 조회</td><td class="is-flow">여러 컨테이너 연결</td></tr>
+        <tr><th scope="row"><code>host</code></th><td>호스트 net ns를 그대로 씀, 포트 충돌은 직접 관리</td><td>NAT 비용이 아까운 프록시</td></tr>
+        <tr><th scope="row"><code>none</code></th><td>루프백만</td><td>외부 통신 없는 일괄 작업</td></tr>
+      </tbody>
+    </table>
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>docker network create app-net
+<span class="prompt">$ </span>docker run -d --name db --network app-net postgres:16
+<span class="prompt">$ </span>docker run -d --name api --network app-net -e DB_HOST=db api
+<span class="hl"><span class="prompt">$ </span>docker exec api getent hosts db      <span class="c"># 172.18.0.2 db</span></span></code></pre>
+    <div class="prose">
+      <p>컨테이너 IP는 재시작마다 바뀔 수 있으므로, 사용자 정의 네트워크의 내장 DNS(127.0.0.11)로 이름을 풀어 잇습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>-p는 iptables 규칙이고, 방화벽보다 앞선다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>docker run -d -p 8080:8080 api
+<span class="prompt">$ </span>sudo iptables -t nat -L DOCKER -n
+<span class="hl">DNAT tcp dpt:8080 to:172.17.0.2:8080</span>
+<span class="c"># 0.0.0.0에 열림: 외부에서도 접근</span>
+<span class="prompt">$ </span>docker run -d -p 127.0.0.1:5432:5432 db
+<span class="prompt">$ </span>docker port api</code></pre>
+    <div class="prose">
+      <p><code>-p 호스트:컨테이너</code>는 nat 표에 DNAT 규칙을 넣어 호스트 포트로 온 패킷의 목적지를 컨테이너 IP로 바꿉니다. 주소를 생략하면 <strong>모든 인터페이스(0.0.0.0)</strong>에 열립니다.</p>
+      <p>이 패킷은 INPUT이 아니라 FORWARD 체인을 지나므로, <mark>ufw로 막은 포트도 Docker가 열어 버립니다</mark>. 개발용 DB를 <code>-p 5432:5432</code>로 띄운 서버가 인터넷에 노출되는 사고가 여기서 납니다. 로컬 전용이면 127.0.0.1에 묶습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>남겨야 할 데이터는 컨테이너 밖에 둔다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">방식</th><th scope="col">실체</th><th scope="col">어울리는 것</th><th scope="col">주의점</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">volume</th><td>Docker가 관리하는 디렉터리</td><td class="is-flow">DB 데이터, 영속 파일</td><td>백업은 직접</td></tr>
+        <tr><th scope="row">bind mount</th><td>호스트의 특정 경로</td><td>개발 중 소스, 설정 파일</td><td class="is-key">UID와 권한 불일치</td></tr>
+        <tr><th scope="row">tmpfs</th><td>메모리</td><td>임시 파일, 민감한 캐시</td><td>메모리 상한에 포함</td></tr>
+      </tbody>
+    </table>
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>docker run -v pgdata:/var/lib/postgresql/data postgres:16
+<span class="prompt">$ </span>docker run -v "$PWD/conf:/app/conf:ro" api
+<span class="prompt">$ </span>docker run --tmpfs /tmp:size=64m api</code></pre>
+    <div class="prose">
+      <p>쓰기 레이어는 컨테이너와 함께 사라지고 느립니다. volume은 <code>/var/lib/docker/volumes</code> 아래에 있고 컨테이너를 지워도 남습니다. bind mount는 컨테이너 안의 UID로 호스트 파일을 다루므로 권한 오류가 흔합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>로그는 stdout으로, 보관은 드라이버에 맡긴다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="/etc/docker/daemon.json"><code>{
+  <span class="s">"log-driver"</span>: <span class="s">"json-file"</span>,
+  <span class="s">"log-opts"</span>: {
+<span class="hl">    <span class="s">"max-size"</span>: <span class="s">"50m"</span>,</span>
+<span class="hl">    <span class="s">"max-file"</span>: <span class="s">"5"</span></span>
+  }
+}</code></pre>
+    <div class="prose">
+      <p>컨테이너 앱은 파일 대신 <strong>표준 출력</strong>에 로그를 씁니다. Docker의 <dfn title="logging driver">로깅 드라이버</dfn>가 이를 받아 저장하거나(json-file, local) 외부로 보냅니다(awslogs, fluentd). <code>docker logs</code>는 json-file과 local에서 동작합니다.</p>
+      <p>기본 json-file은 <mark>회전 설정이 없어 디스크를 끝없이 채웁니다</mark>. 2부의 "디스크 100%" 장애가 컨테이너 호스트에서 가장 흔하게 나는 경로입니다. 데몬 설정이나 <code>--log-opt</code>로 크기를 제한합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>재시작 정책은 Docker판 Restart=다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">정책</th><th scope="col">다시 시작하는 경우</th><th scope="col">손으로 멈춘 뒤 데몬 재시작</th></tr></thead>
+      <tbody>
+        <tr><th scope="row"><code>no</code> (기본)</th><td>하지 않음</td><td>멈춘 채</td></tr>
+        <tr><th scope="row"><code>on-failure[:5]</code></th><td>0이 아닌 종료 코드, 최대 횟수 지정 가능</td><td>멈춘 채</td></tr>
+        <tr><th scope="row"><code>always</code></th><td>항상</td><td class="is-key">다시 뜸</td></tr>
+        <tr><th scope="row"><code>unless-stopped</code></th><td>항상</td><td class="is-flow">멈춘 채</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>단일 서버에서 Compose로 운영한다면 <code>unless-stopped</code>가 무난합니다. 재시작 간격은 Docker가 100ms부터 두 배씩 늘리며 조절합니다. 다만 재시작은 같은 호스트 안에서만 일어나므로, 서버 자체가 죽었을 때 다른 서버에서 띄워 주는 일은 오케스트레이터의 몫입니다(10장).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>PID 1은 시그널도 받고 좀비도 거둬야 한다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>time docker stop api
+<span class="hl">real  0m10.4s     <span class="c"># 매번 10초면 의심</span></span>
+<span class="prompt">$ </span>docker inspect -f '{{.State.ExitCode}}' api
+<span class="n">137</span>
+<span class="c"># 해결 1: exec form으로 앱을 PID 1에</span>
+<span class="c"># 해결 2: 작은 init을 PID 1에</span>
+<span class="prompt">$ </span>docker run --init api
+<span class="c"># Dockerfile: ENTRYPOINT ["tini","--","java",…]</span></code></pre>
+    <div class="prose">
+      <p><code>docker stop</code>은 PID 1에 SIGTERM을 보내고 기본 10초 뒤 SIGKILL을 보냅니다. 커널은 PID 1이 <strong>핸들러를 등록하지 않은 시그널을 무시</strong>하므로, 셸이나 시그널을 처리하지 않는 앱이 PID 1이면 매번 10초 뒤 강제 종료(137)됩니다.</p>
+      <p>또 PID 1은 고아를 거둘 책임이 있습니다. 자식을 여럿 띄우는 앱이면 <dfn>tini</dfn> 같은 작은 init을 PID 1에 두어 시그널 전달과 좀비 회수를 맡깁니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Compose는 여러 컨테이너를 한 파일로 띄운다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="compose.yaml"><code><span class="k">services:</span>
+  api:
+    build: .
+    ports: [<span class="s">"127.0.0.1:8080:8080"</span>]
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/app
+    depends_on:
+<span class="hl">      db: { condition: service_healthy }</span>
+    restart: unless-stopped
+  db:
+    image: postgres:16
+    environment: [POSTGRES_PASSWORD=dev]
+    volumes: [<span class="s">"pgdata:/var/lib/postgresql/data"</span>]
+    healthcheck:
+      test: pg_isready -U postgres
+<span class="k">volumes:</span> { pgdata: {} }</code></pre>
+    <div class="prose">
+      <p><dfn>Docker Compose</dfn>는 앱과 DB, Redis 묶음을 YAML 하나로 선언하고 <code>docker compose up -d</code>로 띄웁니다. 프로젝트 네트워크를 만들어 모든 서비스를 붙입니다.</p>
+      <p>서비스 이름 <code>db</code>가 곧 호스트 이름입니다. <code>depends_on</code>만 쓰면 시작 <strong>순서</strong>만 보장하므로, <code>service_healthy</code>로 DB가 준비될 때까지 기다립니다. 그래도 앱 스스로 재시도해야 하고, Compose는 서버 한 대용이라 여러 서버 운영은 10장의 몫입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>컨테이너 안의 root는 호스트의 root다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>docker run -d --name api \
+<span class="hl">    --user 10001:10001 \</span>
+    --read-only --tmpfs /tmp \
+    --cap-drop ALL \
+    --cap-add NET_BIND_SERVICE \
+    --security-opt no-new-privileges \
+    --memory 1g --cpus 1 --pids-limit 512 \
+    order-api:3f9c2e1</code></pre>
+    <div class="prose">
+      <p>user namespace를 켜지 않은 기본 설정에서 컨테이너의 root는 UID 0 그대로입니다. 커널 취약점이나 잘못된 마운트 하나로 <mark>호스트 전체가 넘어갑니다</mark>. 그래서 <code>USER</code>로 일반 계정을 씁니다.</p>
+      <p><code>--read-only</code>는 루트 파일 시스템을 읽기 전용으로 만들어 침입자가 도구를 내려받지 못하게 하고, <code>no-new-privileges</code>는 setuid로 권한을 올리는 길을 막습니다. 자원 상한은 한 컨테이너가 호스트를 잠식하는 것을 막습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>capabilities는 root 권한의 조각이다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">capability</th><th scope="col">허용하는 일</th><th scope="col">Docker 기본</th></tr></thead>
+      <tbody>
+        <tr><th scope="row"><code>NET_BIND_SERVICE</code></th><td>1024 미만 포트 바인딩</td><td>허용</td></tr>
+        <tr><th scope="row"><code>CHOWN</code>, <code>SETUID</code></th><td>소유자 변경, UID 전환</td><td>허용</td></tr>
+        <tr><th scope="row"><code>NET_ADMIN</code></th><td>네트워크 설정, iptables 변경</td><td>제외</td></tr>
+        <tr><th scope="row"><code>SYS_ADMIN</code></th><td>마운트 등 사실상 root 전부</td><td class="is-key">제외, 절대 주지 말 것</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>Linux는 root의 힘을 40여 개의 <dfn>capabilities</dfn>로 쪼개 둡니다. Docker는 기본으로 그중 십여 개만 남기고 나머지를 뺍니다. 가장 안전한 방법은 <code>--cap-drop ALL</code> 후 꼭 필요한 것만 더하는 것입니다. <code>--privileged</code>는 모든 capability와 장치 접근을 주어 격리를 사실상 없애므로, 운영 앱에는 쓰지 않습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>비밀은 이미지에 굽지 말고 실행할 때 주입한다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="Dockerfile / 터미널"><code><span class="c"># 나쁜 예: 이미지 이력에 영원히 남음</span>
+<span class="dim">ENV DB_PASSWORD=s3cret</span>
+<span class="dim">COPY .npmrc /root/.npmrc</span>
+
+<span class="c"># 빌드에만 필요한 비밀: BuildKit secret</span>
+<span class="hl"><span class="k">RUN</span> --mount=type=secret,id=npmrc,\</span>
+<span class="hl">target=/root/.npmrc npm ci</span>
+<span class="prompt">$ </span>docker build --secret id=npmrc,src=.npmrc .
+
+<span class="c"># 이미지 취약점 검사</span>
+<span class="prompt">$ </span>trivy image order-api:3f9c2e1
+<span class="prompt">$ </span>docker history --no-trunc order-api</code></pre>
+    <div class="prose">
+      <p>이미지는 레지스트리를 통해 여러 사람과 서버로 퍼집니다. <code>ENV</code>, <code>ARG</code>, 복사한 파일은 <code>docker history</code>나 레이어 tar에서 누구나 꺼낼 수 있고, 뒤에서 지워도 앞 레이어에 남습니다.</p>
+      <p>실행용 비밀은 환경 변수나 마운트로 실행 시 주입하고(K8s Secret은 10장, AWS Secrets Manager는 16장), 빌드용 비밀은 레이어에 남지 않는 BuildKit secret으로 씁니다. 이미지는 Trivy 같은 스캐너로 CVE를 검사합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>디버깅은 logs와 inspect에서 시작한다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>docker ps -a       <span class="c"># 죽은 것까지</span>
+<span class="prompt">$ </span>docker logs --tail 100 -f api
+<span class="prompt">$ </span>docker exec -it api sh
+<span class="hl"><span class="prompt">$ </span>docker inspect -f \</span>
+<span class="hl">  '{{.State.ExitCode}} {{.State.OOMKilled}}' api</span>
+<span class="prompt">$ </span>docker stats --no-stream
+<span class="prompt">$ </span>docker events --since 10m
+<span class="c"># 셸 없는 이미지: 옆에 붙어서 보기</span>
+<span class="prompt">$ </span>docker run --rm -it --network container:api \
+    nicolaka/netshoot</code></pre>
+    <div class="prose">
+      <p><code>logs</code>로 앱이 남긴 말을, <code>inspect</code>로 종료 코드와 OOM 여부, 설정된 환경 변수와 마운트를, <code>stats</code>로 실시간 CPU와 메모리 사용량을 봅니다. <code>events</code>는 언제 죽고 재시작됐는지를 보여 줍니다.</p>
+      <p>distroless처럼 셸이 없으면 exec가 막힙니다. 대상 컨테이너의 네트워크 namespace를 공유하는 도구 컨테이너를 붙이면 그 안에서 <code>curl</code>, <code>tcpdump</code>를 쓸 수 있습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>종료 코드가 사망 원인을 말해 준다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">코드</th><th scope="col">뜻</th><th scope="col">흔한 원인</th><th scope="col">다음에 볼 것</th></tr></thead>
+      <tbody>
+        <tr><th scope="row" class="num">0</th><td>정상 종료</td><td>할 일을 마친 배치</td><td>재시작 정책이 맞는지</td></tr>
+        <tr><th scope="row" class="num">1</th><td>앱이 오류로 종료</td><td>설정 누락, 예외로 기동 실패</td><td><code>docker logs</code></td></tr>
+        <tr><th scope="row" class="num">126 / 127</th><td>실행 불가 / 명령 없음</td><td>권한 없음, 경로·오타</td><td>ENTRYPOINT, 실행 권한</td></tr>
+        <tr><th scope="row" class="num">137</th><td>SIGKILL (128+9)</td><td class="is-key">메모리 상한 OOM, stop 시간 초과</td><td><code>OOMKilled</code>, dmesg</td></tr>
+        <tr><th scope="row" class="num">143</th><td>SIGTERM (128+15)</td><td>정상적인 stop 요청 처리</td><td>대개 문제 아님</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>137은 두 경우로 갈립니다. <code>OOMKilled: true</code>면 메모리 상한 문제이고, false면 SIGTERM에 반응하지 않아 유예 시간 뒤 강제 종료된 것이라 PID 1과 종료 처리를 봅니다. Alpine 이미지에서 127이 나면 glibc 바이너리를 찾지 못한 경우도 있습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>"서버가 느리다"는 자원별로 쪼개서 본다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">자원</th><th scope="col">사용률 / 포화 / 오류를 보는 명령</th><th scope="col">이상 신호</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">CPU</th><td><code>uptime</code>, <code>mpstat -P ALL 1</code>, <code>pidstat 1</code></td><td>load가 코어 수 초과, 한 코어만 100%</td></tr>
+        <tr><th scope="row">메모리</th><td><code>free -h</code>, <code>vmstat 1</code>, <code>dmesg -T</code></td><td>available 감소, si/so, OOM 기록</td></tr>
+        <tr><th scope="row">디스크</th><td><code>df -h</code>, <code>df -i</code>, <code>iostat -xz 1</code></td><td class="is-key">await 급증, 100%, inode 고갈</td></tr>
+        <tr><th scope="row">네트워크</th><td><code>ss -s</code>, <code>sar -n DEV,TCP,ETCP 1</code></td><td>재전송, TIME_WAIT·CLOSE_WAIT 폭증</td></tr>
+        <tr><th scope="row">컨테이너</th><td><code>docker stats</code>, <code>cpu.stat</code></td><td>nr_throttled 증가, 상한 근접</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>자원마다 <strong>사용률(Utilization), 포화(Saturation), 오류(Errors)</strong>를 차례로 보는 USE 관점입니다. 감으로 재시작하기 전에 어느 자원이 포화됐는지부터 좁힙니다. 지표와 덤프를 엮은 전체 장애 대응 플레이북은 18장에서 다룹니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>장애 사례: 로그 없이 사라지는 컨테이너</h2>
+  <div class="split split--even">
+    <ol class="steps">
+      <li><b>증상</b><p>API 컨테이너가 하루 몇 번 재시작되는데 앱 로그는 정상 요청 기록에서 뚝 끊깁니다.</p></li>
+      <li><b>확인</b><p><code>inspect</code> 결과 종료 코드 137, <code>OOMKilled: true</code>입니다.</p></li>
+      <li class="is-key"><b>원인</b><p>상한 1GB에 <code>-Xmx900m</code>. 힙 밖 메모리를 더하면 상한을 넘습니다.</p></li>
+      <li><b>조치</b><p>힙을 상한의 70% 안팎으로, 스레드 수와 다이렉트 버퍼도 함께 점검합니다.</p></li>
+    </ol>
+    <div class="prose">
+      <p>이 장애가 까다로운 이유는 GC 로그도 힙 사용량도 멀쩡하다는 데 있습니다. JVM 입장에서는 힙에 여유가 있었지만, 커널은 cgroup 전체 사용량만 보고 프로세스를 죽였습니다.</p>
+      <p>3부의 원리(memory.max, OOM Killer)와 4부의 도구(inspect, 종료 코드)를 함께 알아야 "앱 버그"가 아니라 <mark>자원 설정 문제</mark>로 바로 좁힐 수 있습니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Summary ===== -->
+<section class="slide slide--summary" data-section="정리" data-depth="none">
+  <h2>정리</h2>
+  <ul class="summary">
+    <li><b>서버 운영의 기본은 파일, 권한, 프로세스, 시그널입니다.</b> 앱은 전용 계정과 systemd로 돌리고, 종료는 SIGTERM 후 SIGKILL 두 단계로 이뤄집니다.</li>
+    <li><b>명령어의 숫자는 커널 집계입니다.</b> load는 줄의 길이, 메모리는 available, 디스크는 용량과 inode, fd는 띄운 주체의 한도를 봅니다.</li>
+    <li><b>컨테이너는 namespace로 격리하고 cgroup으로 제한한 프로세스입니다.</b> CPU 상한은 스로틀링, 메모리 상한은 OOM으로 나타납니다.</li>
+    <li><b>이미지는 OverlayFS 레이어의 겹침입니다.</b> 명령 순서, 멀티 스테이지, 레이어드 JAR로 작고 캐시가 잘 맞는 이미지를 만듭니다.</li>
+    <li><b>안전한 컨테이너는 비 root, 최소 capability, 비밀 주입, exec form PID 1입니다.</b> 문제는 종료 코드와 inspect에서 시작해 좁힙니다.</li>
+  </ul>
+</section>
+
+<!-- ===== Self-check ===== -->
+<section class="slide" data-section="부록: 스스로 점검" data-depth="none">
+  <h2>스스로 점검 (1)</h2>
+  <ol class="selfcheck">
+    <li><details><summary><code>chmod 644</code>인 파일을 다른 사용자가 못 읽는다면 어디를 봐야 하나요?</summary>
+      <div class="answer"><p>상위 디렉터리들의 x 권한입니다. 디렉터리에 들어갈 권한이 없으면 파일 권한과 관계없이 경로를 따라갈 수 없습니다.</p></div></details></li>
+    <li><details><summary><code>/etc/security/limits.conf</code>에서 nofile을 올렸는데 systemd로 띄운 앱의 한도가 그대로입니다. 왜일까요?</summary>
+      <div class="answer"><p>limits.conf는 로그인 세션(PAM)에 적용되고 systemd 서비스는 유닛의 <code>LimitNOFILE</code>을 따릅니다. 유닛 파일을 고치고 daemon-reload 후 재시작합니다.</p></div></details></li>
+    <li><details><summary>코어 8개 서버의 load가 20인데 CPU idle이 70%입니다. 무엇을 의심하나요?</summary>
+      <div class="answer"><p>Linux load에는 D 상태 작업이 포함되므로 디스크나 NFS I/O 대기입니다. <code>vmstat</code>의 b와 wa, <code>iostat</code>의 await를 확인합니다.</p></div></details></li>
+    <li><details><summary>로그 파일을 지웠는데 <code>df</code> 사용량이 줄지 않습니다. 이유와 확인 방법은?</summary>
+      <div class="answer"><p>프로세스가 그 파일을 열고 있어 inode가 해제되지 않았습니다. <code>lsof +L1</code>로 찾아 프로세스를 재시작하거나 fd를 비웁니다.</p></div></details></li>
+  </ol>
+</section>
+
+<section class="slide" data-section="부록: 스스로 점검" data-depth="none">
+  <h2>스스로 점검 (2)</h2>
+  <ol class="selfcheck">
+    <li><details><summary>CPU 상한 1코어 컨테이너의 평균 CPU가 40%인데 p99 지연이 튑니다. 원인 후보는?</summary>
+      <div class="answer"><p>여러 스레드가 주기 초반에 할당량을 다 써서 스로틀링되는 경우입니다. <code>cpu.stat</code>의 nr_throttled를 보고 상한을 올리거나 스레드 수를 맞춥니다.</p></div></details></li>
+    <li><details><summary>Dockerfile에서 <code>RUN rm</code>으로 큰 파일을 지웠는데 이미지가 줄지 않는 이유는?</summary>
+      <div class="answer"><p>레이어는 겹치기만 해서 삭제는 위층의 whiteout 표시일 뿐입니다. 파일을 만든 같은 RUN에서 지우거나 멀티 스테이지로 결과물만 옮깁니다.</p></div></details></li>
+    <li><details><summary><code>docker stop</code>이 매번 10초 걸리고 종료 코드가 137입니다. 무엇을 고치나요?</summary>
+      <div class="answer"><p>PID 1이 SIGTERM을 처리하지 않는 것입니다. shell form을 exec form으로 바꾸거나 스크립트 끝에 exec를 쓰고, 필요하면 tini를 PID 1에 둡니다.</p></div></details></li>
+    <li><details><summary>ufw로 5432를 막았는데 <code>-p 5432:5432</code>로 띄운 DB가 외부에서 접속됩니다. 왜일까요?</summary>
+      <div class="answer"><p>Docker의 포트 매핑은 nat 표의 DNAT와 FORWARD 체인으로 처리되어 ufw의 INPUT 규칙을 지나지 않습니다. 127.0.0.1에 바인딩하거나 DOCKER-USER 체인에서 막습니다.</p></div></details></li>
+    <li><details><summary>Kubernetes 노드에 Docker가 없어도 Docker로 빌드한 이미지가 도는 이유는?</summary>
+      <div class="answer"><p>이미지는 OCI 표준 형식이고 kubelet은 CRI로 containerd 같은 런타임과 말하기 때문입니다. 빌드 도구와 실행 런타임이 표준으로 분리되어 있습니다.</p></div></details></li>
+  </ol>
+</section>
+
+<!-- ===== Next ===== -->
+<section class="slide" data-section="다음 단계" data-depth="none">
+  <h2>다음으로 올라갈 층</h2>
+  <div class="slide__body">
+    <p class="lede">컨테이너 하나는 이제 다룰 수 있습니다. 하지만 서버 수십 대에 컨테이너 수백 개를 나눠 띄우고, 죽으면 다른 곳에 다시 띄우고, 멈추지 않고 교체하는 일은 사람이 할 수 없습니다. 그 일을 선언형으로 맡기는 Kubernetes로 올라갑니다.</p>
+    <div class="nav-pair">
+      <a class="next" href="10-kubernetes.html">
+        <span class="next__text">
+          <span class="next__label">다음 장</span>
+          <span class="next__title">10장 Kubernetes</span>
+          <span class="next__desc">Pod, 워크로드, Service, 스케줄링, 오토스케일링</span>
+        </span>
+        <div class="stackmap stackmap--mini" data-current="10"></div>
+      </a>
+      <a class="next next--prev" href="08-system-design.html">
+        <span class="next__text">
+          <span class="next__label">이전 장</span>
+          <span class="next__title">8장 대규모 시스템 설계</span>
+        </span>
+      </a>
+    </div>
+    <p class="small"><a href="index.html">전체 학습 지도로 돌아가기</a></p>
+  </div>
+</section>
+
+</main>
+<script src="assets/deck.js"></script>
+</body>
+</html>

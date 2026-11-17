@@ -167,7 +167,7 @@ OrderService(<span class="k">@Qualifier</span>(<span class="s">"tossPay"</span>)
     </ol>
     <div class="prose">
       <p>생성자 안에서 다른 Bean을 써서 캐시를 채우거나 연결을 여는 코드는 위험합니다. 수정자 주입 대상은 아직 비어 있을 수 있기 때문입니다.</p>
-      <p>그래서 초기화 작업은 <code>@PostConstruct</code>에, 커넥션이나 스레드 풀 정리는 <code>@PreDestroy</code>에 둡니다. 9장의 Graceful Shutdown이 이 소멸 단계와 이어집니다.</p>
+      <p>그래서 초기화 작업은 <code>@PostConstruct</code>에, 커넥션이나 스레드 풀 정리는 <code>@PreDestroy</code>에 둡니다. 10장의 Pod 종료 절차와 11장의 Graceful Shutdown이 이 소멸 단계와 이어집니다.</p>
     </div>
   </div>
 </section>
@@ -910,7 +910,7 @@ spring.jpa.properties.hibernate.default_batch_fetch_size: <span class="n">100</s
       </tbody>
     </table>
     <div class="prose">
-      <p>REQUIRES_NEW는 특히 위험합니다. 동시 요청 10개가 각자 커넥션 하나를 쥔 채 두 번째를 기다리면, 풀 10개가 모두 묶여 누구도 진행하지 못하는 <strong>풀 데드락</strong>이 됩니다. 풀 크기 원칙은 4장에서 다뤘고, 운영 중 고갈을 확정하는 절차는 11장에서 다룹니다.</p>
+      <p>REQUIRES_NEW는 특히 위험합니다. 동시 요청 10개가 각자 커넥션 하나를 쥔 채 두 번째를 기다리면, 풀 10개가 모두 묶여 누구도 진행하지 못하는 <strong>풀 데드락</strong>이 됩니다. 풀 크기 원칙은 4장에서 다뤘고, 운영 중 고갈을 확정하는 절차는 18장에서 다룹니다.</p>
     </div>
   </div>
 </section>
