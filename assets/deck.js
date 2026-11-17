@@ -52,6 +52,14 @@
     return h < MIN_STAGE_H || 26 * s < MIN_BODY_PX;
   }
   var REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)");
+  var INDEX_URL = "index.html";
+
+  /* small-screen reading style: "page" (one slide at a time, tap to turn) or
+     "scroll" (all slides as one long document). Stored per browser. */
+  function storedRead() { try { return localStorage.getItem("deck-read") === "scroll" ? "scroll" : "page"; } catch (e) { return "page"; } }
+  function storeRead(v) { try { localStorage.setItem("deck-read", v); } catch (e) {} }
+  function hintSeen() { try { return localStorage.getItem("deck-taphint") === "1"; } catch (e) { return false; } }
+  function storeHintSeen() { try { localStorage.setItem("deck-taphint", "1"); } catch (e) {} }
 
   /* ---- Theme (works on any page, incl. index) ---------------------------- */
   function storedTheme() { try { return localStorage.getItem("deck-theme"); } catch (e) { return null; } }
@@ -80,7 +88,11 @@
     next: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>',
     grid: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1"/></svg>',
     theme: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg>',
-    full: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>'
+    full: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
+    /* three-step stack, widest at the bottom like the stack map; middle = "you are here" */
+    toc: '<svg class="ico-stack" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="16.5" width="17" height="3.5" rx="0.75"/><rect class="is-cur" x="3.5" y="10.75" width="13.5" height="3.5" rx="0.75"/><rect x="3.5" y="5" width="10" height="3.5" rx="0.75"/></svg>',
+    caret: '<svg class="hud__caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 14.5l5-5 5 5"/></svg>',
+    close: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>'
   };
   function depthMarkup(key, withLabel) {
     var d = DEPTH[key];
@@ -200,9 +212,14 @@
     var progress = el("div", "hud__progress", "<span></span>");
     var hud = el("nav", "hud");
     hud.setAttribute("aria-label", "슬라이드 탐색");
+    var chapterLabel = (chapterNo ? chapterNo + "장 " : "") + chapterTitle;
     hud.innerHTML =
-      '<div class="hud__where"><span class="hud__chapter">' + (chapterNo ? chapterNo + "장 " : "") + esc(chapterTitle) + "</span>" +
-      '<span class="hud__section"></span></div>' +
+      '<a class="hud__btn hud__toc" href="' + INDEX_URL + '" aria-label="전체 목차" title="전체 목차 (H)">' + ICON.toc + "</a>" +
+      '<div class="hud__where"><button class="hud__chap" type="button" data-act="sheet" aria-haspopup="dialog" aria-expanded="false" aria-controls="deck-sheet" title="장 목록 (M)">' +
+      '<span class="hud__chapter">' + (chapterNo
+        ? '<span class="hud__chno">' + chapterNo + '장</span><span class="hud__chname"> ' + esc(chapterTitle) + "</span>"
+        : '<span class="hud__chno">' + esc(chapterTitle) + "</span>") + "</span>" +
+      '<span class="hud__section"></span>' + ICON.caret + "</button></div>" +
       '<span class="hud__depth"></span>' +
       '<span class="hud__count" aria-live="polite"></span>' +
       '<div class="hud__btns">' +
@@ -229,9 +246,28 @@
     var $next = hud.querySelector('[data-act="next"]');
     var $ov = hud.querySelector('[data-act="overview"]');
 
+    var $chap = hud.querySelector(".hud__chap");
+
+    /* tap feedback: a short flow-colored glow on the side that was tapped */
+    var glowPrev = el("div", "tapglow tapglow--prev"), glowNext = el("div", "tapglow tapglow--next");
+    glowPrev.setAttribute("aria-hidden", "true"); glowNext.setAttribute("aria-hidden", "true");
+    doc.body.appendChild(glowPrev); doc.body.appendChild(glowNext);
+
     var current = -1;
     var overview = false;
-    var scrollMode = false;
+    var scrollMode = false;   // small screen: reflowed layout (.is-scroll)
+    var pageMode = false;     // small screen + "넘겨보기": one slide at a time (.is-page)
+
+    /* sections of this chapter, for the chapter sheet */
+    var sections = [{ name: "표지", no: "", start: 0 }];
+    slides.forEach(function (s, i) {
+      if (i === 0 || !s.hasAttribute("data-section")) return;
+      var name = s.getAttribute("data-section");
+      if (name === sections[sections.length - 1].name) return;
+      var noEl = s.classList.contains("slide--divider") && s.querySelector(".divider__no");
+      sections.push({ name: name, no: noEl ? noEl.textContent.trim() : "", start: i });
+    });
+    sections.forEach(function (sec, k) { sec.end = k + 1 < sections.length ? sections[k + 1].start - 1 : slides.length - 1; });
 
     function hashIndex() {
       var m = /^#(\d+)$/.exec(location.hash);
@@ -255,13 +291,24 @@
       opts = opts || {};
       i = Math.min(total - 1, Math.max(0, i));
       if (i === current && !opts.force) return;
+      var from = current;
       if (current >= 0) frames[current].classList.remove("is-active");
       current = i;
-      frames[current].classList.add("is-active");
+      var f = frames[current];
+      f.classList.add("is-active");
       updateChrome();
       var h = "#" + (current + 1);
       if (location.hash !== h) {
         try { history.replaceState(null, "", h); } catch (e) { location.hash = h; }
+      }
+      if (pageMode) {
+        f.scrollTop = 0;                       // each slide starts at its top
+        f.classList.remove("is-enter-next", "is-enter-prev");
+        if (from >= 0 && from !== current && !REDUCED.matches) {
+          void f.offsetWidth;                  // restart the animation
+          f.classList.add(current > from ? "is-enter-next" : "is-enter-prev");
+        }
+        return;
       }
       if (scrollMode && opts.scroll !== false) {
         frames[current].scrollIntoView({ behavior: REDUCED.matches ? "auto" : "smooth", block: "start" });
@@ -316,18 +363,167 @@
       });
     }
 
-    function setScrollMode(on) {
-      scrollMode = on;
-      wrapTables(on);
-      root.classList.toggle("is-scroll", on);
-      if (on && overview) setOverview(false);
+    /* pick the layout: stage (desktop), page (small screen, one slide at a time)
+       or continuous scroll (small screen, reader's choice) */
+    function setLayout(narrow, page) {
+      if (narrow === scrollMode && page === pageMode) return;
+      var wasNarrow = scrollMode;
+      scrollMode = narrow;
+      pageMode = narrow && page;
+      if (narrow !== wasNarrow) wrapTables(narrow);
+      root.classList.toggle("is-scroll", narrow);
+      root.classList.toggle("is-page", pageMode);
+      if (narrow && overview) setOverview(false);
       fit();
-      if (on) requestAnimationFrame(function () { frames[current].scrollIntoView({ block: "start" }); });
+      updateModeToggle();
+      if (current < 0) return;
+      if (pageMode) {
+        window.scrollTo(0, 0);
+        frames[current].scrollTop = 0;
+        maybeShowHint();
+      } else if (narrow) {
+        requestAnimationFrame(function () { frames[current].scrollIntoView({ block: "start" }); });
+      }
     }
+    function applyLayout() { setLayout(wantScrollMode(), storedRead() === "page"); }
 
     function toggleFullscreen() {
       if (!doc.fullscreenElement) { (root.requestFullscreen ? root.requestFullscreen() : Promise.reject()).catch(function () {}); }
       else if (doc.exitFullscreen) doc.exitFullscreen();
+    }
+
+    /* ---- chapter sheet: back to index, sections, all chapters, reading style.
+       A bottom sheet on small screens, a panel above the HUD on the stage. */
+    var sheet = el("div", "sheet");
+    sheet.id = "deck-sheet";
+    sheet.hidden = true;
+    var secItems = sections.map(function (sec, k) {
+      var range = sec.start === sec.end ? String(sec.start + 1) : (sec.start + 1) + "–" + (sec.end + 1);
+      return '<li><button type="button" class="sheet__sec" data-go="' + sec.start + '" data-k="' + k + '">' +
+        '<span class="sheet__sec-no">' + esc(sec.no) + "</span>" +
+        '<span class="sheet__sec-name">' + esc(sec.name) + "</span>" +
+        '<span class="sheet__sec-at" aria-label="슬라이드 ' + range + '">' + range + "</span></button></li>";
+    }).join("");
+    sheet.innerHTML =
+      '<div class="sheet__scrim" data-close></div>' +
+      '<div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="deck-sheet-title">' +
+      '<div class="sheet__grip" aria-hidden="true"></div>' +
+      '<div class="sheet__head"><h2 id="deck-sheet-title">' + esc(chapterLabel) + "</h2>" +
+      '<button type="button" class="hud__btn sheet__close" data-close aria-label="닫기" title="닫기 (Esc)">' + ICON.close + "</button></div>" +
+      '<div class="sheet__body">' +
+      '<a class="sheet__home" href="' + INDEX_URL + '">' + ICON.toc + '<span class="sheet__home-text">전체 목차로</span><span class="sheet__home-sub">18개 장 학습 지도</span></a>' +
+      '<div class="sheet__mode"><span class="sheet__mode-label" id="deck-sheet-mode">읽는 방식</span>' +
+      '<div class="seg" role="group" aria-labelledby="deck-sheet-mode">' +
+      '<button type="button" data-read="page" aria-pressed="false">넘겨보기</button>' +
+      '<button type="button" data-read="scroll" aria-pressed="false">이어보기</button></div></div>' +
+      '<h3 class="sheet__h">이 장의 구성</h3><ol class="sheet__secs">' + secItems + "</ol>" +
+      '<h3 class="sheet__h">다른 장으로</h3>' +
+      '<nav class="stackmap stackmap--sheet" data-links data-tag="지금"' + (chapterNo ? ' data-current="' + chapterNo + '"' : "") + ' aria-label="전체 장"></nav>' +
+      "</div></div>";
+    doc.body.appendChild(sheet);
+    renderStackmaps(sheet);
+    var sheetPanel = sheet.querySelector(".sheet__panel");
+    var sheetBody = sheet.querySelector(".sheet__body");
+    var sheetReturn = null;
+
+    function updateModeToggle() {
+      Array.prototype.forEach.call(sheet.querySelectorAll("[data-read]"), function (b) {
+        b.setAttribute("aria-pressed", String((b.getAttribute("data-read") === "page") === pageMode));
+      });
+    }
+    function sheetFocusables() {
+      return Array.prototype.filter.call(sheetPanel.querySelectorAll("a[href], button:not([disabled])"), function (n) {
+        return n.getClientRects().length > 0;
+      });
+    }
+    function sheetOpen() { return !sheet.hidden; }
+    function openSheet() {
+      if (sheetOpen()) return;
+      if (overview) setOverview(false);
+      sheetReturn = doc.activeElement;
+      var curK = 0;
+      sections.forEach(function (sec, k) { if (current >= sec.start) curK = k; });
+      Array.prototype.forEach.call(sheet.querySelectorAll(".sheet__sec"), function (b) {
+        if (+b.getAttribute("data-k") === curK) b.setAttribute("aria-current", "true"); else b.removeAttribute("aria-current");
+      });
+      sheet.hidden = false;
+      root.classList.add("is-sheet-open");
+      deck.inert = true; hud.inert = true;
+      $chap.setAttribute("aria-expanded", "true");
+      sheetBody.scrollTop = 0;
+      var cur = sheet.querySelector('.sheet__sec[aria-current]');
+      if (cur && cur.offsetTop > sheetBody.clientHeight * 0.6) sheetBody.scrollTop = cur.offsetTop - sheetBody.clientHeight * 0.4;
+      sheet.querySelector(".sheet__close").focus({ preventScroll: true });
+    }
+    function closeSheet(restore) {
+      if (!sheetOpen()) return;
+      sheet.hidden = true;
+      root.classList.remove("is-sheet-open");
+      deck.inert = false; hud.inert = false;
+      $chap.setAttribute("aria-expanded", "false");
+      if (restore !== false) {
+        var r = sheetReturn && doc.contains(sheetReturn) && sheetReturn.getClientRects().length ? sheetReturn : $chap;
+        r.focus({ preventScroll: true });
+      }
+      sheetReturn = null;
+    }
+    function toggleSheet() { if (sheetOpen()) closeSheet(); else openSheet(); }
+    sheet.addEventListener("click", function (e) {
+      if (e.target.closest("[data-close]")) { closeSheet(); return; }
+      var g = e.target.closest("[data-go]");
+      if (g) {
+        closeSheet(false);
+        pinned = -1;
+        go(+g.getAttribute("data-go"));
+        $chap.focus({ preventScroll: true });
+        return;
+      }
+      var r = e.target.closest("[data-read]");
+      if (r) {
+        var v = r.getAttribute("data-read");
+        storeRead(v);
+        closeSheet();
+        setLayout(scrollMode, v === "page");
+      }
+    });
+    sheet.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" || ((e.key === "m" || e.key === "M") && !e.metaKey && !e.ctrlKey && !e.altKey)) {
+        e.preventDefault(); e.stopPropagation(); closeSheet(); return;
+      }
+      if (e.key === "Tab") {
+        var f = sheetFocusables();
+        if (!f.length) return;
+        var first = f[0], last = f[f.length - 1];
+        if (e.shiftKey && doc.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && doc.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    });
+    /* keep focus inside while open (e.g. after a click on the scrim area) */
+    doc.addEventListener("focusin", function (e) {
+      if (sheetOpen() && !sheet.contains(e.target)) { var f = sheetFocusables(); if (f.length) f[0].focus(); }
+    });
+
+    /* ---- first visit in page mode: show where to tap, once ---------------- */
+    var hint = null;
+    function maybeShowHint() {
+      if (!pageMode || hint || hintSeen()) return;
+      hint = el("button", "taphint");
+      hint.type = "button";
+      hint.setAttribute("aria-label", "넘기는 방법 안내 닫기");
+      hint.innerHTML =
+        '<span class="taphint__zone taphint__zone--prev">' + ICON.prev + "<b>이전</b></span>" +
+        '<span class="taphint__zone taphint__zone--next"><b>다음</b>' + ICON.next + "</span>" +
+        '<span class="taphint__msg">화면 왼쪽을 누르면 이전, 오른쪽을 누르면 다음 슬라이드로 넘어갑니다. ' +
+        "아래 막대의 장 이름을 누르면 목차와 읽는 방식을 고를 수 있습니다." +
+        '<span class="taphint__ok">아무 곳이나 눌러 시작</span></span>';
+      doc.body.appendChild(hint);
+      function dismiss(e) {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
+        storeHintSeen();
+        if (hint && hint.parentNode) hint.parentNode.removeChild(hint);
+      }
+      hint.addEventListener("click", dismiss);
+      hint.addEventListener("keydown", function (e) { if (e.key === "Escape") dismiss(e); });
     }
 
     /* events */
@@ -335,7 +531,8 @@
       var b = e.target.closest("[data-act]");
       if (!b) return;
       var a = b.getAttribute("data-act");
-      if (a === "prev") step(-1);
+      if (a === "sheet") toggleSheet();
+      else if (a === "prev") step(-1);
       else if (a === "next") step(1);
       else if (a === "overview") setOverview(!overview);
       else if (a === "theme") toggleTheme();
@@ -345,6 +542,7 @@
     edgeNext.addEventListener("click", function () { step(1); });
     frames.forEach(function (f, i) {
       f.addEventListener("click", function () { if (overview) { go(i, { scroll: false }); setOverview(false); } });
+      f.addEventListener("animationend", function () { f.classList.remove("is-enter-next", "is-enter-prev"); });
     });
 
     doc.addEventListener("keydown", function (e) {
@@ -353,6 +551,18 @@
       if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
       var k = e.key;
       var onControl = t && t.closest && t.closest("button, a, summary");
+      if (sheetOpen()) return;                 // the sheet handles its own keys
+      if (k === "h" || k === "H") { e.preventDefault(); location.href = INDEX_URL; return; }
+      if (k === "m" || k === "M") { e.preventDefault(); openSheet(); return; }
+      if (pageMode && (k === "ArrowDown" || k === "ArrowUp" || (k === " " && !onControl))) {
+        /* page mode: the current slide is its own scroller */
+        var fr = frames[current], down = k === "ArrowDown" || (k === " " && !e.shiftKey);
+        var atEnd = down ? fr.scrollTop + fr.clientHeight >= fr.scrollHeight - 2 : fr.scrollTop <= 0;
+        e.preventDefault();
+        if (k === " " && atEnd) { step(down ? 1 : -1); return; }
+        fr.scrollBy({ top: (k === " " ? fr.clientHeight * 0.85 : 64) * (down ? 1 : -1), behavior: REDUCED.matches ? "auto" : "smooth" });
+        return;
+      }
       if (overview) {
         if (k === "Escape" || k === "o" || k === "O") { e.preventDefault(); setOverview(false); return; }
         if (k === "Enter" && t && t.classList && t.classList.contains("frame")) { e.preventDefault(); go(frames.indexOf(t), { scroll: false }); setOverview(false); return; }
@@ -387,8 +597,7 @@
       resizeQueued = true;
       requestAnimationFrame(function () {
         resizeQueued = false;
-        var want = wantScrollMode();
-        if (want !== scrollMode) setScrollMode(want);
+        applyLayout();
         fit(); fitThumbs();
       });
     }
@@ -405,7 +614,7 @@
     var trackQueued = false;
     function track() {
       trackQueued = false;
-      if (!scrollMode || pinned >= 0) return;
+      if (!scrollMode || pageMode || pinned >= 0 || sheetOpen()) return;
       var line = root.clientHeight * 0.3, idx = 0;
       if (window.scrollY + root.clientHeight >= root.scrollHeight - 2) idx = total - 1;
       else {
@@ -416,7 +625,7 @@
       go(idx, { scroll: false });
     }
     window.addEventListener("scroll", function () {
-      if (!scrollMode || trackQueued) return;
+      if (!scrollMode || pageMode || trackQueued) return;
       trackQueued = true;
       requestAnimationFrame(track);
     }, { passive: true });
@@ -425,7 +634,7 @@
        inside something that scrolls sideways (tables, code, figures), in a
        form field, with two fingers, or while the page is pinch-zoomed. */
     function inHScroller(n) {
-      for (; n && n.nodeType === 1 && n !== deck; n = n.parentElement) {
+      for (; n && n.nodeType === 1 && n !== deck && !n.classList.contains("frame"); n = n.parentElement) {
         if (/^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName) || n.isContentEditable) return true;
         if (n.scrollWidth > n.clientWidth + 1) {
           var ox = getComputedStyle(n).overflowX;
@@ -435,22 +644,67 @@
       return false;
     }
     var sw = null;
+    /* page mode taps: remember how the last touch went, so the click it
+       produces can be ignored if it was really a drag, scroll or long press */
+    var touch = null;   // { x, y, t, moved, multi }
     deck.addEventListener("touchstart", function (e) {
       sw = null;
-      if (scrollMode || overview || e.touches.length !== 1) return;
+      var p0 = e.touches[0];
+      touch = { x: p0.clientX, y: p0.clientY, t: Date.now(), moved: false, multi: e.touches.length > 1, end: 0 };
+      if ((scrollMode && !pageMode) || overview || e.touches.length !== 1) return;
       if (window.visualViewport && window.visualViewport.scale > 1.05) return;
       if (inHScroller(e.target)) return;
-      sw = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() };
+      sw = { x: p0.clientX, y: p0.clientY, t: Date.now() };
     }, { passive: true });
-    deck.addEventListener("touchmove", function (e) { if (e.touches.length > 1) sw = null; }, { passive: true });
-    deck.addEventListener("touchcancel", function () { sw = null; }, { passive: true });
+    deck.addEventListener("touchmove", function (e) {
+      if (e.touches.length > 1) { sw = null; if (touch) touch.multi = true; }
+      if (touch && !touch.moved) {
+        var p = e.touches[0];
+        if (Math.abs(p.clientX - touch.x) > 10 || Math.abs(p.clientY - touch.y) > 10) touch.moved = true;
+      }
+    }, { passive: true });
+    deck.addEventListener("touchcancel", function () { sw = null; if (touch) touch.moved = true; }, { passive: true });
     deck.addEventListener("touchend", function (e) {
+      if (touch) touch.end = Date.now();
       if (!sw) return;
       var p = e.changedTouches[0], dx = p.clientX - sw.x, dy = p.clientY - sw.y, dt = Date.now() - sw.t;
       sw = null;
       if (dt > 800 || Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      if (touch) touch.swiped = true;
       step(dx < 0 ? 1 : -1);
     }, { passive: true });
+
+    /* page mode: tap the left third for the previous slide, the rest for the
+       next (e-reader convention). Taps on anything interactive, inside
+       sideways scrollers, with text selected, or that were drags / long
+       presses are left alone. */
+    var NO_TAP = "a, button, summary, details, input, textarea, select, label, [contenteditable], [tabindex]:not(.frame)";
+    var glowTimer = 0;
+    function glow(side) {
+      var g = side < 0 ? glowPrev : glowNext;
+      clearTimeout(glowTimer);
+      glowPrev.classList.remove("is-on"); glowNext.classList.remove("is-on");
+      void g.offsetWidth;
+      g.classList.add("is-on");
+      glowTimer = setTimeout(function () { g.classList.remove("is-on"); }, 150);
+    }
+    deck.addEventListener("click", function (e) {
+      if (!pageMode || overview || e.defaultPrevented || e.button !== 0) return;
+      var t = e.target;
+      if (t.closest && t.closest(NO_TAP)) return;
+      if (inHScroller(t)) return;
+      var sel = window.getSelection && window.getSelection();
+      if (sel && !sel.isCollapsed && String(sel).trim()) return;
+      if (touch && Date.now() - touch.end < 700) {
+        var held = touch.end - touch.t;
+        if (touch.moved || touch.multi || touch.swiped || held > 450) return;
+      }
+      if (window.visualViewport && window.visualViewport.scale > 1.05) return;
+      var d = e.clientX < root.clientWidth / 3 ? -1 : 1;
+      var before = current;
+      step(d);
+      if (current !== before) glow(d);
+    });
 
     /* scroll mode: give each diagram a minimum width so its smallest label
        stays >= ~10px on screen; the figure then scrolls sideways instead */
@@ -489,13 +743,14 @@
     }
 
     var deepLink = /^#\d+$/.test(location.hash);
-    setScrollMode(wantScrollMode());
+    applyLayout();
     go(hashIndex(), { force: true, scroll: false });
-    if (deepLink) pinned = current;   // deep link: keep it in view while fonts/layout settle
+    if (pageMode) maybeShowHint();
+    if (deepLink && !pageMode) pinned = current;   // deep link: keep it in view while fonts/layout settle
     function settle() {
-      if (pinned >= 0 && scrollMode) { frames[pinned].scrollIntoView({ block: "start" }); go(pinned, { scroll: false }); }
+      if (pinned >= 0 && scrollMode && !pageMode) { frames[pinned].scrollIntoView({ block: "start" }); go(pinned, { scroll: false }); }
     }
-    if (scrollMode) requestAnimationFrame(function () { frames[current].scrollIntoView({ block: "start" }); });
+    if (scrollMode && !pageMode) requestAnimationFrame(function () { frames[current].scrollIntoView({ block: "start" }); });
     fit();
     window.addEventListener("load", settle);
     if (doc.fonts && doc.fonts.ready) doc.fonts.ready.then(function () { fit(); fitThumbs(); checkOverflow(); settle(); });

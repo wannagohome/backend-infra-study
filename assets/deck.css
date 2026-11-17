@@ -231,8 +231,20 @@ a:hover { text-decoration-thickness: 2px; }
   display: block; height: 100%; width: 0; background: var(--flow);
   transition: width var(--t-fast) ease;
 }
-.hud__where { display: flex; align-items: baseline; gap: 14px; min-width: 0; flex: 1; }
+.hud__where { display: flex; min-width: 0; flex: 1; margin-left: -14px; }
+/* chapter name doubles as the button that opens the chapter sheet */
+.hud__chap {
+  appearance: none; border: 0; background: transparent; font: inherit; color: inherit; cursor: pointer;
+  display: inline-flex; align-items: baseline; gap: 14px; min-width: 0; max-width: 100%;
+  padding: 6px 10px; border-radius: 4px; text-align: left; touch-action: manipulation;
+}
+.hud__chap:hover { background: var(--rule-soft); }
+.hud__chap[aria-expanded="true"] { background: var(--flow-wash); }
+.hud__caret { flex: none; align-self: center; width: 14px; height: 14px; fill: none; stroke: var(--ink-3); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; margin-left: -6px; }
 .hud__chapter { color: var(--ink); font-weight: 600; white-space: nowrap; }
+.hud__toc { margin-left: -8px; }
+.ico-stack rect { fill: currentColor; stroke: none; }
+.ico-stack .is-cur { fill: var(--flow); }
 .hud__section {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink-2);
   padding-left: 14px; border-left: 1px solid var(--rule);
@@ -287,6 +299,10 @@ a:hover { text-decoration-thickness: 2px; }
   .hud__btn { height: 44px; min-width: 44px; }
   .hud__btns { gap: 2px; }
   .hud__btn:hover { background: transparent; color: var(--ink-2); }
+  .hud__chap { min-height: 44px; align-items: center; }
+  .hud__chap:hover { background: transparent; }
+  .hud__chap[aria-expanded="true"] { background: var(--flow-wash); }
+  .sheet__sec:hover { background: transparent; }
   .selfcheck summary:hover { background: transparent; }
   .is-overview .frame:hover { outline: 1px solid var(--rule); }
   .is-overview .frame.is-active { outline: 3px solid var(--flow); }
@@ -842,9 +858,14 @@ svg.dg { font-family: var(--font-sans); }
 .is-scroll .slide td, .is-scroll .slide th, .is-scroll .slide li, .is-scroll .slide .small, .is-scroll .slide figcaption { font-size: max(16px, 1em); }
 .is-scroll .slide > h2, .is-scroll .slide__title { margin-bottom: 20px; }
 .is-scroll .edge, .is-scroll .hud__btn[data-act="overview"], .is-scroll .hud__btn[data-act="fullscreen"] { display: none; }
-.is-scroll .hud { gap: 10px; padding: 0 calc(8px + var(--safe-r)) var(--safe-b) calc(16px + var(--safe-l)); }
-.is-scroll .hud__chapter { display: none; }
-.is-scroll .hud__section { border: 0; padding: 0; }
+.is-scroll .hud { gap: 8px; padding: 0 calc(6px + var(--safe-r)) var(--safe-b) calc(10px + var(--safe-l)); }
+.is-scroll .hud__toc { margin-left: -4px; }
+.is-scroll .hud__where { margin-left: -6px; }
+.is-scroll .hud__chap { gap: 8px; padding: 0 8px; }
+.is-scroll .hud__chname { display: none; }      /* "13장" only */
+.is-scroll .hud__section { padding-left: 8px; }
+.is-scroll .hud__caret { margin-left: -2px; }
+@media (max-width: 420px) { .is-scroll .hud__depth .depth__label { display: none; } }
 .is-scroll .hud__btn[data-act="prev"], .is-scroll .hud__btn[data-act="next"] { display: none; }
 .is-scroll .split, .is-scroll .split--even, .is-scroll .split--wide-left { display: flex; flex-direction: column; align-items: stretch; gap: var(--gap); }
 .is-scroll .slide__body { align-items: stretch; }
@@ -922,6 +943,154 @@ svg.dg { font-family: var(--font-sans); }
 .is-scroll .next__label, .is-scroll .next__desc { font-size: 15px; }
 .is-scroll .legend { font-size: 14px; }
 
+/* ---------- 19a. Small screens, "넘겨보기": one slide at a time --------- */
+/* deck.js adds .is-page next to .is-scroll (unless the reader chose 이어보기).
+   Same reflowed layout and type sizes as the scroll mode, but only the active
+   slide is shown and it scrolls inside its own box. */
+.is-page body { overflow: hidden; overscroll-behavior: none; }
+.is-page .deck {
+  position: fixed; inset: var(--safe-t) 0 calc(var(--hud-h) + var(--safe-b)) 0;
+  overflow: hidden; padding-bottom: 0; background: var(--paper);
+}
+.is-page .stage { position: relative; left: 0; top: 0; height: 100%; }
+.is-page .frame {
+  display: none; position: absolute; inset: 0; margin: 0;
+  overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  touch-action: manipulation;              /* no double-tap-zoom delay on taps */
+  -webkit-tap-highlight-color: transparent;
+}
+.is-page .frame.is-active { display: block; }
+.is-page .frame-clip { min-height: 100%; display: flex; flex-direction: column; }
+.is-page .slide { flex: 1 0 auto; width: 100%; }   /* short slides still fill the page; dividers centre */
+@keyframes deck-enter-next { from { transform: translateX(24px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+@keyframes deck-enter-prev { from { transform: translateX(-24px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+.is-page .frame.is-enter-next { animation: deck-enter-next 180ms cubic-bezier(0.2, 0.7, 0.3, 1); }
+.is-page .frame.is-enter-prev { animation: deck-enter-prev 180ms cubic-bezier(0.2, 0.7, 0.3, 1); }
+/* prev / next stay reachable for screen readers; taps and swipes do the job on screen */
+.is-page .hud__btn[data-act="prev"], .is-page .hud__btn[data-act="next"] {
+  display: inline-flex; position: absolute; width: 1px; height: 1px; min-width: 0; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+/* tap feedback: a brief flow-colored light along the tapped edge */
+.tapglow {
+  position: fixed; top: var(--safe-t); bottom: calc(var(--hud-h) + var(--safe-b)); width: 36px;
+  z-index: 15; pointer-events: none; opacity: 0; transition: opacity 180ms ease-out;
+}
+.tapglow--prev { left: 0; background: linear-gradient(to right, var(--flow) 0 3px, var(--flow-wash) 3px, transparent); }
+.tapglow--next { right: 0; background: linear-gradient(to left, var(--flow) 0 3px, var(--flow-wash) 3px, transparent); }
+.tapglow.is-on { opacity: 0.9; transition: none; }
+
+/* first visit in page mode: the two tap zones, once */
+.taphint {
+  appearance: none; border: 0; margin: 0; padding: 0; font: inherit; text-align: left; cursor: pointer;
+  position: fixed; inset: 0; z-index: 50;
+  display: grid; grid-template-columns: 1fr 2fr; grid-template-rows: 1fr auto;
+  background: rgba(7, 13, 23, 0.8); color: #F6F8FB;
+  -webkit-tap-highlight-color: transparent;
+  animation: taphint-in 200ms ease-out;
+}
+@keyframes taphint-in { from { opacity: 0; } }
+.taphint__zone {
+  display: flex; align-items: center; gap: 6px; padding: 0 18px;
+  font-size: 17px; color: #C9D3DF;
+}
+.taphint__zone b { font-weight: 600; }
+.taphint__zone svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.taphint__zone--prev { border-right: 2px dashed rgba(157, 192, 227, 0.55); }
+.taphint__zone--next { justify-content: flex-end; color: #F6F8FB; font-size: 20px; background: rgba(77, 168, 236, 0.12); }
+.taphint__zone--next svg { width: 26px; height: 26px; color: #7EC0F2; }
+.taphint__msg {
+  grid-column: 1 / -1; display: block;
+  padding: 20px calc(20px + var(--safe-r)) calc(22px + var(--safe-b)) calc(20px + var(--safe-l));
+  border-top: 1px solid rgba(157, 192, 227, 0.35);
+  font-size: 16px; line-height: 1.6; color: #DCE5F0; background: rgba(7, 13, 23, 0.6);
+}
+.taphint__ok { display: block; margin-top: 10px; font-weight: 600; color: #7EC0F2; }
+
+/* ---------- 19c. Chapter sheet (HUD chapter name / M) ------------------ */
+/* stage: a panel rising from the chapter name; small screens: a bottom sheet */
+.sheet { position: fixed; inset: 0; z-index: 40; font-size: 15px; line-height: 1.5; color: var(--ink); }
+.sheet[hidden] { display: none; }
+.is-sheet-open, .is-sheet-open body { overflow: hidden; }
+.sheet__scrim { position: absolute; inset: 0; background: rgba(7, 13, 23, 0.34); animation: sheet-fade 160ms ease-out; }
+@keyframes sheet-fade { from { opacity: 0; } }
+.sheet__panel {
+  position: absolute; left: calc(12px + var(--safe-l)); bottom: calc(var(--hud-h) + var(--safe-b) + 10px);
+  width: min(420px, calc(100vw - 24px)); max-height: calc(100dvh - var(--hud-h) - var(--safe-b) - 40px);
+  display: flex; flex-direction: column;
+  background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius);
+  box-shadow: 0 24px 56px -16px rgba(7, 13, 23, 0.45);
+  animation: sheet-rise 200ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+@keyframes sheet-rise { from { transform: translateY(12px); opacity: 0; } }
+.sheet__grip { display: none; }
+.sheet__head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 8px 10px 20px; border-bottom: 1px solid var(--rule);
+}
+.sheet__head h2 { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.35; }
+.sheet__close { flex: none; }
+.sheet__body { overflow-y: auto; overscroll-behavior: contain; padding: 14px 20px 24px; }
+
+.sheet__home {
+  display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 10px 16px;
+  border: 1px solid var(--rule); border-radius: var(--radius); background: var(--panel);
+  color: var(--ink); text-decoration: none; font-weight: 600; touch-action: manipulation;
+}
+.sheet__home:hover { border-color: var(--flow); text-decoration: none; }
+.sheet__home:hover .sheet__home-text { text-decoration: underline; text-underline-offset: 0.2em; }
+.sheet__home .ico-stack { width: 22px; height: 22px; flex: none; color: var(--ink-2); }
+.sheet__home-sub { margin-left: auto; font-weight: 400; font-size: 13.5px; color: var(--ink-3); }
+
+.sheet__mode { display: none; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
+.is-scroll .sheet__mode { display: flex; }
+.sheet__mode-label { color: var(--ink-2); }
+.seg { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--rule); border-radius: 999px; background: var(--panel); }
+.seg button {
+  appearance: none; border: 0; background: transparent; font: inherit; font-size: 14.5px; color: var(--ink-2);
+  min-height: 38px; padding: 0 16px; border-radius: 999px; cursor: pointer; touch-action: manipulation;
+}
+.seg button[aria-pressed="true"] { background: var(--flow); color: var(--on-flow); font-weight: 600; }
+
+.sheet__h { margin: 22px 0 6px; font-size: 13.5px; font-weight: 600; color: var(--ink-3); }
+.sheet__secs { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
+.sheet__secs li { border-bottom: 1px solid var(--rule-soft); }
+.sheet__sec {
+  appearance: none; border: 0; background: transparent; font: inherit; color: var(--ink); cursor: pointer;
+  width: 100%; min-height: 44px; padding: 9px 10px 9px 12px; text-align: left;
+  display: grid; grid-template-columns: 3.4em minmax(0, 1fr) auto; align-items: baseline; gap: 10px;
+  border-left: 3px solid transparent; touch-action: manipulation;
+}
+.sheet__sec:hover { background: var(--rule-soft); }
+.sheet__sec-no { color: var(--ink-3); font-variant-numeric: tabular-nums; font-size: 13.5px; }
+.sheet__sec-at { color: var(--ink-3); font-variant-numeric: tabular-nums; font-size: 13px; }
+.sheet__sec[aria-current] { border-left-color: var(--flow); background: var(--flow-wash); font-weight: 600; }
+.sheet__sec[aria-current] .sheet__sec-no { color: var(--flow-ink); }
+
+/* stack map of all chapters (links), compact */
+.stackmap--sheet { --sm-h: 34px; --sm-gap: 4px; --sm-step: 1.1%; margin-top: 10px; }
+.stackmap--sheet .stackmap__list { padding-left: 30px; }
+.stackmap--sheet .stackmap__layer { font-size: 14.5px; gap: 10px; padding: 0 12px; }
+.stackmap--sheet .stackmap__layer:not(.is-current) { color: var(--ink-2); }
+.stackmap--sheet .stackmap__layer a { gap: 10px; min-height: var(--sm-h); }
+.stackmap--sheet .stackmap__layer.is-current { width: var(--w); margin-right: 0; min-height: 40px; font-size: 15px; }
+.stackmap--sheet .stackmap__layer.is-current .stackmap__tag { font-size: 12px; }
+.stackmap--sheet .stackmap__layer:not(.is-current):hover { border-color: var(--flow); }
+.stackmap--sheet .stackmap__group { font-size: 13px; padding-left: 12px; }
+.stackmap--sheet .stackmap__layer { transition: none; }
+
+.is-scroll .sheet__panel {
+  left: 0; right: 0; bottom: 0; width: auto; max-width: 600px; margin: 0 auto; max-height: min(88dvh, calc(100dvh - var(--safe-t) - 16px));
+  border-width: 1px 0 0; border-radius: 12px 12px 0 0; padding-bottom: var(--safe-b);
+  box-shadow: 0 -12px 40px -16px rgba(7, 13, 23, 0.4);
+  animation-name: sheet-up; animation-duration: 220ms;
+}
+@keyframes sheet-up { from { transform: translateY(40%); opacity: 0.6; } }
+.is-scroll .sheet__grip { display: block; width: 40px; height: 4px; border-radius: 999px; background: var(--rule); margin: 8px auto 0; }
+.is-scroll .sheet__head { padding: 4px 6px 8px calc(16px + var(--safe-l)); }
+.is-scroll .sheet__body { padding: 12px calc(16px + var(--safe-r)) 20px calc(16px + var(--safe-l)); }
+
 /* ---------- 19b. Writer aid: overflow warning (stage mode only) -------- */
 .slide.is-overflowing { box-shadow: inset 0 -6px 0 var(--key); }
 .slide.is-overflowing::after {
@@ -940,7 +1109,8 @@ svg.dg { font-family: var(--font-sans); }
 @media print {
   @page { size: 1600px 900px; margin: 0; }
   html, body { background: var(--paper) !important; }
-  .hud, .hud__progress, .edge { display: none !important; }
+  .hud, .hud__progress, .edge, .sheet, .taphint, .tapglow { display: none !important; }
+  .frame { display: block !important; }
   .deck, .stage { position: static !important; transform: none !important; width: 1600px !important; height: auto !important; overflow: visible !important; inset: auto !important; }
   .frame { position: relative !important; visibility: visible !important; opacity: 1 !important; break-after: page; page-break-after: always; width: 1600px; height: 900px; }
   .frame:last-child { break-after: auto; page-break-after: auto; }
