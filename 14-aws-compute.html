@@ -18,11 +18,11 @@
     <div class="cover__main">
       <p class="cover__chapter"><b>14장</b> AWS 컴퓨팅</p>
       <h1>코드는 AWS의 어떤 기계 위에서 도는가</h1>
-      <p class="cover__lede">13장에서 깐 VPC 위에 서버를 올립니다. EC2 한 대에서 시작해 디스크, 구매 방식, Auto Scaling을 거쳐 컨테이너를 돌리는 ECS, Fargate, EKS까지 따라갑니다.</p>
+      <p class="cover__lede">13장에서 만든 VPC 위에 쇼핑몰 주문 API를 올립니다. 서버 한 대에서 시작해 디스크, 구매 방식, 자동 확장을 거쳐 컨테이너까지 따라갑니다.</p>
       <dl class="cover__meta">
-        <div><dt>선수 지식</dt><dd>9장 컨테이너, 10장 Kubernetes, 13장 VPC와 ELB</dd></div>
-        <div><dt>슬라이드</dt><dd>90장</dd></div>
-        <div><dt>예상 학습 시간</dt><dd>170분</dd></div>
+        <div><dt>선수 지식</dt><dd>9장 컨테이너, 10장 Kubernetes, 12장 IAM, 13장 VPC와 ELB</dd></div>
+        <div><dt>슬라이드</dt><dd>122장</dd></div>
+        <div><dt>예상 학습 시간</dt><dd>260분</dd></div>
       </dl>
     </div>
     <div class="cover__map">
@@ -36,22 +36,52 @@
 <section class="slide slide--divider" data-section="EC2 인스턴스" data-depth="basic">
   <p class="divider__no">1부</p>
   <h2>서버 한 대를 API로 빌린다</h2>
-  <p class="lede">EC2는 1장에서 본 컴퓨터를 가상 머신으로 잘라 빌려주는 서비스입니다. 이름 읽는 법부터 부팅, 접속, 정지와 종료까지 한 대의 일생을 따라갑니다.</p>
+  <p class="lede">13장에서 깐 VPC의 서브넷은 아직 비어 있습니다. 이 부는 "그 자리에 놓을 서버 한 대는 정체가 무엇이고, 무엇을 기준으로 골라, 어떻게 띄우고 끄는가"라는 질문에 답합니다.</p>
 </section>
 
 <section class="slide">
-  <h2>컴퓨팅은 맡기는 범위로 고른다</h2>
+  <h2>이 장은 주문 API 하나를 AWS에 올린다</h2>
+  <div class="prose prose--cols">
+    <p>개념만 늘어놓으면 서로 어떻게 이어지는지 보이지 않습니다. 그래서 이 장 전체를 예제 하나로 끌고 갑니다. 쇼핑몰의 <strong>주문 API</strong>입니다. Spring Boot로 만든 JAR 파일 하나(<code>api.jar</code>)이고, JDK 21에서 돌며, 주문을 받아 DB에 쓰고 S3에 영수증을 남깁니다.</p>
+    <p>이 API가 놓일 자리는 13장에서 이미 만들었습니다. 서울 리전(<code>ap-northeast-2</code>)의 VPC에 가용 영역(AZ) a와 c가 있고, 각 AZ에 Public 서브넷(ALB, NAT Gateway)과 Private 서브넷(앱 서버)이 있습니다. 인터넷 요청은 ALB를 거쳐 Private 서브넷의 앱 서버로 들어옵니다. 비어 있는 것은 바로 그 "앱 서버" 자리입니다.</p>
+    <p>장의 흐름은 이 예제가 커 가는 순서를 따릅니다. 먼저 주문 API를 서버 한 대에 올리고(1부), 그 서버의 디스크를 이해하고(2부), 서버를 1년 내내 돌릴 때의 값을 따지고(3부), 점심시간 주문 폭주에 맞춰 대수를 자동으로 바꿉니다(4부).</p>
+    <p>그다음 같은 API를 컨테이너 이미지로 만들어 AWS의 컨테이너 서비스로 옮기고(5부), 서버 관리 자체를 AWS에 넘기거나 Kubernetes를 빌리는 길을 본 뒤(6부), 운영에서 실제로 터지는 문제로 마무리합니다(7부).</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>컴퓨팅은 AWS에 맡기는 범위로 고른다</h2>
   <div class="slide__body">
-    <p class="lede">13장에서 VPC와 ELB로 길을 깔았습니다. 이제 그 길 끝에서 실제로 코드를 실행할 자리가 필요합니다.</p>
+    <p class="lede">AWS에서 코드를 돌리는 방법은 여럿이고, 차이는 "어디까지를 내가 관리하는가"입니다.</p>
     <ol class="flow">
       <li class="flow__node is-flow"><b>EC2</b><span>OS부터 내가 관리</span></li>
-      <li class="flow__node"><b>ECS/EKS on EC2</b><span>노드는 내가, 배치는 AWS</span></li>
-      <li class="flow__node"><b>Fargate</b><span>노드도 AWS가 관리</span></li>
+      <li class="flow__node"><b>ECS/EKS + EC2</b><span>서버는 나, 배치는 AWS</span></li>
+      <li class="flow__node"><b>Fargate</b><span>서버도 AWS가 관리</span></li>
       <li class="flow__node"><b>Lambda</b><span>함수만 올림(17장)</span></li>
     </ol>
     <div class="prose">
-      <p>오른쪽으로 갈수록 AWS가 더 많은 층을 맡고 우리는 덜 신경 씁니다. 대신 제어권과 단가에서 대가를 치릅니다. 이 장은 가장 왼쪽의 EC2를 바닥부터 이해한 다음, 그 위에 컨테이너 서비스를 쌓습니다. 다섯 가지를 한 표로 놓고 고르는 종합 비교는 18장에서 합니다.</p>
+      <p>가장 왼쪽 EC2는 가상 서버를 통째로 빌려 OS 패치부터 직접 합니다. 그 오른쪽은 컨테이너를 어느 서버에 띄울지를 AWS의 컨테이너 서비스(ECS, 또는 Kubernetes를 대신 운영해 주는 EKS)가 정해 주지만 서버는 여전히 내 EC2입니다. Fargate는 그 서버마저 AWS가 숨기고, Lambda는 함수 코드만 올립니다. 오른쪽으로 갈수록 할 일은 줄고, 대신 제어권과 단가를 내줍니다. 이 장은 가장 왼쪽을 바닥부터 이해한 뒤 오른쪽으로 갑니다. 다섯 가지를 놓고 고르는 종합 비교는 18장에서 합니다.</p>
     </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>EC2는 API 한 번으로 빌리는 가상 서버다</h2>
+  <div class="prose prose--cols">
+    <p><dfn title="Elastic Compute Cloud">EC2</dfn>는 AWS 데이터센터의 서버를 빌려 주는 서비스이고, 빌린 서버 한 대를 <dfn title="instance">인스턴스</dfn>라고 부릅니다. 예전에는 서버를 쓰려면 견적을 받고, 몇 주 뒤 배송된 장비를 랙에 꽂고, OS를 설치했습니다. EC2에서는 API 호출 한 번이면 1~2분 안에 서버가 뜨고, 필요 없으면 지우는 순간 요금이 멈춥니다.</p>
+    <p>인스턴스를 띄울 때 정하는 것은 크게 넷입니다. 어떤 성능의 기계인가(<strong>인스턴스 유형</strong>), 디스크에 무엇이 깔려 있는가(<strong>AMI</strong>), 어느 서브넷에 놓고 어떤 보안 그룹을 붙이는가(<strong>위치</strong>, 13장), 그리고 이 서버가 AWS를 호출할 때 쓸 권한(<strong>IAM 역할</strong>, 12장)입니다. 1부는 이 순서대로 하나씩 봅니다.</p>
+    <p>요금은 리눅스 기준으로 인스턴스가 실행 중인 동안 초 단위로 붙습니다(최소 60초). 그래서 "몇 시간만 쓰고 지운다"가 현실적인 선택이 되고, 이것이 4부의 자동 확장을 가능하게 하는 바탕입니다.</p>
+    <p>그런데 "가상 서버"라는 말에는 질문이 숨어 있습니다. 물리 서버 한 대를 어떻게 여러 고객에게 나눠 주면서도, 각자가 자기만의 서버를 쓰는 것처럼 느끼게 할까요? 다음 슬라이드는 그 장치부터 봅니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>가상 머신은 하이퍼바이저가 만든다</h2>
+  <div class="prose prose--cols">
+    <p>9장에서 VM과 컨테이너를 비교하며 봤듯이, <dfn title="Virtual Machine">가상 머신(VM)</dfn>은 가상 하드웨어 위에 게스트 OS를 통째로 올린 것입니다. 이 가상 하드웨어를 만들어 VM마다 나눠 주는 소프트웨어가 <dfn title="hypervisor">하이퍼바이저</dfn>입니다. 물리 CPU 시간과 메모리를 쪼개 각 VM에 배정하고, VM이 서로의 메모리를 보지 못하게 막습니다.</p>
+    <p>CPU와 메모리를 나누는 일은 요즘 CPU가 하드웨어로 도와줘서 비용이 거의 없습니다. 비싼 쪽은 <strong>I/O</strong>, 즉 네트워크와 디스크입니다. 게스트 OS가 "이 패킷을 보내라"고 장치에 명령하면, 그 장치는 진짜가 아니므로 하이퍼바이저가 명령을 가로채 해석하고, 데이터를 복사해 진짜 네트워크 카드에 넘겨야 합니다.</p>
+    <p>EC2가 2006년부터 쓰던 하이퍼바이저는 오픈소스인 <dfn>Xen</dfn>이었습니다. Xen 구조에서는 이 가로채기와 복사를 호스트의 CPU가 소프트웨어로 처리했습니다. 패킷 하나, 디스크 요청 하나마다 호스트 CPU가 일을 하니, 그만큼의 CPU를 고객에게 팔 수 없었고, 옆 VM이 I/O를 몰아 쓰면 내 지연이 흔들렸습니다.</p>
+    <p>정리하면 문제는 "I/O 처리를 서버의 범용 CPU가 떠안는다"는 데 있었습니다. 이 일을 아예 다른 하드웨어로 넘기면 어떨까요? 그것이 다음 슬라이드의 Nitro입니다.</p>
   </div>
 </section>
 
@@ -59,8 +89,8 @@
   <h2>Nitro는 가상화 부담을 카드로 옮겼다</h2>
   <div class="split split--center">
     <div class="prose">
-      <p>EC2 인스턴스는 물리 서버 한 대를 <dfn title="hypervisor">하이퍼바이저</dfn>로 나눈 가상 머신입니다(9장의 VM). 예전 Xen 기반에서는 네트워크와 디스크 I/O도 호스트 CPU가 소프트웨어로 처리해서 그만큼 성능이 깎였습니다.</p>
-      <p><dfn title="AWS Nitro System">Nitro</dfn>는 이 일을 전용 하드웨어 카드로 떼어 냈습니다. 하이퍼바이저는 <mark>CPU와 메모리 분배만</mark> 맡아 가볍고, VPC 네트워킹과 EBS는 Nitro 카드가 처리합니다. 그래서 가상 머신인데도 성능이 베어메탈과 거의 같습니다.</p>
+      <p><dfn title="AWS Nitro System">Nitro</dfn>는 AWS가 2017년부터 쓰는 가상화 구조입니다. 네트워크, EBS 디스크, 로컬 디스크 처리를 전용 칩이 달린 확장 카드(Nitro 카드)로 떼어 냈고, 하이퍼바이저는 <mark>CPU와 메모리 분배만</mark> 맡는 얇은 층이 됐습니다.</p>
+      <p>그래서 호스트 CPU를 거의 전부 인스턴스에 줄 수 있고, 성능이 가상화 없이 물리 서버를 그대로 쓰는 <dfn title="bare metal">베어메탈</dfn>과 거의 같습니다. 진짜 베어메탈이 필요하면 <code>.metal</code> 크기를 고릅니다.</p>
     </div>
     <figure class="figure">
       <svg class="dg" viewBox="0 0 760 430" role="img" aria-labelledby="f3t">
@@ -95,10 +125,23 @@
 </section>
 
 <section class="slide">
+  <h2>vCPU는 코어가 아니라 하드웨어 스레드다</h2>
+  <div class="prose prose--cols">
+    <p>인스턴스 사양표의 CPU 개수는 <dfn title="virtual CPU">vCPU</dfn>로 적혀 있습니다. vCPU가 무엇인지 알려면 하이퍼스레딩부터 알아야 합니다. 1장에서 CPU 코어 하나는 한 순간에 한 흐름만 실행한다고 했습니다. 그런데 코어 안의 계산 장치는 메모리를 기다리는 동안 자주 놉니다.</p>
+    <p><dfn title="Hyper-Threading">하이퍼스레딩</dfn>(일반 용어로 SMT)은 코어 하나에 실행 흐름 두 개의 상태를 동시에 올려 두고, 한쪽이 기다릴 때 다른 쪽이 계산 장치를 쓰게 하는 기술입니다. OS에는 코어 하나가 논리 CPU 두 개로 보입니다. 다만 계산 장치는 하나를 나눠 쓰므로, 두 흐름이 모두 바쁘면 성능이 두 배가 되지는 않습니다.</p>
+    <p>Intel과 AMD(x86) 인스턴스의 vCPU 하나는 이 논리 CPU, 즉 하이퍼스레드 하나입니다. 그래서 vCPU 2개짜리 <code>m7i.large</code>는 물리 코어 1개를 통째로 받은 것입니다. 반면 AWS의 ARM 프로세서인 Graviton은 하이퍼스레딩이 없어서 vCPU 하나가 물리 코어 하나입니다.</p>
+    <p>메모리는 <dfn title="gibibyte">GiB</dfn>(2<sup>30</sup>바이트, 약 1.07GB)로 적습니다. 이제 vCPU와 GiB라는 두 단위로 인스턴스 이름을 읽을 준비가 됐습니다.</p>
+  </div>
+</section>
+
+<section class="slide">
   <h2>인스턴스 이름은 네 조각으로 읽는다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>주문 API용으로 흔히 고르는 <code>m7g.large</code>를 뜯어 보겠습니다. 점 앞의 <code>m</code>은 성격을 나타내는 <dfn title="instance family">패밀리</dfn>(범용), <code>7</code>은 세대, <code>g</code>는 옵션 문자(Graviton)이고, 점 뒤 <code>large</code>는 크기입니다. 세대 숫자가 클수록 새 칩이고 대개 같은 값에 더 빠릅니다.</p>
+    </div>
     <table class="compare">
-      <thead><tr><th scope="col">예시</th><th scope="col">계열(시리즈)</th><th scope="col">세대 + 옵션</th><th scope="col">크기</th></tr></thead>
+      <thead><tr><th scope="col">예시</th><th scope="col">패밀리</th><th scope="col">세대 + 옵션</th><th scope="col">크기</th></tr></thead>
       <tbody>
         <tr><th scope="row"><code>m7g.large</code></th><td>m: 범용</td><td>7세대, g: Graviton</td><td>large(2 vCPU)</td></tr>
         <tr><th scope="row"><code>c7i.2xlarge</code></th><td>c: 컴퓨팅 최적화</td><td>7세대, i: Intel</td><td>2xlarge(8 vCPU)</td></tr>
@@ -107,7 +150,7 @@
       </tbody>
     </table>
     <div class="prose">
-      <p>점 앞은 <dfn title="instance family">패밀리</dfn>, 점 뒤는 크기입니다. 옵션 문자는 프로세서(<code>a</code> AMD, <code>g</code> Graviton, <code>i</code> Intel)와 추가 능력(<code>d</code> 인스턴스 스토어, <code>n</code> 네트워크 강화, <code>e</code> 추가 메모리나 스토리지, <code>z</code> 고클럭, <code>flex</code>)을 뜻합니다. 같은 패밀리에서 <mark>크기가 한 단계 오르면 vCPU, 메모리, 시간당 요금이 대략 두 배</mark>가 됩니다.</p>
+      <p>옵션 문자는 프로세서(<code>a</code> AMD, <code>g</code> Graviton, <code>i</code> Intel)와 추가 능력(<code>d</code> 서버에 꽂힌 로컬 디스크, <code>n</code> 네트워크 강화, <code>e</code> 메모리나 스토리지 추가, <code>z</code> 고클럭)입니다. 같은 패밀리에서 <mark>크기가 한 단계 오르면 vCPU, 메모리, 시간당 요금이 대략 두 배</mark>가 됩니다.</p>
     </div>
   </div>
 </section>
@@ -115,18 +158,31 @@
 <section class="slide">
   <h2>패밀리는 vCPU당 메모리 비율이다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>패밀리를 가르는 가장 큰 기준은 vCPU 하나에 메모리가 얼마나 딸려 오느냐입니다. 앱마다 먼저 바닥나는 자원이 다르므로, 바닥나는 쪽이 넉넉한 패밀리를 고르면 남는 자원에 돈을 덜 냅니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">패밀리</th><th scope="col">성격</th><th scope="col">vCPU:메모리</th><th scope="col">어울리는 일</th></tr></thead>
       <tbody>
         <tr><th scope="row">M</th><td>범용, 균형</td><td class="num">1 : 4 GiB</td><td>대부분의 웹, API 서버</td></tr>
         <tr><th scope="row">C</th><td>컴퓨팅 최적화</td><td class="num">1 : 2 GiB</td><td>인코딩, 연산 배치, 게임 서버</td></tr>
         <tr><th scope="row">R</th><td>메모리 최적화</td><td class="num">1 : 8 GiB</td><td>큰 힙 JVM, 인메모리 캐시</td></tr>
-        <tr><th scope="row">X, U</th><td>메모리 집약</td><td>R보다 훨씬 큼</td><td>SAP HANA, 거대 인메모리 DB</td></tr>
+        <tr><th scope="row">X, U</th><td>메모리 집약</td><td>R보다 훨씬 큼</td><td>거대한 인메모리 DB</td></tr>
         <tr><th scope="row">T</th><td class="is-key">버스트형, CPU 크레딧</td><td>M과 비슷</td><td>평소 한가한 서버</td></tr>
-        <tr><th scope="row">I, D</th><td>스토리지 최적화</td><td>로컬 NVMe/HDD 대용량</td><td>Cassandra, Kafka, 검색 엔진</td></tr>
+        <tr><th scope="row">I, D</th><td>스토리지 최적화</td><td>로컬 디스크 대용량</td><td>Cassandra, Kafka</td></tr>
       </tbody>
     </table>
-    <p class="small">비율은 현행 세대 대표값입니다. 정확한 값은 크기별 사양표에서 확인합니다.</p>
+    <p class="small">비율은 현행 세대 대표값입니다. T는 뒤에서 따로 설명합니다. 정확한 값은 크기별 사양표에서 확인합니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>주문 API는 M에서 시작해 병목을 보고 옮긴다</h2>
+  <div class="prose prose--cols">
+    <p>표를 실제 선택에 쓰는 법을 주문 API로 보겠습니다. 처음에는 무엇이 바닥날지 모르므로 균형형인 M(<code>m7g.large</code>, 2 vCPU, 8GiB)에서 시작합니다. 그리고 부하 테스트나 운영 지표로 어느 자원이 먼저 차는지 봅니다.</p>
+    <p>CPU 사용률은 낮은데 5장에서 본 GC(쓰지 않는 객체를 치우는 JVM의 메모리 정리)가 잦고 힙이 모자라면, 같은 vCPU에 메모리가 두 배인 R(<code>r7g.large</code>, 16GiB)로 옮깁니다. 반대로 메모리는 남는데 JSON 직렬화와 암호화로 CPU가 꽉 차면, 메모리를 절반으로 줄여 값이 싼 C가 맞습니다.</p>
+    <p>표의 I, D 패밀리는 서버 안에 큰 로컬 디스크를 단 유형입니다. Cassandra 같은 분산 DB나 8장의 Kafka처럼 디스크에 쉬지 않고 쓰고, 데이터를 여러 서버에 복제해 두어 서버 하나의 디스크를 잃어도 되는 시스템이 씁니다. 주문 API처럼 상태를 DB에 두는 앱 서버에는 필요 없습니다.</p>
+    <p>X, U는 수 TiB 메모리가 필요한 인메모리 DB(데이터 전체를 메모리에 두는 DB)용입니다. 이 다섯 가지 외에, CPU가 아닌 특수 칩을 다는 패밀리가 있습니다.</p>
   </div>
 </section>
 
@@ -134,27 +190,33 @@
   <h2>가속기 패밀리는 칩 종류로 나뉜다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>GPU나 전용 칩이 붙은 패밀리입니다. <strong>P</strong>는 NVIDIA 고성능 GPU로 모델 학습과 HPC에, <strong>G</strong>는 그래픽과 가벼운 추론에 씁니다. <strong>Inf</strong>는 AWS가 만든 추론 칩 Inferentia, <strong>Trn</strong>은 학습 칩 Trainium을 답니다.</p>
-      <p>이 밖에 FPGA를 붙인 <strong>F</strong>, macOS 빌드용 <strong>Mac</strong>, HPC 전용 <strong>Hpc</strong> 패밀리가 있습니다.</p>
+      <p>CPU는 무엇이든 할 수 있지만 같은 계산을 대량으로 반복하는 일에는 느립니다. 그런 일을 맡는 전용 칩을 가속기라 부릅니다. <dfn title="Graphics Processing Unit">GPU</dfn>는 단순 계산 수천 개를 동시에 하는 칩으로, 딥러닝 학습과 추론의 주력입니다.</p>
+      <p><strong>P</strong>는 고성능 NVIDIA GPU로 모델 학습과 <dfn title="High Performance Computing">HPC</dfn>(기상 예측, 유체 시뮬레이션처럼 수많은 노드가 함께 푸는 과학 계산)에, <strong>G</strong>는 그래픽과 가벼운 추론에 씁니다. <strong>Inf</strong>는 AWS가 만든 추론 칩 Inferentia, <strong>Trn</strong>은 학습 칩 Trainium을 답니다.</p>
     </div>
     <div class="prose">
-      <p>패밀리를 고를 때는 프로파일링으로 병목 자원을 먼저 찾습니다. CPU 사용률은 낮은데 GC가 잦으면 R, 메모리는 남는데 CPU가 꽉 차면 C가 맞습니다.</p>
-      <p>가속기 패밀리는 용량이 귀해서 원하는 AZ에 자리가 없을 수 있습니다. 그래서 3부에서 볼 <strong>용량 예약</strong>과 함께 계획합니다.</p>
+      <p>이 밖에 회로를 프로그래밍할 수 있는 칩 <dfn title="Field-Programmable Gate Array">FPGA</dfn>를 단 <strong>F</strong>, macOS 빌드용 실제 Mac을 빌리는 <strong>Mac</strong>, HPC 전용 <strong>Hpc</strong> 패밀리가 있습니다.</p>
+      <p>가속기 패밀리는 수요에 비해 물량이 적어서, 원하는 AZ에 남는 자리가 없어 인스턴스가 뜨지 않는 일이 흔합니다. 그래서 특정 AZ의 자리를 미리 잡아 두는 <strong>용량 예약</strong>과 함께 계획합니다. 용량 예약이 할인과 어떻게 다른지는 3부에서 봅니다.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <h2>Graviton은 싸지만 ARM 빌드가 필요하다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p><dfn title="AWS Graviton">Graviton</dfn>은 AWS가 설계한 ARM64 프로세서입니다. 같은 크기의 x86 인스턴스보다 시간당 요금이 낮게 책정되고, 전력 효율이 좋아 같은 일을 더 적은 비용으로 처리하는 경우가 많습니다.</p>
-      <p>x86 vCPU는 물리 코어 하나를 하이퍼스레드 둘로 나눈 것이지만, Graviton의 vCPU는 <mark>물리 코어 하나</mark>입니다. 그래서 CPU 사용률이 높을 때도 성능이 덜 흔들립니다.</p>
-    </div>
-    <div class="prose">
-      <p>대가는 아키텍처가 다르다는 점입니다. 컨테이너 이미지는 <code>linux/arm64</code>로 빌드해야 하고, JNI나 네이티브 라이브러리가 섞인 의존성은 ARM 빌드가 있는지 확인해야 합니다.</p>
-      <p>Java는 JVM이 ARM을 지원하므로 대개 그대로 돌아갑니다. 전환 체크리스트는 6부에서 다룹니다.</p>
-    </div>
+  <h2>Graviton은 싸지만 다른 명령어를 쓰는 CPU다</h2>
+  <div class="prose prose--cols">
+    <p>앞에서 <code>m7g</code>의 <code>g</code>가 Graviton이라고 했습니다. <dfn title="AWS Graviton">Graviton</dfn>은 AWS가 직접 설계한 ARM64 프로세서입니다. 같은 크기의 x86(Intel, AMD) 인스턴스보다 시간당 요금이 낮게 책정되고 전력 효율이 좋아, 같은 일을 더 적은 돈으로 처리하는 경우가 많습니다.</p>
+    <p>또 vCPU가 하이퍼스레드가 아닌 물리 코어라서, CPU 사용률이 높을 때 두 흐름이 계산 장치를 다투는 일이 없어 성능이 덜 흔들립니다.</p>
+    <p>대가는 <strong>명령어 집합</strong>이 다르다는 점입니다. 명령어 집합(ISA)은 CPU가 알아듣는 기계어의 목록이고, x86용으로 컴파일된 실행 파일은 ARM CPU에서 실행되지 않습니다. 그래서 컨테이너 이미지도 <code>linux/arm64</code>용을 따로 빌드해야 합니다. Docker의 확장 빌드 명령인 <code>docker buildx</code>에 대상 플랫폼을 지정하면 되고, 한 태그에 두 아키텍처를 함께 담는 방법은 7부에서 봅니다.</p>
+    <p>Java는 사정이 낫습니다. 주문 API의 JAR는 특정 CPU용 기계어가 아니라 JVM이 읽는 바이트코드(5장)이고, JVM은 ARM용이 있으므로 대개 그대로 돕니다. 문제는 <dfn title="Java Native Interface">JNI</dfn>로 C 라이브러리를 부르는 의존성(압축, 암호화, 일부 DB 드라이버)입니다. 그 라이브러리에 ARM 빌드가 있는지 확인해야 합니다. 전환 순서는 7부에서 봅니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>대부분의 서버는 평소에 한가하다</h2>
+  <div class="prose prose--cols">
+    <p>패밀리 표에서 따로 설명하겠다고 한 T 계열로 돌아갑니다. T가 왜 있는지는 한 가지 관찰에서 출발합니다. 사내 관리 도구, 개발 서버, 트래픽 적은 API의 CPU 사용률을 하루 동안 그려 보면, 대부분의 시간은 5~20%에 머물고 가끔 몇 분씩 치솟습니다.</p>
+    <p>이런 서버에 M을 주면 고객은 쓰지도 않는 CPU 시간에 돈을 내고, AWS는 놀고 있는 코어를 다른 고객에게 팔지 못합니다. 그렇다고 작은 인스턴스를 주면 치솟는 순간에 느려집니다.</p>
+    <p>T 계열은 이 사이를 겨냥한 요금제입니다. 평소에 보장하는 CPU 양을 <dfn title="baseline">기준 사용률</dfn>으로 낮게 정하고(크기에 따라 vCPU당 5~40%), 그만큼만 값을 받습니다. 기준 이상은 늘 쓸 수 있는 것이 아니라, 한가할 때 아껴 둔 몫을 꺼내 쓰는 방식으로만 허용합니다.</p>
+    <p>AWS는 고객들의 기준 사용률 합만큼만 물리 CPU를 준비하면 되니 같은 호스트에 더 많이 담을 수 있고, 그 차이가 낮은 가격으로 돌아옵니다. "아껴 둔 몫"을 세는 단위가 다음 슬라이드의 CPU 크레딧입니다.</p>
   </div>
 </section>
 
@@ -162,13 +224,13 @@
   <h2>T 계열은 CPU 크레딧을 모았다 쓴다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>T 계열은 <dfn title="baseline">기준 사용률</dfn>만큼의 CPU를 늘 보장하고, 그 위는 <dfn title="CPU credit">CPU 크레딧</dfn>으로 빌려 씁니다. 크레딧 1개는 vCPU 하나를 1분 동안 100% 쓰는 양입니다.</p>
-      <p>예를 들어 <code>t3.nano</code>는 vCPU 2개, 기준 5%라서 시간당 5% × 2 × 60분 = 6크레딧을 법니다. 기준보다 덜 쓰면 남은 크레딧이 쌓이고, 더 쓰면 쌓인 크레딧을 꺼내 씁니다.</p>
+      <p><dfn title="CPU credit">CPU 크레딧</dfn> 1개는 vCPU 하나를 1분 동안 100% 쓸 수 있는 양입니다. 인스턴스는 기준 사용률만큼의 크레딧을 매시간 받습니다.</p>
+      <p>예를 들어 <code>t3.nano</code>는 vCPU 2개, 기준 5%라서 시간당 5% × 2 × 60분 = 6크레딧을 받습니다. 기준보다 덜 쓰면 남은 크레딧이 쌓이고, 더 쓰면 쌓인 크레딧을 꺼내 씁니다. 쌓아 둘 수 있는 양에는 상한(대략 하루치 적립량)이 있습니다.</p>
     </div>
     <ol class="steps">
       <li><b>한가할 때</b><p>기준보다 덜 써서 크레딧이 쌓입니다(상한 있음).</p></li>
       <li><b>잠깐 바쁠 때</b><p>쌓인 크레딧으로 기준 이상, 최대 100%까지 씁니다.</p></li>
-      <li class="is-key"><b>크레딧 바닥</b><p>standard 모드면 기준 사용률로 묶입니다.</p></li>
+      <li class="is-key"><b>크레딧 바닥</b><p>standard 모드면 CPU가 기준 사용률로 묶입니다.</p></li>
       <li><b>unlimited 모드</b><p>바닥나도 계속 쓰고, 넘친 만큼 추가 요금을 냅니다.</p></li>
     </ol>
   </div>
@@ -177,46 +239,58 @@
 <section class="slide">
   <h2>unlimited는 느려지는 대신 돈을 낸다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>크레딧이 바닥났을 때의 동작을 고르는 설정이 크레딧 모드입니다. standard는 느려지는 쪽을, unlimited는 돈을 더 내는 쪽을 택합니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">항목</th><th scope="col">standard</th><th scope="col">unlimited</th></tr></thead>
       <tbody>
         <tr><th scope="row">크레딧이 바닥나면</th><td class="is-key">기준 사용률로 강제 제한</td><td>계속 버스트, 잉여 크레딧 사용</td></tr>
         <tr><th scope="row">추가 요금</th><td>없음</td><td>24시간 평균이 기준 초과 시 과금</td></tr>
-        <tr><th scope="row">기본값</th><td>T2</td><td class="is-flow">T3, T3a, T4g</td></tr>
+        <tr><th scope="row">기본값</th><td>T2</td><td>T3, T3a, T4g</td></tr>
       </tbody>
     </table>
     <div class="prose">
-      <p>standard 모드의 함정은 장애가 <strong>서서히</strong> 온다는 점입니다. 트래픽이 조금씩 늘어 크레딧이 매일 조금씩 줄다가, 0이 되는 순간 CPU가 기준(크기에 따라 5~40%)으로 묶여 응답이 몇 배 느려집니다. 리눅스 기준 잉여 크레딧은 vCPU 시간당 0.05달러이므로, 늘 기준을 넘는 서버라면 M 계열이 더 쌉니다. <code>CPUCreditBalance</code> 지표에 알람을 거는 것이 첫 대책입니다.</p>
+      <p>standard의 함정은 장애가 서서히 온다는 점입니다. 트래픽이 조금씩 늘면 크레딧이 매일 조금씩 줄다가, 0이 되는 순간 CPU가 기준으로 묶여 응답이 몇 배 느려집니다. 리눅스 기준 잉여 크레딧은 vCPU 시간당 0.05달러라서 늘 기준을 넘는 서버라면 M이 더 쌉니다. 남은 크레딧은 <code>CPUCreditBalance</code> 지표로 보이고, AWS의 지표·로그·알람 서비스인 <dfn title="Amazon CloudWatch">CloudWatch</dfn>(18장)에서 이 값에 알람을 거는 것이 첫 대책입니다.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
   <h2>AMI는 부팅 디스크의 설계도다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p><dfn title="Amazon Machine Image">AMI</dfn>는 인스턴스를 시작할 때 쓰는 이미지로, 루트 볼륨의 <strong>EBS 스냅샷</strong>, 아키텍처(x86_64/arm64), 블록 디바이스 매핑, 누가 이 AMI로 시작할 수 있는지 정하는 <strong>시작 권한</strong>으로 이루어집니다.</p>
-      <p>AMI는 리전 단위 리소스입니다. 다른 리전에서 쓰려면 <code>copy-image</code>로 복사하며, 이때 뒤의 스냅샷도 함께 복사됩니다.</p>
-    </div>
-    <div class="prose">
-      <p>OS 패치, 에이전트, 런타임까지 미리 구운 AMI를 <dfn title="golden image">골든 이미지</dfn>라고 합니다. 부팅 때 설치할 것이 줄어 Auto Scaling의 새 인스턴스가 빨리 준비됩니다.</p>
-      <p>대신 바뀔 때마다 AMI를 다시 구워야 합니다. 그래서 자주 안 바뀌는 것은 AMI에, 자주 바뀌는 앱과 설정은 부팅 시점에 넣는 것이 보통입니다. EC2 Image Builder가 굽는 과정을 파이프라인으로 자동화합니다.</p>
-    </div>
+  <div class="prose prose--cols">
+    <p>유형으로 기계를 골랐으니 그 위에 무엇을 깔지 정할 차례입니다. 인스턴스는 빈 디스크로 시작하지 않고, <dfn title="Amazon Machine Image">AMI</dfn>라는 이미지를 복사해 첫 디스크로 씁니다. AMI는 "이 서버의 부팅 디스크는 이런 내용으로 시작한다"는 설계도입니다.</p>
+    <p>AMI는 네 가지로 이루어집니다. 첫째, 루트 디스크 내용을 통째로 찍어 둔 <strong>스냅샷</strong>입니다. 스냅샷은 디스크의 특정 시점 사본으로, 어떻게 저장되는지는 2부에서 봅니다. 둘째, CPU 아키텍처(<code>x86_64</code> 또는 <code>arm64</code>)입니다. Graviton 인스턴스는 arm64 AMI로만 뜹니다.</p>
+    <p>셋째, <dfn title="block device mapping">블록 디바이스 매핑</dfn>으로, 시작할 때 어떤 디스크를 몇 GiB로 어느 장치 이름에 붙일지 적은 목록입니다. 넷째, 이 AMI로 누가 인스턴스를 시작할 수 있는지 정하는 <strong>시작 권한</strong>(나만, 특정 계정, 공개)입니다.</p>
+    <p>AMI는 리전 단위 리소스라서 서울 리전 AMI는 도쿄에서 보이지 않습니다. 다른 리전에서 쓰려면 <code>copy-image</code>로 복사하고, 이때 뒤에 붙은 스냅샷도 함께 복사됩니다. Amazon Linux 2023(AL2023)이나 Ubuntu처럼 AWS와 배포판 회사가 공개한 AMI에서 시작하는 것이 보통입니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>골든 이미지는 부팅 때 할 일을 미리 해 둔다</h2>
+  <div class="prose prose--cols">
+    <p>공개 AMI에는 OS만 있습니다. 주문 API를 돌리려면 JDK, 로그 수집 에이전트, 보안 패치, 그리고 앱을 깔아야 합니다. 이것을 부팅할 때마다 설치하면 서버 한 대가 일할 준비를 마치는 데 몇 분이 걸리고, 그 사이 패키지 저장소가 느리거나 막히면 부팅 자체가 실패합니다.</p>
+    <p>그래서 OS 패치, 에이전트, 런타임까지 미리 설치한 인스턴스로 AMI를 새로 만들어 둡니다. 이것을 <dfn title="golden image">골든 이미지</dfn>라고 합니다. 부팅 때 할 일이 줄어 4부의 Auto Scaling이 새 서버를 띄울 때 빨리 준비되고, 모든 서버가 같은 내용으로 시작하니 "이 서버만 버전이 다르다"는 일도 없습니다.</p>
+    <p>대가는 무엇이든 바뀔 때마다 AMI를 다시 구워야 한다는 점입니다. 그래서 자주 안 바뀌는 것(OS, JDK, 에이전트)은 AMI에 굽고, 자주 바뀌는 것(앱 JAR, 환경별 설정)은 부팅 시점에 넣는 식으로 나누는 것이 보통입니다.</p>
+    <p>굽는 과정은 EC2 Image Builder가 파이프라인으로 자동화합니다. 기반 AMI에 설치 스크립트를 적용하고, 테스트한 뒤, 여러 리전으로 배포까지 해 줍니다. 그러면 AMI와 나머지 설정을 묶어 "서버 만드는 법"으로 저장해 둘 자리가 필요합니다.</p>
   </div>
 </section>
 
 <section class="slide">
   <h2>시작 템플릿에 서버 만드는 법을 적는다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p><dfn title="launch template">시작 템플릿</dfn>은 AMI, 인스턴스 유형, 보안 그룹(13장), IAM 인스턴스 프로파일(12장에서 본, 역할을 EC2에 붙이는 그릇), 디스크, 메타데이터 옵션, user data를 <strong>버전</strong>으로 저장한 문서입니다. 콘솔에서 매번 고르는 대신 이 문서 하나로 같은 서버를 몇 번이고 찍어 내고, 4부의 Auto Scaling도 이 템플릿을 읽어 인스턴스를 만듭니다.</p>
+    </div>
     <ol class="flow">
       <li class="flow__node"><b>시작 템플릿</b><span>AMI, 유형, SG, 역할</span></li>
-      <li class="flow__node"><b>배치</b><span>서브넷의 AZ, 호스트 선택</span></li>
-      <li class="flow__node"><b>pending</b><span>EBS 연결, ENI 생성</span></li>
+      <li class="flow__node"><b>배치</b><span>서브넷의 AZ에서 호스트 선택</span></li>
+      <li class="flow__node"><b>pending</b><span>디스크 연결, ENI 생성</span></li>
       <li class="flow__node is-flow"><b>cloud-init</b><span>user data 실행</span></li>
-      <li class="flow__node"><b>running</b><span>앱 기동, 헬스 체크</span></li>
+      <li class="flow__node"><b>running</b><span>앱 기동</span></li>
     </ol>
     <div class="prose">
-      <p><dfn title="Launch Template">시작 템플릿</dfn>은 AMI, 인스턴스 유형, 키 페어, 보안 그룹, IAM 인스턴스 프로파일, 볼륨, 메타데이터 옵션, user data를 버전으로 저장한 문서입니다. 콘솔에서 매번 고르는 대신 이 문서 하나로 같은 서버를 몇 번이고 찍어 냅니다. 4부의 Auto Scaling도 이 템플릿을 읽어서 인스턴스를 만듭니다.</p>
+      <p>시작을 요청하면 EC2는 지정한 서브넷의 AZ에서 자리가 있는 물리 호스트를 고르고, AMI로 디스크를 만들어 붙이고, 13장의 ENI(가상 네트워크 카드)를 꽂은 뒤 부팅합니다. 부팅 중에 user data라는 스크립트가 실행되는데, 다음 슬라이드에서 봅니다.</p>
     </div>
   </div>
 </section>
@@ -224,16 +298,26 @@
 <section class="slide">
   <h2>user data는 첫 부팅 때 한 번 실행된다</h2>
   <div class="split split--wide-left">
-    <pre class="code" data-file="user data (셸 스크립트)"><code><span class="c">#!/bin/bash</span>
+    <pre class="code" data-file="user data"><code>#!/bin/bash
 <span class="c"># AL2023 기준, root 권한으로 실행됨</span>
 dnf install -y java-21-amazon-corretto-headless
-aws s3 cp s3://my-artifacts/api.jar \
-  /opt/api/api.jar
-<span class="hl">systemctl enable --now api.service</span></code></pre>
+<span class="hl">aws s3 cp s3://my-artifacts/api.jar \
+  /opt/api/api.jar</span>
+systemctl enable --now api.service</code></pre>
     <div class="prose">
-      <p>인스턴스 안의 <dfn>cloud-init</dfn>이 부팅 때 메타데이터에서 user data를 읽어 실행합니다. 셸 스크립트는 기본적으로 <mark>첫 부팅 한 번만</mark> 실행되고, 출력은 <code>/var/log/cloud-init-output.log</code>에 남습니다.</p>
-      <p>S3 권한은 키가 아니라 인스턴스 프로파일로 받습니다(12장). user data는 메타데이터로 읽히니 비밀 값을 넣지 않습니다.</p>
+      <p><dfn>user data</dfn>는 시작 템플릿에 넣어 두는 스크립트이고, 인스턴스 안의 <dfn>cloud-init</dfn>(대부분의 리눅스 AMI에 들어 있는 초기화 프로그램)이 부팅 때 읽어 root로 실행합니다. 셸 스크립트는 기본적으로 첫 부팅 한 번만 돌고, 출력은 <code>/var/log/cloud-init-output.log</code>에 남습니다.</p>
+      <p>위 스크립트는 AL2023의 패키지 관리자 <code>dnf</code>로 Amazon의 JDK 배포판 Corretto 21을 깔고, S3에서 주문 API JAR를 받고, 9장의 systemd에 서비스를 등록해 시작합니다.</p>
     </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>S3 권한은 키가 아니라 역할로 받는다</h2>
+  <div class="prose prose--cols">
+    <p>앞 스크립트의 강조한 줄은 S3에서 파일을 받습니다. 그런데 스크립트 어디에도 AWS 접근 키가 없습니다. 어떻게 권한을 얻었을까요? 12장에서 본 대로, 시작 템플릿에 인스턴스 프로파일로 IAM 역할을 붙여 두면 인스턴스 안의 AWS CLI와 SDK가 그 역할의 임시 자격 증명을 자동으로 받아 씁니다.</p>
+    <p>이 방식이 키를 user data나 코드에 넣는 것보다 나은 이유는 두 가지입니다. 임시 자격 증명은 AWS가 몇 시간마다 바꿔 주므로 새어 나가도 오래 쓰이지 못하고, 디스크나 이미지 어디에도 남지 않습니다.</p>
+    <p>반대로 user data에는 비밀 값(DB 비밀번호, API 키)을 넣지 않습니다. user data는 인스턴스 안에서 누구나 읽을 수 있는 메타데이터로 노출되고, 시작 템플릿을 볼 권한이 있는 사람에게도 보이기 때문입니다. 비밀은 Secrets Manager 같은 비밀 저장소에 두고 앱이 역할 권한으로 꺼내 읽습니다(16장).</p>
+    <p>그러면 SDK는 임시 자격 증명을 정확히 어디서 받아 오는 걸까요? 인스턴스 안에는 자기 자신에 대해 물어볼 수 있는 창구가 있고, 이 창구가 보안에서 가장 민감한 곳입니다. 여기부터 잠시 깊이를 원리로 옮깁니다.</p>
   </div>
 </section>
 
@@ -241,8 +325,8 @@ aws s3 cp s3://my-artifacts/api.jar \
   <h2>IMDS는 인스턴스가 자기를 묻는 창구다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p><dfn title="Instance Metadata Service">IMDS</dfn>는 인스턴스 안에서만 닿는 <code>169.254.169.254</code> 주소입니다. 인스턴스 ID, AZ, user data, 그리고 인스턴스 역할의 <strong>임시 자격 증명</strong>을 돌려줍니다. SDK가 키 없이 AWS를 호출하는 비밀이 여기 있습니다(12장).</p>
-      <p>IMDSv1은 GET 한 번이면 답을 줬습니다. 그래서 앱에 <dfn title="Server-Side Request Forgery">SSRF</dfn> 취약점이 있으면 공격자가 서버를 시켜 자격 증명을 읽어 갈 수 있었습니다.</p>
+      <p><dfn title="Instance Metadata Service">IMDS</dfn>는 인스턴스 안에서만 닿는 주소 <code>169.254.169.254</code>입니다. 이런 <code>169.254.x.x</code> 대역을 링크 로컬 주소라고 하며 라우터를 넘어가지 않습니다. IMDS는 인스턴스 ID, AZ, user data, 그리고 역할의 <strong>임시 자격 증명</strong>을 HTTP로 돌려줍니다.</p>
+      <p>12장에서 봤듯이, 처음 버전 IMDSv1은 GET 한 번이면 답을 줘서 앱에 SSRF(공격자가 서버를 시켜 임의 URL을 요청하게 하는 취약점)가 있으면 자격 증명이 털렸습니다. IMDSv2는 오른쪽처럼 토큰을 먼저 받게 바꿨습니다.</p>
     </div>
     <div class="seq" role="img" aria-label="IMDSv2에서는 먼저 PUT으로 토큰을 받고, 그 토큰을 헤더에 넣어야 메타데이터를 GET으로 읽을 수 있다">
       <div class="seq__head"><span>인스턴스 안 프로세스</span><span></span><span>IMDS</span></div>
@@ -269,7 +353,17 @@ aws s3 cp s3://my-artifacts/api.jar \
 </section>
 
 <section class="slide">
-  <h2>홉 제한 1이 컨테이너를 막을 수 있다</h2>
+  <h2>홉 제한은 토큰이 갈 수 있는 거리다</h2>
+  <div class="prose prose--cols">
+    <p>IMDSv2의 두 번째 방어선은 그림의 "홉 제한"입니다. IP 패킷에는 <dfn title="Time To Live">TTL</dfn>이라는 숫자가 있고, 라우터처럼 패킷을 한 번 넘겨주는 장치(홉)를 지날 때마다 1씩 줄다가 0이 되면 버려집니다. 원래는 길을 잃은 패킷이 영원히 떠돌지 않게 하는 장치입니다.</p>
+    <p>IMDS는 토큰 응답 패킷의 TTL을 <strong>홉 제한</strong> 값으로 정해 보냅니다. 홉 제한이 1이면 응답은 인스턴스 자신에게는 도착하지만, 한 번이라도 더 넘겨지면 사라집니다. 인스턴스가 프록시처럼 요청을 밖으로 중계당하는 경우에도 토큰이 인스턴스 밖으로 새지 않습니다.</p>
+    <p>문제는 컨테이너입니다. 9장에서 본 Docker의 브리지 네트워크에서 컨테이너는 자기 network namespace에 있고, 호스트가 그 사이에서 패킷을 한 번 넘겨줍니다. 즉 컨테이너까지는 <mark>한 홉이 더</mark> 있습니다. 홉 제한이 1이면 컨테이너 안의 SDK는 토큰을 받지 못하고, 몇 초 기다리다 실패하거나 IMDSv1으로 되돌아가려다 막힙니다.</p>
+    <p>그래서 브리지 네트워크로 컨테이너를 돌리는 인스턴스는 홉 제한을 2로 둡니다. 실제로 확인하고 바꾸는 명령은 다음 슬라이드에 있습니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>IMDSv2를 강제하고 홉 제한을 2로 둔다</h2>
   <div class="split split--wide-left">
     <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>TOKEN=$(curl -sX PUT \
   http://169.254.169.254/latest/api/token \
@@ -277,20 +371,30 @@ aws s3 cp s3://my-artifacts/api.jar \
 <span class="prompt">$ </span>curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
   http://169.254.169.254/latest/meta-data\
 /placement/availability-zone
-<span class="n">ap-northeast-2a</span>
+ap-northeast-2a
 <span class="c"># IMDSv2 강제 + 컨테이너용 홉 제한 2</span>
-<span class="prompt">$ </span>aws ec2 modify-instance-metadata-options \
+<span class="hl"><span class="prompt">$ </span>aws ec2 modify-instance-metadata-options \
   --instance-id i-0abc123 --http-tokens required \
-<span class="hl">  --http-put-response-hop-limit 2</span></code></pre>
+  --http-put-response-hop-limit 2</span></code></pre>
     <div class="prose">
-      <p>토큰 응답은 IP TTL이 <dfn title="hop limit">홉 제한</dfn>만큼만 살아서, 1이면 인스턴스 밖으로 한 홉도 못 갑니다. 그래서 브리지 네트워크의 컨테이너는 토큰을 못 받아 SDK가 느려지거나 실패합니다.</p>
-      <p>컨테이너를 돌리는 노드는 <mark>홉 제한 2</mark>로 둡니다. IMDSv2 전용으로 등록한 AMI는 기본이 2입니다.</p>
+      <p>첫 명령은 PUT으로 300초짜리 토큰을 받아 변수에 담고, 두 번째 명령은 그 토큰을 헤더에 붙여 "나는 어느 AZ에 있나"를 묻습니다. 주문 API 서버는 <code>ap-northeast-2a</code>에 있다고 답합니다.</p>
+      <p>마지막 명령의 <code>--http-tokens required</code>는 토큰 없는 v1 요청을 거부하게 하고, 홉 제한을 2로 올립니다. 같은 값은 시작 템플릿의 메타데이터 옵션에 넣어 두는 것이 정석이고, IMDSv2 전용으로 등록된 최신 AMI는 기본이 2입니다.</p>
     </div>
   </div>
 </section>
 
 <section class="slide" data-depth="basic">
-  <h2>SSH 키 대신 Session Manager로</h2>
+  <h2>SSH 키는 나눠 갖는 순간 추적이 끊긴다</h2>
+  <div class="prose prose--cols">
+    <p>서버가 떴으니 장애를 볼 때 들어갈 길이 필요합니다. 전통적인 방법은 <dfn title="key pair">키 페어</dfn>입니다. 인스턴스를 만들 때 공개 키를 넣어 두고, 개인 키 파일을 가진 사람이 22번 포트로 SSH 접속합니다.</p>
+    <p>이 방식은 세 가지가 불편합니다. 개인 키 파일을 팀원끼리 나눠 갖는 순간 누가 언제 들어왔는지 서버 로그로만 추적해야 하고, 퇴사자가 생기면 모든 서버의 키를 바꿔야 합니다. 또 22번 포트를 열어야 합니다.</p>
+    <p>주문 API 서버는 Private 서브넷에 있어 인터넷에서 직접 닿지 않으므로, 예전에는 Public 서브넷에 접속 전용 서버를 하나 두고 거기를 거쳐 들어갔습니다. 이것을 <dfn title="bastion host">Bastion</dfn>(배스천 호스트)이라 합니다. Bastion은 그 자체가 인터넷에 노출된 서버라 패치하고 지켜야 할 대상이 하나 더 늘어납니다.</p>
+    <p>AWS는 이 문제를 두 단계로 풀었습니다. 키를 IAM 권한으로 바꾸는 EC2 Instance Connect, 그리고 포트를 아예 열지 않는 Session Manager입니다. 다음 표에서 세 방식을 나란히 봅니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>들어가는 길은 Session Manager가 표준이다</h2>
   <div class="slide__body">
     <table class="compare">
       <thead><tr><th scope="col">방법</th><th scope="col">동작</th><th scope="col">열어야 할 포트</th><th scope="col">감사 기록</th></tr></thead>
@@ -301,7 +405,7 @@ aws s3 cp s3://my-artifacts/api.jar \
       </tbody>
     </table>
     <div class="prose">
-      <p>키 페어는 개인 키 파일을 나눠 갖는 순간 누가 들어왔는지 추적이 어려워집니다. Session Manager는 IAM 권한으로 들어가고 인바운드 포트가 필요 없어서 Private 서브넷 서버에 Bastion 없이 접속하는 표준이 됐습니다. 단, 에이전트가 SSM 엔드포인트로 나갈 길(NAT나 VPC 엔드포인트, 13장)과 인스턴스 역할 권한이 있어야 합니다.</p>
+      <p>Instance Connect는 접속할 때마다 IAM 권한을 확인하고 60초만 유효한 공개 키를 넣어 주며, 그 사실이 AWS API 호출 기록 서비스인 CloudTrail(16장)에 남습니다. Session Manager는 서버 안의 SSM 에이전트가 AWS 쪽으로 <strong>밖으로 나가는</strong> 연결을 열고 그 위로 셸을 주고받으므로 인바운드 포트도 Bastion도 필요 없습니다. 대신 에이전트가 SSM 엔드포인트에 닿을 길(NAT나 VPC 엔드포인트, 13장)과 인스턴스 역할의 SSM 권한이 있어야 합니다.</p>
     </div>
   </div>
 </section>
@@ -309,6 +413,10 @@ aws s3 cp s3://my-artifacts/api.jar \
 <section class="slide">
   <h2>인스턴스의 일생은 다섯 상태를 지난다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>들어가는 법까지 갖췄으니 이 서버의 일생을 따라가 보겠습니다. 시작하면 <code>pending</code>(자리 잡고 부팅 중)을 거쳐 <code>running</code>이 됩니다. 정지하면 <code>stopping</code>을 거쳐 <code>stopped</code>로, 다시 시작하면 <code>pending</code>으로 돌아갑니다. 종료하면 <code>shutting-down</code>을 거쳐 <code>terminated</code>가 되고, 이 상태에서는 되돌릴 수 없습니다.</p>
+      <p>요금은 <code>running</code> 동안만 초 단위로 붙습니다. 재부팅(reboot)은 상태를 바꾸지 않고 같은 호스트에서 OS만 다시 켭니다.</p>
+    </div>
     <figure class="figure">
       <svg class="dg" viewBox="0 0 1400 320" role="img" aria-labelledby="f16t">
         <title id="f16t">pending에서 running이 되고, 정지하면 stopping을 거쳐 stopped가 되며, 다시 시작하면 pending으로 돌아간다. 종료하면 shutting-down을 거쳐 terminated가 된다.</title>
@@ -340,89 +448,154 @@ aws s3 cp s3://my-artifacts/api.jar \
         <text class="dg-label--sm dg-label--key" x="1110" y="268" text-anchor="start">되돌릴 수 없음</text>
       </svg>
     </figure>
-    <div class="prose">
-      <p>요금은 <strong>running</strong> 동안만 초 단위로 붙습니다(리눅스, 최소 60초). 재부팅(reboot)은 상태를 바꾸지 않고 같은 호스트에서 OS만 다시 켭니다.</p>
-    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>정지와 종료는 잃는 것이 다르다</h2>
+  <div class="prose prose--cols">
+    <p>정지(stop)는 OS를 끄고 인스턴스를 물리 호스트에서 내려놓는 것입니다. 디스크는 남지만, 다시 시작하면 <strong>다른 호스트</strong>에 뜰 수 있습니다. 그래서 그 호스트에 묶여 있던 것은 잃습니다. 메모리 내용, 호스트에 꽂힌 로컬 디스크(2부의 인스턴스 스토어), 그리고 자동으로 받은 퍼블릭 IPv4 주소입니다.</p>
+    <p>최대 절전(hibernate)은 정지하기 전에 메모리 내용을 루트 디스크에 써 두었다가, 시작할 때 다시 읽어 프로세스가 하던 일을 이어 가게 합니다. JVM처럼 데우는 데 오래 걸리는 앱을 빨리 되살릴 때 씁니다. 루트 디스크가 암호화돼 있어야 하고 메모리가 150GiB 미만(리눅스)이어야 합니다.</p>
+    <p>종료(terminate)는 인스턴스를 지웁니다. 붙어 있던 EBS 디스크는 <code>DeleteOnTermination</code> 속성이 켜진 것만 함께 지워지는데, 루트 디스크는 기본으로 켜져 있고 나중에 붙인 디스크는 꺼져 있습니다. 데이터를 지키려면 이 값을 확인합니다.</p>
+    <p>실수로 지우는 것을 막는 <strong>종료 보호</strong>도 있습니다. 다만 이것은 콘솔과 API의 종료 요청만 막을 뿐, OS 안에서 <code>shutdown</code>을 했는데 "종료 시 동작"이 종료로 설정된 경우나 Auto Scaling이 축소하며 지우는 것은 막지 못합니다.</p>
   </div>
 </section>
 
 <section class="slide">
   <h2>정지하면 공인 IP와 로컬 디스크를 잃는다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>앞 슬라이드의 내용을 항목별로 정리하면 이렇습니다. 13장에서 본 Elastic IP(EIP)는 계정이 붙잡아 두는 고정 퍼블릭 IP라서 정지해도 유지됩니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">항목</th><th scope="col">stop</th><th scope="col">hibernate</th><th scope="col">terminate</th></tr></thead>
       <tbody>
         <tr><th scope="row">메모리(RAM)</th><td>사라짐</td><td class="is-flow">루트 EBS에 저장 후 복원</td><td>사라짐</td></tr>
-        <tr><th scope="row">EBS 볼륨</th><td>유지</td><td>유지</td><td>DeleteOnTermination이면 삭제</td></tr>
-        <tr><th scope="row">인스턴스 스토어</th><td>사라짐</td><td>사라짐</td><td>사라짐</td></tr>
-        <tr><th scope="row">자동 공인 IPv4</th><td class="is-key">반납, 시작 시 새 IP</td><td>반납, 시작 시 새 IP</td><td>반납</td></tr>
+        <tr><th scope="row">EBS 볼륨</th><td>유지</td><td>유지</td><td><code>DeleteOnTermination</code>이면 삭제</td></tr>
+        <tr><th scope="row">인스턴스 스토어</th><td class="is-key">사라짐</td><td>사라짐</td><td>사라짐</td></tr>
+        <tr><th scope="row">자동 공인 IPv4</th><td>반납, 시작 시 새 IP</td><td>반납, 시작 시 새 IP</td><td>반납</td></tr>
         <tr><th scope="row">사설 IP, EIP</th><td>유지</td><td>유지</td><td>사설 IP 해제, EIP 분리</td></tr>
       </tbody>
     </table>
-    <div class="prose">
-      <p>고정 주소가 필요하면 Elastic IP를 붙이거나 앞에 ELB를 둡니다. hibernate는 루트 볼륨이 암호화돼 있어야 하고 RAM이 150GiB 미만(리눅스)이어야 합니다. 실수로 지우는 것을 막는 <strong>종료 보호</strong>는 API 종료만 막을 뿐, OS 안의 <code>shutdown</code>이 종료로 설정된 경우나 Auto Scaling의 축소는 막지 못합니다.</p>
-    </div>
+    <p class="small">고정 주소가 필요하면 EIP를 붙이기보다 앞에 ELB를 두는 쪽이 교체에 강합니다(13장).</p>
   </div>
 </section>
 
 <section class="slide" data-depth="core">
-  <h2>배치 그룹은 물리적 거리를 고른다</h2>
+  <h2>배치 그룹은 서버 사이의 물리적 거리를 고른다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>보통은 EC2가 AZ 안 어느 호스트에 띄울지 알아서 정합니다. 그런데 서버끼리 아주 빠르게 통신해야 하거나, 반대로 함께 고장 나면 안 될 때는 위치를 고르고 싶습니다. 데이터센터에서 서버는 <dfn title="rack">랙</dfn>(서버 여러 대를 꽂는 선반, 전원과 스위치를 공유)에 모여 있어서, 같은 랙은 가깝지만 함께 죽습니다. <dfn title="placement group">배치 그룹</dfn>이 이 거리를 고르는 설정입니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">전략</th><th scope="col">배치 방식</th><th scope="col">얻는 것</th><th scope="col">어울리는 곳</th></tr></thead>
       <tbody>
         <tr><th scope="row">cluster</th><td>한 AZ 안에 가깝게 모음</td><td class="is-flow">낮은 지연, 흐름당 10Gbps</td><td>HPC, 노드 간 통신 많은 일</td></tr>
-        <tr><th scope="row">spread</th><td>인스턴스마다 다른 랙</td><td>동시 장애 최소화</td><td class="is-key">AZ당 최대 7대</td></tr>
+        <tr><th scope="row">spread</th><td>인스턴스마다 다른 랙</td><td>동시 장애 최소화</td><td>소수의 핵심 서버(AZ당 7대)</td></tr>
         <tr><th scope="row">partition</th><td>파티션마다 별도 랙 묶음</td><td>파티션 단위 장애 격리</td><td>HDFS, Cassandra, Kafka</td></tr>
       </tbody>
     </table>
-    <div class="prose">
-      <p>cluster는 같은 네트워크 구간에 모아 속도를 얻는 대신, 한 AZ에 몰려 있어 AZ 장애에 함께 쓰러집니다. spread는 반대로 소수의 핵심 인스턴스를 떼어 놓습니다. partition은 AZ당 최대 7개 파티션을 만들고 인스턴스가 어느 파티션에 있는지 알려 줘서, 복제본을 다른 파티션에 두는 토폴로지 인식 시스템에 맞습니다. 자리가 없으면 시작이 실패하므로 cluster는 한 번에 띄우는 것이 좋습니다.</p>
-    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>가까우면 빠르고, 멀면 함께 죽지 않는다</h2>
+  <div class="prose prose--cols">
+    <p>cluster는 같은 네트워크 구간에 모아 속도를 얻는 대신, 한 AZ에 몰려 있어 AZ 장애에 함께 쓰러집니다. 또 자리가 모자라면 시작이 실패하므로, 필요한 대수를 한 번의 요청으로 띄우는 것이 좋습니다. 나중에 한 대씩 더하면 가까운 자리가 이미 찼을 수 있습니다.</p>
+    <p>spread는 반대로 소수의 핵심 인스턴스를 서로 다른 랙에 떼어 놓습니다. AZ당 7대까지라는 한도는 서로 다른 랙을 보장해야 하기 때문에 생깁니다.</p>
+    <p>partition은 AZ당 최대 7개의 파티션(랙 묶음)을 만들고, 인스턴스가 몇 번 파티션에 있는지 메타데이터로 알려 줍니다. HDFS(하둡의 분산 파일 시스템), Cassandra, Kafka처럼 데이터 복제본을 여러 서버에 두는 시스템은 이 정보를 읽어 "복제본은 서로 다른 파티션에" 두는 식으로 랙 하나가 죽어도 데이터를 잃지 않게 합니다. 이런 동작을 토폴로지 인식이라고 합니다.</p>
+    <p>주문 API 같은 무상태 웹 서버는 배치 그룹이 필요 없습니다. 여러 AZ에 퍼뜨리는 것만으로 충분합니다. 거리 다음으로 서버 사이 통신 성능을 정하는 것은 네트워크 대역폭입니다.</p>
   </div>
 </section>
 
 <section class="slide">
   <h2>네트워크 대역폭에도 기준과 최대가 있다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p>현행 인스턴스는 <dfn title="Elastic Network Adapter">ENA</dfn>라는 가상 NIC으로 Nitro 카드와 통신합니다. 대역폭은 vCPU 수에 비례하고, 사양표에 "최대 10Gbps"처럼 적힌 작은 크기(대개 4xlarge 이하)는 <strong>기준 대역폭</strong>이 따로 있어 네트워크 I/O 크레딧으로 잠깐 그 위까지 올라갑니다.</p>
-      <p>T 계열의 CPU 크레딧과 같은 구조라서, 크레딧이 떨어지면 기준 대역폭으로 내려옵니다.</p>
-    </div>
-    <div class="prose">
-      <p>흐름 하나(5-튜플이 같은 TCP 연결 하나)는 cluster 배치 그룹 밖에서 <mark>최대 5Gbps</mark>, 안에서 최대 10Gbps로 제한됩니다. 대용량 복사가 느리면 연결을 여러 개로 나누는 것이 답입니다.</p>
-      <p>한도 초과는 ENA 드라이버 통계 <code>bw_out_allowance_exceeded</code>, <code>pps_allowance_exceeded</code>로 확인합니다(<code>ethtool -S eth0</code>).</p>
-    </div>
+  <div class="prose prose--cols">
+    <p>현행 인스턴스는 <dfn title="Elastic Network Adapter">ENA</dfn>라는 가상 네트워크 카드 드라이버로 Nitro 카드와 통신합니다. 사용할 수 있는 대역폭은 대체로 vCPU 수에 비례하고, 사양표에 "최대 12.5Gbps"처럼 적혀 있습니다.</p>
+    <p>그런데 작은 크기(대개 4xlarge 이하)의 "최대"는 늘 나오는 값이 아닙니다. 이들에게는 따로 기준 대역폭이 있고, 네트워크 I/O 크레딧을 써서 잠깐 그 위로 올라갑니다. 앞에서 본 T 계열의 CPU 크레딧과 같은 구조라서, 크레딧이 떨어지면 기준 대역폭으로 내려옵니다.</p>
+    <p>또 흐름 하나에도 상한이 있습니다. 흐름은 13장의 5-튜플(출발지·목적지 IP와 포트, 프로토콜)이 같은 연결 하나, 즉 TCP 연결 하나입니다. 흐름 하나는 cluster 배치 그룹 밖에서 최대 5Gbps, 안에서 최대 10Gbps로 제한됩니다. 그래서 대용량 파일 복사가 느리면 연결을 여러 개로 나누는 것이 답입니다.</p>
+    <p>한도에 걸렸는지는 ENA 드라이버 통계로 봅니다. <code>ethtool -S eth0</code>의 <code>bw_out_allowance_exceeded</code>(대역폭 초과로 대기·폐기된 패킷 수), <code>pps_allowance_exceeded</code>(초당 패킷 수 초과)가 늘고 있으면 인스턴스 한도가 병목입니다.</p>
   </div>
 </section>
 
 <section class="slide" data-depth="basic">
   <h2>상태 확인 실패는 누가 고칠지로 나뉜다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>서버가 아프면 원인이 내 쪽인지 AWS 쪽인지부터 갈라야 합니다. EC2는 1분마다 세 가지 <dfn title="status check">상태 확인</dfn>을 돌려 이를 구분해 줍니다. 표의 커널 패닉은 OS 커널이 회복할 수 없는 오류로 멈춘 상태이고, <code>fstab</code>은 부팅 때 어떤 디스크를 어디에 붙일지 적은 설정 파일로, 잘못 쓰면 부팅이 멈춥니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">상태 확인</th><th scope="col">무엇을 보나</th><th scope="col">실패 원인 예</th><th scope="col">해결 주체</th></tr></thead>
       <tbody>
-        <tr><th scope="row">시스템</th><td>호스트, 전원, 네트워크</td><td>물리 호스트 하드웨어 고장</td><td>AWS(또는 stop/start로 이전)</td></tr>
-        <tr><th scope="row">인스턴스</th><td>OS가 네트워크에 응답하나</td><td class="is-key">커널 패닉, 메모리 고갈, fstab</td><td>나</td></tr>
+        <tr><th scope="row">시스템</th><td>호스트, 전원, 네트워크</td><td>물리 호스트 고장</td><td>AWS(또는 stop/start로 이전)</td></tr>
+        <tr><th scope="row">인스턴스</th><td>OS가 네트워크에 응답하나</td><td>커널 패닉, 메모리 고갈, fstab</td><td class="is-key">나</td></tr>
         <tr><th scope="row">연결된 EBS</th><td>붙은 볼륨이 I/O 가능한가</td><td>스토리지 하위 시스템 문제</td><td>AWS, 또는 볼륨 교체</td></tr>
       </tbody>
     </table>
-    <div class="prose">
-      <p>EC2는 1분마다 상태를 확인합니다. 시스템 상태 확인이 실패하면 <dfn title="automatic recovery">자동 복구</dfn>가 인스턴스를 건강한 호스트로 옮깁니다. 지원 인스턴스는 <strong>단순 자동 복구가 기본으로 켜져</strong> 있고, 인스턴스 ID, 사설 IP, EIP, EBS는 그대로지만 RAM 내용은 사라집니다. 인스턴스 상태 확인 실패는 OS 문제라 복구 대상이 아니므로, Auto Scaling 그룹에 넣어 교체하게 합니다.</p>
-    </div>
   </div>
 </section>
 
-<!-- ===== 2부 EBS (core) =============================================== -->
+<section class="slide">
+  <h2>호스트 고장은 자동 복구가, OS 고장은 교체가</h2>
+  <div class="prose prose--cols">
+    <p>시스템 상태 확인이 실패하면, 즉 AWS의 물리 호스트가 고장 나면 <dfn title="automatic recovery">자동 복구</dfn>가 인스턴스를 건강한 호스트로 옮겨 다시 켭니다. 지원되는 인스턴스는 단순 자동 복구가 기본으로 켜져 있습니다.</p>
+    <p>복구된 인스턴스는 인스턴스 ID, 사설 IP, EIP, 붙어 있던 EBS 볼륨이 그대로라서 밖에서 보면 재부팅된 것과 같습니다. 다만 메모리 내용은 사라지고, 로컬 인스턴스 스토어를 쓰는 인스턴스는 자동 복구 대상에서 빠집니다.</p>
+    <p>인스턴스 상태 확인 실패는 OS 안의 문제라서 호스트를 옮겨도 낫지 않습니다. 이 경우는 고치려 애쓰기보다 버리고 새로 띄우는 것이 빠릅니다. 주문 API 서버 한 대가 이렇게 죽었다면, 같은 시작 템플릿으로 새 서버를 띄우면 그만입니다.</p>
+    <p>"고장 나면 버리고 새로 띄운다"를 사람이 아니라 시스템이 하게 만드는 것이 4부의 Auto Scaling입니다. 그 전에 짚을 것이 있습니다. 서버를 버려도 되려면 데이터가 서버와 따로 살아야 하는데, 지금까지 말한 "디스크"는 정확히 어디에 있었을까요?</p>
+  </div>
+</section>
+
+<!-- ===== 2부 EBS (core) ============================================== -->
 <section class="slide slide--divider" data-section="EBS와 인스턴스 스토어" data-depth="core">
   <p class="divider__no">2부</p>
   <h2>디스크는 네트워크 너머에 있다</h2>
-  <p class="lede">EC2의 루트 디스크는 대부분 서버 안이 아니라 네트워크로 붙은 EBS 볼륨입니다. 이 사실 하나가 성능, 가용성, 백업 방식을 모두 결정합니다.</p>
+  <p class="lede">1부 끝에서 "서버를 버려도 데이터는 살아야 한다"는 조건을 남겼습니다. 이 부는 주문 API 서버의 디스크가 실제로 어디에 있고, 그 위치가 성능, 내구성, 이동, 크기 변경을 어떻게 정하는지 봅니다.</p>
   <div class="depth-shift" aria-label="깊이 전환: 기초에서 원리로">
     <span class="depth-shift__step"><span class="depth" data-depth="basic"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>기초</span>
     <span class="depth-shift__line" aria-hidden="true"></span>
     <span class="depth-shift__step is-to"><span class="depth" data-depth="core"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>원리</span>
-    <span class="depth-shift__note">여기부터는 볼륨 성능 모델, 스냅샷, 구매 방식, 스케일링 동작 원리를 다룹니다.</span>
+    <span class="depth-shift__note">여기부터는 디스크 성능 모델, 스냅샷, 구매 방식, 스케일링의 동작 원리를 다룹니다.</span>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>디스크는 블록 장치, 파티션, 파일 시스템 3층이다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>EBS를 보기 전에 OS가 디스크를 어떻게 쓰는지부터 짚습니다. 맨 아래 <dfn title="block device">블록 장치</dfn>는 같은 크기의 칸(블록)이 번호순으로 늘어선 것으로, "512번 블록을 읽어라"만 알아듣고 파일이라는 개념이 없습니다.</p>
+      <p>그 위의 <dfn title="partition">파티션</dfn>은 장치를 구간으로 나눈 칸이고, 맨 위 <strong>파일 시스템</strong>(1장, 리눅스에서는 XFS나 ext4)이 "이 파일은 몇 번 블록들에 있다"는 지도를 관리합니다. 세 층은 <mark>각자 자기 크기를 따로 기록</mark>합니다. 이 사실이 뒤의 볼륨 키우기에서 다시 나옵니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 400" role="img" aria-labelledby="f-layers-t">
+        <title id="f-layers-t">앱이 파일 경로로 읽으면 파일 시스템이 블록 번호로 바꾸고, 파티션 안의 위치를 거쳐 블록 장치에 블록 번호로 읽기 요청이 간다.</title>
+        <rect class="dg-box dg-box--muted" x="40" y="24" width="680" height="56"/>
+        <text class="dg-label--muted" x="60" y="52" text-anchor="start">앱</text>
+        <text class="dg-mono dg-label--sm" x="700" y="52" text-anchor="end">read("/opt/api/api.jar")</text>
+        <path class="dg-arrow dg-arrow--flow" d="M380,84 V112"/>
+        <rect class="dg-box dg-box--flow" x="40" y="120" width="680" height="64"/>
+        <text class="dg-label--lg" x="60" y="152" text-anchor="start">파일 시스템</text>
+        <text class="dg-label--sm" x="700" y="152" text-anchor="end">파일 이름 → 블록 번호 지도</text>
+        <path class="dg-arrow dg-arrow--flow" d="M380,188 V216"/>
+        <rect class="dg-box" x="40" y="224" width="680" height="64"/>
+        <text class="dg-label--lg" x="60" y="256" text-anchor="start">파티션</text>
+        <text class="dg-mono dg-label--sm" x="700" y="256" text-anchor="end">/dev/nvme0n1p1</text>
+        <path class="dg-arrow dg-arrow--flow" d="M380,292 V320"/>
+        <rect class="dg-box dg-box--solid" x="40" y="328" width="680" height="64"/>
+        <text class="dg-label--lg dg-label--on" x="60" y="360" text-anchor="start">블록 장치</text>
+        <text class="dg-mono dg-label--sm dg-label--on" x="700" y="360" text-anchor="end">/dev/nvme0n1</text>
+      </svg>
+      <figcaption>앱은 파일 경로만 알고, 장치는 블록 번호만 압니다. 그 사이를 두 층이 번역합니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>EBS는 네트워크로 붙는 블록 장치다</h2>
+  <div class="prose prose--cols">
+    <p>주문 API 서버에서 <code>lsblk</code>를 치면 <code>nvme0n1</code>이라는 디스크가 보입니다. 이름만 보면 서버에 꽂힌 NVMe SSD 같지만, 대부분의 경우 이것은 <dfn title="Amazon Elastic Block Store">EBS</dfn> 볼륨입니다. 실제 데이터는 같은 AZ 안의 별도 스토리지 서버들에 있고, 1부에서 본 Nitro 카드가 네트워크로 그 서버들과 블록을 주고받으면서 OS에는 로컬 NVMe 장치처럼 보여 줍니다.</p>
+    <p>디스크가 서버 밖에 있다는 사실에서 EBS의 성질이 거의 다 나옵니다. 첫째, 인스턴스를 정지하거나 종료해도 볼륨은 남고, 떼어서 다른 인스턴스에 붙일 수 있습니다. 1부의 "서버를 버려도 데이터는 산다"가 이렇게 성립합니다.</p>
+    <p>둘째, 데이터는 AZ 안의 여러 스토리지 서버에 자동으로 복제되어 디스크 한 장이 고장 나도 잃지 않습니다. 셋째, 모든 읽기와 쓰기가 네트워크를 지나므로 지연이 로컬 디스크보다 길고, 인스턴스와 스토리지 사이의 네트워크 대역폭이 성능의 천장이 됩니다.</p>
+    <p>넷째, 복제를 같은 AZ 안에서만 하기 때문에 볼륨이 AZ에 묶입니다. AZ를 넘어 복제하면 쓰기마다 AZ 간 왕복이 붙어 지연이 커지므로, 낮은 지연과 맞바꾼 제약입니다. 이 넷째 성질이 주문 API를 다른 AZ로 옮길 때 문제가 됩니다.</p>
   </div>
 </section>
 
@@ -430,8 +603,8 @@ aws s3 cp s3://my-artifacts/api.jar \
   <h2>EBS 볼륨은 AZ 하나에 묶여 있다</h2>
   <div class="split split--center">
     <div class="prose">
-      <p><dfn title="Elastic Block Store">EBS</dfn>는 네트워크로 붙는 블록 디바이스입니다. 인스턴스가 사라져도 볼륨은 남고, 다른 인스턴스로 떼어 붙일 수 있습니다. 데이터는 같은 AZ 안 여러 서버에 자동으로 복제됩니다.</p>
-      <p>대신 <mark>볼륨은 만든 AZ에서만 붙일 수 있습니다</mark>. 다른 AZ로 옮기려면 리전 단위인 스냅샷을 거쳐 새 볼륨을 만들어야 합니다. 블록, 파일, 객체 저장소의 비교는 15장에서 합니다.</p>
+      <p>AZ a에서 만든 볼륨은 AZ a의 인스턴스에만 붙습니다. 주문 API 서버를 AZ c로 옮기려면 디스크를 그대로 들고 갈 수 없고, 리전 단위로 저장되는 <strong>스냅샷</strong>을 거쳐 AZ c에 새 볼륨을 만들어야 합니다.</p>
+      <p>스냅샷은 1부의 AMI 안에도 들어 있던 바로 그 디스크 사본입니다. 어떻게 저장되는지는 뒤에서 봅니다. 블록, 파일, 객체 저장소의 비교는 15장에서 합니다.</p>
     </div>
     <figure class="figure">
       <svg class="dg" viewBox="0 0 760 470" role="img" aria-labelledby="f22t">
@@ -464,61 +637,66 @@ aws s3 cp s3://my-artifacts/api.jar \
 </section>
 
 <section class="slide">
+  <h2>디스크 성능은 세 숫자로 잰다</h2>
+  <div class="prose prose--cols">
+    <p>EBS 볼륨 유형을 고르려면 디스크 성능을 재는 단위부터 알아야 합니다. 숫자는 셋입니다. <dfn title="I/O operations per second">IOPS</dfn>는 초당 처리하는 읽기·쓰기 요청 수, <dfn title="throughput">처리량</dfn>은 초당 옮기는 데이터 양(MiB/s, MiB는 2<sup>20</sup>바이트), <dfn title="latency">지연</dfn>은 요청 하나가 끝나기까지 걸리는 시간입니다.</p>
+    <p>IOPS와 처리량은 요청 하나의 크기(I/O 크기)로 이어집니다. 16KiB짜리 요청을 초당 1,000번 하면 처리량은 약 16MiB/s입니다. 그래서 같은 디스크라도 작은 요청을 많이 하는 일은 IOPS가, 큰 덩어리를 옮기는 일은 처리량이 먼저 바닥납니다.</p>
+    <p>요청이 디스크의 어디를 가리키느냐도 중요합니다. 붙어 있는 블록을 차례로 읽는 것을 <strong>순차 I/O</strong>(로그 쓰기, 백업 파일 읽기), 여기저기 흩어진 블록을 읽는 것을 <strong>무작위 I/O</strong>(DB가 인덱스를 따라 페이지를 찾는 일)라고 합니다.</p>
+    <p>SSD는 반도체 칩에 저장해 움직이는 부품이 없으므로 무작위 I/O도 빠릅니다. HDD는 회전하는 원판 위로 디스크 헤드가 움직여 자리를 찾아야 해서(1장의 지연 표에서 수 ms) 순차 I/O에서만 제 성능이 납니다. EBS 유형이 SSD형과 HDD형으로 갈리는 이유가 이것입니다.</p>
+  </div>
+</section>
+
+<section class="slide">
   <h2>볼륨 유형은 IOPS형과 처리량형으로 나뉜다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>SSD 유형(gp, io)은 IOPS와 지연이 중요한 일에, HDD 유형(st, sc)은 큰 순차 I/O의 처리량을 싸게 얻는 일에 씁니다. 표의 HDD IOPS는 1MiB짜리 큰 요청 기준입니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">유형</th><th scope="col">최대 IOPS</th><th scope="col">최대 처리량</th><th scope="col">쓰임</th></tr></thead>
       <tbody>
-        <tr><th scope="row">gp3 (범용 SSD)</th><td class="num is-flow">기본 3,000, 최대 80,000</td><td class="num">기본 125, 최대 2,000 MiB/s</td><td>대부분의 부트, 앱, 중형 DB</td></tr>
-        <tr><th scope="row">gp2 (이전 범용 SSD)</th><td class="num">GiB당 3, 최대 16,000</td><td class="num">최대 250 MiB/s</td><td>gp3로 옮길 대상</td></tr>
-        <tr><th scope="row">io2 Block Express</th><td class="num">최대 256,000</td><td class="num">최대 4,000 MiB/s</td><td>지연 민감 대형 DB, 내구성 99.999%</td></tr>
-        <tr><th scope="row">st1 (처리량 HDD)</th><td class="num">500 (1MiB I/O)</td><td class="num">500 MiB/s</td><td>로그, 빅데이터 순차 읽기</td></tr>
-        <tr><th scope="row">sc1 (콜드 HDD)</th><td class="num">250 (1MiB I/O)</td><td class="num">250 MiB/s</td><td>드물게 읽는 대용량, 최저가</td></tr>
+        <tr><th scope="row">gp3 (범용 SSD)</th><td class="is-flow">기본 3,000, 최대 80,000</td><td>기본 125, 최대 2,000 MiB/s</td><td>대부분의 부트, 앱, 중형 DB</td></tr>
+        <tr><th scope="row">gp2 (이전 범용 SSD)</th><td>GiB당 3, 최대 16,000</td><td>최대 250 MiB/s</td><td>gp3로 옮길 대상</td></tr>
+        <tr><th scope="row">io2 Block Express</th><td>최대 256,000</td><td>최대 4,000 MiB/s</td><td>지연 민감 대형 DB</td></tr>
+        <tr><th scope="row">st1 (처리량 HDD)</th><td>500 (1MiB I/O)</td><td>500 MiB/s</td><td>로그, 빅데이터 순차 읽기</td></tr>
+        <tr><th scope="row">sc1 (콜드 HDD)</th><td>250 (1MiB I/O)</td><td>250 MiB/s</td><td>드물게 읽는 대용량, 최저가</td></tr>
       </tbody>
     </table>
-    <p class="small">HDD 유형(st1, sc1)은 부트 볼륨이 될 수 없습니다. gp3, io2는 최대 64TiB, gp2, st1, sc1은 16TiB입니다. 2026년 AWS EBS 사용 설명서 기준.</p>
+    <p class="small">HDD 유형은 부트 볼륨이 될 수 없습니다. gp3, io2는 최대 64TiB, gp2, st1, sc1은 16TiB입니다. 2026년 AWS EBS 사용 설명서 기준.</p>
   </div>
 </section>
 
 <section class="slide">
-  <h2>gp2는 크기에 묶였고, gp3는 풀려났다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p>gp2는 성능이 크기에 비례합니다. 100GiB면 기준 300 IOPS이고, 1TiB 미만 볼륨은 <dfn title="I/O credit">I/O 크레딧</dfn>으로 3,000 IOPS까지 버스트합니다. 크레딧 통은 540만 개라서 3,000 IOPS를 최소 30분 버틸 수 있습니다.</p>
-      <p>그래서 IOPS가 필요하면 쓰지도 않을 용량을 늘려 사야 했습니다. 3,000 IOPS를 늘 쓰려면 1TiB가 필요합니다.</p>
-    </div>
-    <div class="prose">
-      <p>gp3는 크기와 무관하게 <mark>3,000 IOPS, 125MiB/s를 기본으로</mark> 주고 버스트가 없습니다. 더 필요하면 IOPS(GiB당 최대 500)와 처리량(IOPS당 0.25MiB/s)을 따로 사서 올립니다. 가격도 gp2보다 최대 20% 낮습니다.</p>
-      <p>gp2에서 gp3로는 Elastic Volumes로 무중단 전환됩니다. 신규 볼륨은 gp3가 기본 선택입니다.</p>
-    </div>
+  <h2>gp2는 성능이 크기에 묶였고, gp3는 풀려났다</h2>
+  <div class="prose prose--cols">
+    <p>표에서 gp2를 "옮길 대상"이라 적은 이유를 보겠습니다. gp2는 성능이 크기에 비례합니다. GiB당 3 IOPS라서 100GiB 볼륨의 기준 성능은 300 IOPS입니다.</p>
+    <p>작은 볼륨이 너무 느리지 않도록 gp2는 T 계열의 CPU 크레딧과 같은 장치를 둡니다. 1TiB 미만 볼륨은 I/O 크레딧을 모아 두었다가 3,000 IOPS까지 잠깐 올라가는데(버스트), 크레딧 통은 540만 개라서 3,000 IOPS를 최소 30분 버팁니다. 그 뒤로는 기준 300 IOPS로 떨어집니다.</p>
+    <p>결국 IOPS가 늘 필요하면 쓰지도 않을 용량을 사야 했습니다. 3,000 IOPS를 계속 쓰려면 1TiB(1,000GiB × 3)가 필요합니다. 주문 API 서버의 루트 디스크는 30GiB면 충분한데 말입니다.</p>
+    <p>gp3는 크기와 무관하게 3,000 IOPS, 125MiB/s를 기본으로 주고 버스트가 없습니다. 더 필요하면 IOPS(GiB당 최대 500)와 처리량(IOPS당 최대 0.25MiB/s)을 따로 사서 올립니다. 가격도 GiB당 gp2보다 최대 20% 낮습니다. gp2에서 gp3로는 뒤에서 볼 Elastic Volumes로 서비스 중단 없이 바꿀 수 있고, 새 볼륨은 gp3가 기본 선택입니다.</p>
   </div>
 </section>
 
 <section class="slide">
-  <h2>IOPS와 처리량은 I/O 크기로 이어진다</h2>
+  <h2>IOPS와 처리량 중 먼저 막히는 쪽을 올린다</h2>
   <div class="slide__body">
     <div class="prose">
-      <p>처리량 = IOPS × I/O 크기입니다. 16KiB 페이지를 읽는 DB가 3,000 IOPS를 쓰면 약 47MiB/s라서 gp3 기본 처리량 125MiB/s 안에 들어옵니다. 반면 256KiB 단위로 읽는 순차 작업은 500 IOPS만 써도 125MiB/s 천장에 닿습니다. 어느 쪽이 먼저 막히는지 보고 IOPS나 처리량 중 하나를 올립니다.</p>
-      <p>io2 Block Express는 16KiB I/O 평균 지연 0.5ms 미만, 연 고장률 0.001%를 내세웁니다. gp3로 버티다 꼬리 지연(p99)이 문제 되거나 80,000 IOPS를 넘길 때 고릅니다. HDD 유형은 1MiB 같은 큰 순차 I/O에서만 제 성능이 나오고, 작은 무작위 I/O에서는 매우 느립니다.</p>
+      <p>gp3에서는 IOPS와 처리량을 따로 사므로 어느 쪽이 먼저 막히는지 계산해야 합니다. 앞의 공식(처리량 = IOPS × I/O 크기)을 쓰면, 16KiB 페이지를 읽는 DB가 3,000 IOPS를 쓸 때 약 47MiB/s라서 기본 처리량 125MiB/s 안에 들어옵니다. 이 DB는 IOPS를 올려야 합니다. 반면 256KiB 단위로 읽는 순차 작업은 500 IOPS만 써도 125MiB/s 천장에 닿으므로 처리량을 올려야 합니다.</p>
+      <p>io2 Block Express는 16KiB I/O 평균 지연 0.5ms 미만, 연간 고장률 0.001%를 내세웁니다. gp3로 버티다 8장에서 본 꼬리 지연(p99, 느린 쪽 1% 요청의 지연)이 문제 되거나 80,000 IOPS를 넘길 때 고릅니다.</p>
     </div>
     <aside class="callout callout--note">
       <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>지표로 확인하는 법</p>
-      <p>CloudWatch의 <code>VolumeReadOps</code>, <code>VolumeThroughputPercentage</code>, 그리고 대기열 길이 <code>VolumeQueueLength</code>가 계속 높으면 볼륨이 병목입니다.</p>
+      <p>CloudWatch의 <code>VolumeReadOps</code>(읽기 횟수), <code>VolumeThroughputPercentage</code>(산 성능 대비 사용률), 대기 중인 요청 수 <code>VolumeQueueLength</code>가 계속 높으면 볼륨이 병목입니다.</p>
     </aside>
   </div>
 </section>
 
 <section class="slide">
   <h2>볼륨이 빨라도 인스턴스가 막을 수 있다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p>EBS는 네트워크 너머에 있으므로 인스턴스에서 EBS로 가는 길에도 대역폭이 있습니다. <dfn title="EBS-optimized">EBS 최적화</dfn> 인스턴스는 EBS 전용 대역폭을 따로 받아 앱 네트워크 트래픽과 다투지 않고, 현행 Nitro 인스턴스는 모두 기본으로 EBS 최적화입니다.</p>
-      <p>이 전용 대역폭에도 <mark>인스턴스 크기별 한도</mark>가 있습니다.</p>
-    </div>
-    <div class="prose">
-      <p>예를 들어 작은 인스턴스에 io2 볼륨 50,000 IOPS를 붙여도, 그 인스턴스의 EBS 최대 IOPS가 그보다 낮으면 거기서 막힙니다. 작은 크기는 "최대" 값까지 30분 정도만 버스트하고 그 뒤 기준 값으로 내려옵니다.</p>
-      <p>그래서 볼륨 성능을 올렸는데 숫자가 안 나오면 인스턴스 사양표의 EBS 기준, 최대 IOPS와 처리량부터 확인합니다.</p>
-    </div>
+  <div class="prose prose--cols">
+    <p>볼륨의 성능만 사면 끝일까요? 앞에서 EBS는 네트워크 너머에 있다고 했습니다. 그러니 인스턴스에서 EBS로 가는 길에도 대역폭이 있고, 그 길이 좁으면 볼륨이 아무리 빨라도 그만큼만 나옵니다.</p>
+    <p>예전에는 EBS 트래픽과 앱의 네트워크 트래픽이 같은 길을 다퉜습니다. <dfn title="EBS-optimized">EBS 최적화</dfn> 인스턴스는 EBS 전용 대역폭을 따로 받아 둘이 다투지 않게 한 것이고, 현행 Nitro 인스턴스는 모두 기본으로 EBS 최적화입니다.</p>
+    <p>이 전용 대역폭에도 인스턴스 크기별 한도가 있습니다. 예를 들어 작은 인스턴스에 io2 볼륨 50,000 IOPS를 붙여도, 그 인스턴스의 EBS 최대 IOPS가 그보다 낮으면 거기서 막힙니다. 또 작은 크기는 사양표의 "최대" 값까지 하루 30분 정도만 버스트하고 그 뒤 기준 값으로 내려옵니다. 네트워크 대역폭과 같은 구조입니다.</p>
+    <p>그래서 볼륨 성능을 올렸는데 숫자가 안 나오면 인스턴스 사양표의 EBS 기준·최대 IOPS와 처리량부터 확인합니다. 성능 이야기는 여기까지 하고, 이제 데이터를 지키고 옮기는 장치인 스냅샷을 봅니다.</p>
   </div>
 </section>
 
@@ -526,8 +704,8 @@ aws s3 cp s3://my-artifacts/api.jar \
   <h2>스냅샷은 바뀐 블록만 저장한다</h2>
   <div class="split split--center">
     <div class="prose">
-      <p>첫 스냅샷은 사용 중인 블록 전체를, 다음 스냅샷부터는 <dfn title="incremental">증분</dfn>으로 바뀐 블록만 저장합니다. 각 스냅샷은 앞 스냅샷의 블록을 참조해서 그 시점의 볼륨 전체를 복원할 수 있습니다.</p>
-      <p>그래서 오래된 스냅샷을 지워도 뒤 스냅샷이 참조하는 블록은 남고, <mark>지운 만큼 비용이 줄지 않을 수 있습니다</mark>. 스냅샷은 사용자가 직접 볼 수 없는 S3에 저장됩니다.</p>
+      <p><dfn title="EBS snapshot">스냅샷</dfn>은 볼륨의 특정 시점 사본입니다. 첫 스냅샷은 사용 중인 블록 전체를, 다음부터는 앞 스냅샷 이후 바뀐 블록만 저장합니다(증분). 각 스냅샷은 앞 스냅샷의 블록을 참조해 그 시점의 볼륨 전체를 복원할 수 있습니다.</p>
+      <p>그래서 오래된 스냅샷을 지워도 뒤 스냅샷이 참조하는 블록은 남아, 지운 만큼 비용이 줄지 않을 수 있습니다. 스냅샷은 AWS가 관리하는(사용자가 직접 볼 수 없는) S3에 저장되어 리전 단위로 존재합니다.</p>
     </div>
     <figure class="figure">
       <svg class="dg" viewBox="0 0 760 420" role="img" aria-labelledby="f27t">
@@ -556,14 +734,11 @@ aws s3 cp s3://my-artifacts/api.jar \
 
 <section class="slide">
   <h2>스냅샷에서 만든 볼륨은 처음에 느리다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p>스냅샷으로 만든 볼륨은 바로 붙일 수 있지만, 블록은 처음 읽힐 때 S3에서 가져오는 <dfn title="lazy loading">지연 로딩</dfn> 방식입니다. 그래서 복원 직후 DB를 띄우면 첫 읽기마다 지연이 붙습니다. <code>fio</code>나 <code>dd</code>로 모든 블록을 한 번 읽어 미리 데우거나, 비용을 내고 <dfn title="Fast Snapshot Restore">FSR</dfn>을 켜서 처음부터 완전히 초기화된 볼륨을 받습니다.</p>
-    </div>
-    <div class="prose">
-      <p>스냅샷은 리전과 계정을 넘어 복사할 수 있어 DR 백업의 기본 재료가 됩니다(18장). 주기적인 생성과 보관 기간은 Data Lifecycle Manager나 AWS Backup으로 자동화합니다.</p>
-      <p>실수로 지운 스냅샷을 되살리는 <strong>휴지통(Recycle Bin)</strong> 규칙과, 90일 이상 둘 스냅샷을 싸게 보관하는 <strong>스냅샷 아카이브</strong>도 있습니다.</p>
-    </div>
+  <div class="prose prose--cols">
+    <p>AZ c로 옮기려고 스냅샷에서 새 볼륨을 만들면, 볼륨은 바로 붙여 쓸 수 있습니다. 그런데 이때 데이터가 모두 복사된 것이 아닙니다. 블록은 처음 읽히는 순간에 S3에서 가져오는 <dfn title="lazy loading">지연 로딩</dfn> 방식이라, 아직 안 읽은 블록의 첫 읽기마다 큰 지연이 붙습니다.</p>
+    <p>부트 디스크라면 체감이 적지만, 복원한 DB 볼륨으로 바로 서비스를 받으면 첫 쿼리들이 몹시 느립니다. 대책은 두 가지입니다. 디스크 성능 측정 도구 <code>fio</code>나 블록 복사 도구 <code>dd</code>로 모든 블록을 한 번씩 읽어 미리 데우거나, 비용을 내고 <dfn title="Fast Snapshot Restore">FSR</dfn>을 켜 처음부터 완전히 초기화된 볼륨을 받는 것입니다.</p>
+    <p>스냅샷은 리전과 계정을 넘어 복사할 수 있어 재해 복구(DR, 리전 전체 장애에 대비해 다른 곳에 복구할 수단을 두는 일, 18장)의 기본 재료가 됩니다. 주기적인 생성과 보관 기간은 EBS 스냅샷 일정을 정해 두면 뜨고 지우기를 대신하는 Data Lifecycle Manager나, 여러 서비스의 백업을 한곳에서 관리하는 AWS Backup(15장)으로 자동화합니다.</p>
+    <p>실수로 지운 스냅샷을 정해 둔 기간 안에 되살리는 휴지통(Recycle Bin) 규칙, 90일 이상 둘 스냅샷을 싸게 보관하는 스냅샷 아카이브도 있습니다. 데이터를 남기는 법을 봤으니, 남긴 데이터를 지키는 암호화로 넘어갑니다.</p>
   </div>
 </section>
 
@@ -571,20 +746,49 @@ aws s3 cp s3://my-artifacts/api.jar \
   <h2>암호화는 켜 두면 신경 쓸 일이 없다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>EBS 암호화는 KMS 키로 볼륨, 스냅샷, 인스턴스와 볼륨 사이 전송 구간을 함께 암호화합니다. 암호화는 인스턴스를 호스팅하는 서버에서 일어나서 성능 차이는 거의 없습니다. 키와 봉투 암호화 원리는 16장에서 다룹니다.</p>
-      <p>리전별 <mark>기본 암호화</mark> 설정을 켜면 그 뒤로 만드는 모든 볼륨이 자동으로 암호화됩니다. 기존 볼륨에는 영향이 없습니다.</p>
+      <p>EBS 암호화는 <dfn title="Key Management Service">KMS</dfn>(AWS의 암호화 키 관리 서비스, 16장)의 키로 볼륨, 스냅샷, 인스턴스와 볼륨 사이 전송 구간을 함께 암호화합니다. 암호화는 Nitro 카드에서 일어나서 성능 차이가 거의 없습니다.</p>
+      <p>리전별 <strong>기본 암호화</strong>를 켜면 그 뒤로 만드는 모든 볼륨이 자동으로 암호화됩니다. 이미 있는 볼륨은 바뀌지 않으므로 오른쪽 순서로 갈아 끼웁니다.</p>
     </div>
     <ol class="steps">
       <li><b>스냅샷 생성</b><p>암호화되지 않은 볼륨의 스냅샷을 만듭니다.</p></li>
       <li><b>암호화 복사</b><p>스냅샷을 복사하면서 KMS 키로 암호화합니다.</p></li>
       <li><b>새 볼륨</b><p>암호화된 스냅샷에서 볼륨을 만들어 교체합니다.</p></li>
-      <li class="is-key"><b>주의</b><p>다른 계정과 공유할 스냅샷은 고객 관리형 키로 암호화해야 합니다.</p></li>
+      <li class="is-key"><b>공유 주의</b><p>다른 계정과 공유할 스냅샷은 내가 만든 고객 관리형 키로 암호화합니다.</p></li>
     </ol>
   </div>
 </section>
 
 <section class="slide">
-  <h2>Elastic Volumes는 무중단으로 키운다</h2>
+  <h2>볼륨은 무중단으로 키우지만 세 층을 모두 늘린다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>주문 로그가 쌓여 100GiB 디스크가 찼다고 합시다. <dfn>Elastic Volumes</dfn>는 붙은 채로 볼륨 크기, 유형, IOPS, 처리량을 바꾸는 기능입니다. 그런데 이것이 늘리는 것은 맨 아래 <strong>블록 장치</strong>뿐입니다.</p>
+      <p>앞에서 본 대로 파티션과 파일 시스템은 각자 자기 크기를 기록하고 있어서, 장치가 커져도 <mark>늘어난 칸을 모릅니다</mark>. 그래서 OS 안에서 파티션을 늘리고, 파일 시스템을 늘리는 두 단계를 직접 해야 합니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 330" role="img" aria-labelledby="f-grow-t">
+        <title id="f-grow-t">EBS 볼륨을 100GiB에서 200GiB로 늘려도 파티션과 파일 시스템은 100GiB에 머물러 있고, growpart와 xfs_growfs로 각각 늘려야 한다.</title>
+        <text x="40" y="60" text-anchor="start">블록 장치</text>
+        <rect class="dg-box dg-box--flow" x="200" y="28" width="520" height="64"/>
+        <text class="dg-label--flow" x="460" y="60" text-anchor="middle">200GiB (modify-volume)</text>
+        <text x="40" y="166" text-anchor="start">파티션</text>
+        <rect class="dg-box" x="200" y="134" width="260" height="64"/>
+        <text x="330" y="166" text-anchor="middle">100GiB</text>
+        <rect class="dg-box dg-box--ghost" x="460" y="134" width="260" height="64"/>
+        <text class="dg-mono dg-label--key" x="590" y="166" text-anchor="middle">growpart</text>
+        <text x="40" y="272" text-anchor="start">파일 시스템</text>
+        <rect class="dg-box" x="200" y="240" width="260" height="64"/>
+        <text x="330" y="272" text-anchor="middle">100GiB</text>
+        <rect class="dg-box dg-box--ghost" x="460" y="240" width="260" height="64"/>
+        <text class="dg-mono dg-label--key" x="590" y="272" text-anchor="middle">xfs_growfs</text>
+      </svg>
+      <figcaption>점선 칸은 장치에는 생겼지만 위 층이 아직 모르는 공간입니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>볼륨을 키운 뒤 파티션과 파일 시스템을 늘린다</h2>
   <div class="split split--wide-left">
     <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>aws ec2 modify-volume --volume-id vol-0abc \
     --volume-type gp3 --size 200 \
@@ -595,9 +799,19 @@ aws s3 cp s3://my-artifacts/api.jar \
 <span class="hl"><span class="prompt">$ </span>sudo xfs_growfs -d /</span>
 <span class="c"># ext4라면 sudo resize2fs /dev/nvme0n1p1</span></code></pre>
     <div class="prose">
-      <p>크기를 늘리고, 유형을 바꾸고, IOPS와 처리량을 조정하는 일을 분리 없이 합니다. 다만 <mark>크기는 줄일 수 없고</mark>, 디스크가 커져도 파티션과 파일 시스템은 직접 늘려야 합니다.</p>
-      <p>한 볼륨은 24시간 안에 최대 네 번까지, 앞 변경이 끝난 뒤에 다시 바꿀 수 있습니다.</p>
+      <p>첫 명령이 볼륨을 200GiB gp3로 바꾸고 IOPS와 처리량도 올립니다. 변경은 <code>modifying</code> → <code>optimizing</code> → <code>completed</code>로 진행하는데, <code>optimizing</code>은 새 크기는 이미 보이고 성능이 옛 값과 새 값 사이에서 옮겨 가는 중인 단계라 바로 다음 작업을 해도 됩니다.</p>
+      <p><code>lsblk</code>로 장치가 커진 것을 확인하고, <code>growpart</code>가 1번 파티션을 끝까지 늘리고, <code>xfs_growfs</code>가 <code>/</code>의 파일 시스템을 늘립니다.</p>
     </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>크기는 줄일 수 없고 변경 횟수도 정해져 있다</h2>
+  <div class="prose prose--cols">
+    <p>Elastic Volumes에는 방향 제한이 있습니다. 크기는 키울 수만 있고 줄일 수 없습니다. 파일 시스템이 어느 블록을 쓰고 있는지 EBS는 모르므로, 뒤쪽을 잘라 내면 데이터가 깨질 수 있기 때문입니다. 줄이려면 작은 새 볼륨을 만들어 파일을 복사하는 수밖에 없습니다.</p>
+    <p>또 한 볼륨은 24시간 안에 최대 네 번까지, 그리고 앞 변경이 끝난 뒤에 다시 바꿀 수 있습니다. 디스크가 찰 때마다 조금씩 키우기보다, 한 번 키울 때 넉넉하게 키우는 편이 낫습니다.</p>
+    <p>마지막 명령 줄의 주석처럼 파일 시스템 종류에 따라 늘리는 명령이 다릅니다. XFS는 마운트 지점(<code>/</code>)을 받는 <code>xfs_growfs</code>, ext4는 파티션 장치를 받는 <code>resize2fs</code>를 씁니다. AL2023의 기본은 XFS, Ubuntu의 기본은 ext4입니다.</p>
+    <p>파티션 없이 장치 전체에 파일 시스템을 바로 만든 데이터 볼륨이라면 <code>growpart</code> 단계가 없고 파일 시스템만 늘리면 됩니다. 지금까지 본 EBS는 모두 네트워크 너머의 디스크였습니다. 이제 정말로 서버 안에 꽂힌 디스크를 봅니다.</p>
   </div>
 </section>
 
@@ -605,21 +819,50 @@ aws s3 cp s3://my-artifacts/api.jar \
   <h2>인스턴스 스토어는 빠르지만 휘발된다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p><dfn title="instance store">인스턴스 스토어</dfn>는 호스트에 물리적으로 꽂힌 로컬 NVMe 디스크입니다. 이름에 <code>d</code>가 붙은 유형(<code>m7gd</code>, <code>i4i</code>)에 딸려 오고, 네트워크를 거치지 않아 EBS보다 지연이 훨씬 낮습니다.</p>
-      <p>대신 <mark>정지, 최대 절전, 종료, 호스트 고장 때 데이터가 사라집니다</mark>. 재부팅은 견딥니다. 캐시, 임시 정렬 파일, 다른 노드에 복제본이 있는 분산 DB에만 씁니다.</p>
+      <p><dfn title="instance store">인스턴스 스토어</dfn>는 물리 호스트에 직접 꽂힌 NVMe SSD(PCIe 버스로 CPU에 바로 붙는 고속 SSD)입니다. 이름에 <code>d</code>가 붙은 유형(<code>m7gd</code>, <code>r6id</code>)이나 I 패밀리에 딸려 오고, 네트워크를 거치지 않아 EBS보다 지연이 훨씬 낮고 IOPS도 높습니다. 값은 인스턴스 요금에 포함됩니다.</p>
+      <p>대신 호스트에 묶여 있다는 사실이 약점이 됩니다. 1부에서 봤듯이 정지, 최대 절전, 종료, 호스트 고장 때 인스턴스는 그 호스트를 떠나므로 데이터가 사라집니다. 같은 호스트에 머무는 재부팅만 견딥니다. 스냅샷도 뜰 수 없습니다.</p>
     </div>
-    <div class="prose">
-      <p><dfn title="Multi-Attach">Multi-Attach</dfn>는 반대 방향의 특수 기능입니다. io1, io2 볼륨 하나를 같은 AZ의 Nitro 인스턴스 최대 16대에 동시에 붙입니다.</p>
-      <p>여러 노드가 같은 블록에 쓰므로 ext4, XFS 같은 일반 파일 시스템을 올리면 데이터가 깨집니다. 쓰기 순서를 조율하는 클러스터 인식 파일 시스템이나 애플리케이션이 있을 때만 씁니다. 여러 서버가 파일을 함께 쓰는 일이라면 EFS(15장)가 맞습니다.</p>
+    <div class="slide__body">
+      <table class="compare">
+        <thead><tr><th scope="col">잃어도 되는 데이터</th><th scope="col">잃어도 되는 이유</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">캐시</th><td>원본에서 다시 만들 수 있음</td></tr>
+          <tr><th scope="row">임시 파일</th><td>정렬·빌드 중간 결과라 작업을 다시 돌리면 됨</td></tr>
+          <tr><th scope="row">분산 저장소</th><td class="is-flow">Cassandra, Kafka처럼 다른 노드에 복제본이 있음</td></tr>
+        </tbody>
+      </table>
+      <div class="prose">
+        <p>그래서 인스턴스 스토어는 왼쪽 표의 데이터에만 씁니다. 1부의 I 패밀리가 분산 저장소용인 이유입니다. 주문 데이터는 DB에 있으니 주문 API 서버의 디스크는 EBS 루트 볼륨 하나면 됩니다. 반대 방향, 즉 디스크 하나를 여러 서버가 함께 쓰는 특수 기능도 짚고 2부를 마칩니다.</p>
+      </div>
     </div>
   </div>
 </section>
 
-<!-- ===== 3부 구매 옵션 ================================================= -->
+<section class="slide">
+  <h2>Multi-Attach는 쓰기 조율자가 있을 때만 쓴다</h2>
+  <div class="prose prose--cols">
+    <p><dfn>Multi-Attach</dfn>는 io1, io2 볼륨 하나를 같은 AZ의 Nitro 인스턴스 최대 16대에 동시에 붙이는 기능입니다. 듣기에는 공유 디스크 같지만 함정이 있습니다.</p>
+    <p>ext4나 XFS 같은 일반 파일 시스템은 "이 디스크는 나 혼자 쓴다"고 가정하고, 어느 블록이 비어 있는지 같은 정보를 메모리에 캐시해 둡니다. 두 서버가 각자 캐시를 믿고 같은 빈 블록에 다른 파일을 쓰면 서로의 데이터를 덮어써 파일 시스템이 깨집니다. EBS는 블록 장치라서 이 충돌을 막아 주지 않습니다.</p>
+    <p>그래서 Multi-Attach는 여러 노드의 쓰기 순서를 조율하는 장치가 있을 때만 씁니다. 노드끼리 잠금을 주고받는 클러스터 인식 파일 시스템(GFS2 등)이나, 블록 단위 접근을 스스로 조율하는 클러스터 소프트웨어가 그 예입니다.</p>
+    <p>여러 서버가 파일을 함께 읽고 쓰는 일이 목적이라면 블록 장치가 아니라 파일 공유 서비스인 EFS(15장)가 맞습니다. 이제 서버와 디스크가 무엇인지 알았으니, 이것들을 1년 내내 돌릴 때 드는 돈을 따질 차례입니다.</p>
+  </div>
+</section>
+
+<!-- ===== 3부 구매 옵션 (core) ========================================= -->
 <section class="slide slide--divider" data-section="구매 옵션" data-depth="core">
   <p class="divider__no">3부</p>
   <h2>같은 서버라도 사는 법에 따라 값이 다르다</h2>
-  <p class="lede">EC2 비용의 대부분은 어떤 인스턴스를 쓰느냐보다 어떻게 사느냐에서 갈립니다. 약정, 경매가 아닌 여유 용량, 전용 하드웨어의 원리를 봅니다.</p>
+  <p class="lede">주문 API는 평소 4대가 늘 켜져 있고, 점심과 이벤트 때 8대까지 늘며, 밤에는 정산 배치가 돕니다. 이 부는 "이 서버들을 어떤 방식으로 사야 가장 싸고, 싸게 사는 대가로 무엇을 포기하는가"를 풉니다.</p>
+</section>
+
+<section class="slide">
+  <h2>사는 법은 약정과 회수 두 축으로 갈린다</h2>
+  <div class="prose prose--cols">
+    <p>지금까지 띄운 인스턴스는 모두 <dfn>On-Demand</dfn>, 즉 약정 없이 쓴 만큼 초 단위로 내는 정가 구매였습니다. EC2 비용의 대부분은 어떤 유형을 쓰느냐보다 이 "사는 법"에서 갈립니다. 할인을 받는 길은 두 가지 축으로 나뉩니다.</p>
+    <p>첫째 축은 <strong>약정</strong>입니다. "1년 또는 3년 동안 이만큼 쓰겠다"고 약속하면 AWS는 미래 수요를 예측해 데이터센터를 덜 남는 쪽으로 계획할 수 있고, 그 이익을 할인으로 돌려줍니다. 대가는 덜 써도 약정한 만큼은 낸다는 것입니다. Savings Plans와 예약 인스턴스가 여기 속합니다.</p>
+    <p>둘째 축은 <strong>회수 가능성</strong>입니다. AWS 데이터센터에는 언제나 팔리지 않고 남는 서버가 있습니다. "AWS가 필요해지면 언제든 도로 가져가도 좋다"는 조건으로 이 남는 용량을 빌리면 크게 할인됩니다. 대가는 서버가 예고 2분 만에 사라질 수 있다는 것입니다. 이것이 Spot입니다.</p>
+    <p>여기에 할인이 아니라 오히려 돈을 더 내고 하드웨어를 혼자 쓰는 전용 옵션이 있습니다. 다음 슬라이드에서 이 다섯 가지를 한 표로 놓고, 이어지는 슬라이드에서 하나씩 들어갑니다.</p>
+  </div>
 </section>
 
 <section class="slide">
@@ -630,13 +873,13 @@ aws s3 cp s3://my-artifacts/api.jar \
       <tbody>
         <tr><th scope="row">On-Demand</th><td>없음, 초 단위 과금</td><td>없음</td><td>예측 불가 부하, 실험</td></tr>
         <tr><th scope="row">Savings Plans</th><td>1년/3년 시간당 금액</td><td class="num">최대 72%</td><td>항상 켜 두는 기준 용량</td></tr>
-        <tr><th scope="row">Reserved Instances</th><td>1년/3년 특정 속성</td><td>표준이 전환형보다 큼</td><td>기존 약정, RDS 등</td></tr>
-        <tr><th scope="row">Spot</th><td>없음, 언제든 회수</td><td class="num is-flow">최대 90%</td><td class="is-key">중단돼도 되는 작업</td></tr>
-        <tr><th scope="row">Dedicated</th><td>선택</td><td>오히려 비쌈</td><td>라이선스, 규제</td></tr>
+        <tr><th scope="row">Reserved Instances</th><td>1년/3년 특정 속성</td><td>SP와 비슷</td><td>기존 약정, RDS 등</td></tr>
+        <tr><th scope="row">Spot</th><td>없음, 언제든 회수</td><td class="num is-flow">최대 90%</td><td>중단돼도 되는 작업</td></tr>
+        <tr><th scope="row">Dedicated</th><td>선택</td><td class="is-key">오히려 비쌈</td><td>라이선스, 규제</td></tr>
       </tbody>
     </table>
     <div class="prose">
-      <p>운영의 기본형은 <strong>늘 켜진 바닥은 Savings Plans로, 그 위의 출렁임은 On-Demand와 Spot으로</strong> 채우는 것입니다.</p>
+      <p>주문 API에 대입하면 답이 보입니다. 하루 종일 켜진 바닥 4대는 약정으로, 점심의 추가 4대는 On-Demand와 Spot으로, 밤의 정산 배치는 다시 돌려도 되는 일이니 Spot으로 삽니다. <mark>늘 켜진 바닥은 약정, 그 위의 출렁임은 On-Demand와 Spot</mark>이 운영의 기본형입니다.</p>
     </div>
   </div>
 </section>
@@ -645,30 +888,30 @@ aws s3 cp s3://my-artifacts/api.jar \
   <h2>Savings Plans는 시간당 금액을 약정한다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>"시간당 10달러어치를 1년간 쓰겠다"처럼 금액을 약정하면, 매시간 그 금액만큼의 사용량이 할인가로 계산되고 넘는 부분은 On-Demand가로 붙습니다. 덜 쓰면 남은 약정은 그냥 사라집니다.</p>
-      <p>그래서 약정액은 최근 사용량의 <mark>바닥선</mark>에 맞춥니다. Cost Explorer가 과거 사용량으로 추천값을 계산해 줍니다.</p>
+      <p><dfn>Savings Plans</dfn>(SP)는 "시간당 10달러어치를 1년간 쓰겠다"처럼 <strong>금액</strong>을 약정합니다. 매시간 그 금액만큼의 사용량이 할인가로 계산되고, 넘는 부분은 On-Demand가로 붙습니다. 덜 쓰면 남은 약정은 그냥 사라집니다.</p>
+      <p>그래서 약정액은 최근 사용량의 바닥선에 맞춥니다. 주문 API라면 새벽에도 켜져 있는 4대의 값입니다. AWS의 비용 분석 도구 Cost Explorer가 과거 사용량으로 추천값을 계산해 줍니다.</p>
     </div>
-    <table class="compare">
-      <thead><tr><th scope="col">유형</th><th scope="col">Compute SP</th><th scope="col">EC2 Instance SP</th></tr></thead>
-      <tbody>
-        <tr><th scope="row">최대 할인</th><td class="num">66%</td><td class="num is-flow">72%</td></tr>
-        <tr><th scope="row">고정되는 것</th><td class="is-flow">없음</td><td>패밀리와 리전</td></tr>
-        <tr><th scope="row">적용 대상</th><td>EC2, Fargate, Lambda</td><td>EC2만</td></tr>
-      </tbody>
-    </table>
+    <div class="slide__body">
+      <table class="compare">
+        <thead><tr><th scope="col">유형</th><th scope="col">Compute SP</th><th scope="col">EC2 Instance SP</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">최대 할인</th><td class="num">66%</td><td class="num is-flow">72%</td></tr>
+          <tr><th scope="row">고정되는 것</th><td class="is-flow">없음</td><td>패밀리와 리전</td></tr>
+          <tr><th scope="row">적용 대상</th><td>EC2, Fargate, Lambda</td><td>EC2만</td></tr>
+        </tbody>
+      </table>
+      <p class="small">Compute SP는 패밀리를 바꾸거나 컨테이너로 옮겨도 할인이 따라옵니다. 그 유연함의 값이 6%p입니다.</p>
+    </div>
   </div>
 </section>
 
 <section class="slide">
   <h2>RI는 속성에, SP는 금액에 약정한다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p><dfn title="Reserved Instances">예약 인스턴스(RI)</dfn>는 Savings Plans 이전의 방식으로, 인스턴스 유형, 플랫폼, 리전 같은 속성을 약정합니다. <strong>표준 RI</strong>는 할인이 더 크지만 다른 패밀리로 바꿀 수 없고, <strong>전환형 RI</strong>는 할인이 작은 대신 기간 중 다른 속성의 전환형 RI로 교환할 수 있습니다.</p>
-    </div>
-    <div class="prose">
-      <p>EC2만 놓고 보면 같은 할인 폭에 관리가 쉬운 Savings Plans를 먼저 고릅니다. RI는 SP가 적용되지 않는 서비스(RDS, ElastiCache, OpenSearch 등의 예약 노드)나, AZ를 지정해서 <strong>용량 예약</strong>까지 함께 얻고 싶을 때 의미가 남습니다.</p>
-      <p>세 방식 모두 결제는 전체 선결제, 부분 선결제, 선결제 없음 중에 고르며 선결제가 클수록 할인이 큽니다.</p>
-    </div>
+  <div class="prose prose--cols">
+    <p><dfn title="Reserved Instances">예약 인스턴스</dfn>(RI)는 Savings Plans 이전부터 있던 방식으로, 금액이 아니라 인스턴스 유형, 플랫폼(리눅스, 윈도), 리전 같은 <strong>속성</strong>을 약정합니다. 약정한 속성과 맞는 사용량에만 할인이 붙습니다.</p>
+    <p>표준 RI는 할인이 더 크지만 다른 패밀리로 바꿀 수 없고, 전환형 RI는 할인이 작은 대신 기간 중 다른 속성의 전환형 RI로 교환할 수 있습니다. 주문 API를 M에서 R로 옮기면 표준 RI는 쓸모가 없어지는 셈입니다.</p>
+    <p>EC2만 놓고 보면 같은 할인 폭에 관리가 쉬운 SP를 먼저 고릅니다. RI가 여전히 의미 있는 곳은 둘입니다. SP가 적용되지 않는 서비스(RDS, ElastiCache, OpenSearch 등의 예약 노드)와, AZ를 지정해서 그 AZ의 자리까지 함께 확보하고 싶을 때입니다.</p>
+    <p>세 약정 방식 모두 결제는 전체 선결제, 부분 선결제, 선결제 없음 중에 고르며 선결제가 클수록 할인이 큽니다. 약정의 반대편, 즉 약정 없이 회수를 감수하는 Spot을 이제 봅니다.</p>
   </div>
 </section>
 
@@ -676,8 +919,8 @@ aws s3 cp s3://my-artifacts/api.jar \
   <h2>Spot은 2분 전에 회수를 통보한다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p><dfn title="Spot Instance">Spot</dfn>은 AWS에 남는 용량을 싸게 빌리는 것입니다. 입찰 경쟁은 2017년에 없어졌고, 가격은 용량 풀(인스턴스 유형 × AZ)마다 수요와 공급에 따라 천천히 움직입니다.</p>
-      <p>AWS가 용량을 되찾을 때는 <mark>2분 전에 중단 알림</mark>을 보냅니다. 그 전에 위험이 커졌다는 <dfn title="rebalance recommendation">리밸런스 권고</dfn>가 먼저 올 수 있습니다.</p>
+      <p><dfn title="Spot Instance">Spot</dfn>은 AWS에 남는 용량을 싸게 빌리는 것입니다. 남는 정도는 인스턴스 유형과 AZ의 조합마다 다르고, 이 조합 하나를 <dfn title="capacity pool">용량 풀</dfn>이라 합니다. 가격은 풀마다 수요와 공급에 따라 천천히 움직이며, 예전의 입찰 경쟁은 2017년에 없어졌습니다.</p>
+      <p>AWS가 용량을 되찾을 때는 <mark>2분 전에 중단 알림</mark>을 보냅니다. 그 전에 위험이 커졌다는 <dfn title="rebalance recommendation">리밸런스 권고</dfn>가 먼저 올 수 있습니다. 두 신호는 IMDS와, AWS 안의 사건을 규칙에 따라 다른 서비스로 배달하는 EventBridge(17장)로 전달됩니다.</p>
     </div>
     <div class="seq" role="img" aria-label="EC2는 Spot 인스턴스에 먼저 리밸런스 권고를, 이어서 2분 전 중단 알림을 보내고 2분 뒤 인스턴스를 회수한다">
       <div class="seq__head"><span>EC2 Spot 서비스</span><span></span><span>Spot 인스턴스</span></div>
@@ -706,15 +949,15 @@ aws s3 cp s3://my-artifacts/api.jar \
 <section class="slide">
   <h2>Spot은 여러 풀에 나눠 담아야 버틴다</h2>
   <div class="split split--wide-left">
-    <pre class="code" data-file="인스턴스 안에서 중단 알림 확인"><code><span class="prompt">$ </span>curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
   http://169.254.169.254/latest/meta-data\
 /spot/instance-action
-<span class="hl">{"action": "terminate",</span>
-<span class="hl"> "time": "2026-11-17T08:22:00Z"}</span>
+<span class="hl">{"action": "terminate",
+ "time": "2026-11-17T08:22:00Z"}</span>
 <span class="c"># 알림이 없으면 404</span></code></pre>
     <div class="prose">
-      <p>회수는 유형과 AZ 단위로 옵니다. 그래서 한 유형만 고집하지 말고 <code>m7g.large</code>, <code>m6g.large</code>, <code>c7g.xlarge</code>처럼 비슷한 유형 여러 개를 섞습니다.</p>
-      <p><dfn title="allocation strategy">할당 전략</dfn>은 가격과 여유 용량을 함께 보는 <code>price-capacity-optimized</code>가 권장값입니다. 최저가만 보는 <code>lowest-price</code>는 중단 위험이 가장 큽니다.</p>
+      <p>인스턴스 안에서는 1부의 IMDS를 주기적으로 물어 알림을 받습니다. 응답이 오면 2분 안에 ALB에서 빠지고 처리 중인 요청을 끝냅니다.</p>
+      <p>회수는 용량 풀 단위로 몰려옵니다. 그래서 한 유형만 고집하지 말고 <code>m7g.large</code>, <code>m6g.large</code>, <code>c7g.xlarge</code>처럼 비슷한 유형 여러 개를 여러 AZ에 섞어 풀을 넓힙니다. 어느 풀에서 얼마나 띄울지 정하는 규칙이 <strong>할당 전략</strong>이고, 가격과 남은 용량을 함께 보는 <code>price-capacity-optimized</code>가 권장값입니다. 최저가만 보는 <code>lowest-price</code>는 중단 위험이 가장 큽니다.</p>
     </div>
   </div>
 </section>
@@ -722,73 +965,92 @@ aws s3 cp s3://my-artifacts/api.jar \
 <section class="slide">
   <h2>전용 하드웨어와 용량 예약은 목적이 다르다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>마지막 묶음은 할인이 아니라 다른 필요 때문에 삽니다. 규제나 계약 때문에 다른 고객과 물리 서버를 나눠 쓰면 안 되는 경우, 그리고 서버 소켓이나 코어 수로 값을 매기는 상용 소프트웨어 라이선스를 가지고 들어오는 경우(<dfn title="Bring Your Own License">BYOL</dfn>)입니다. 소켓은 메인보드의 CPU 칩 자리 하나를 말합니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">옵션</th><th scope="col">무엇을 사나</th><th scope="col">고르는 이유</th></tr></thead>
       <tbody>
         <tr><th scope="row">Dedicated Instance</th><td>내 계정 전용 하드웨어 위의 인스턴스</td><td>규제상 하드웨어 공유 금지</td></tr>
-        <tr><th scope="row">Dedicated Host</th><td>물리 서버 한 대 통째로, 소켓과 코어가 보임</td><td class="is-flow">소켓, 코어 단위 라이선스(BYOL)</td></tr>
-        <tr><th scope="row">On-Demand 용량 예약</th><td>특정 AZ의 특정 유형 자리</td><td>대형 행사, DR 때 자리 보장</td></tr>
+        <tr><th scope="row">Dedicated Host</th><td>물리 서버 한 대, 소켓과 코어가 보임</td><td>소켓, 코어 단위 라이선스(BYOL)</td></tr>
+        <tr><th scope="row">On-Demand 용량 예약</th><td>특정 AZ의 특정 유형 자리</td><td class="is-flow">대형 행사, DR 때 자리 보장</td></tr>
       </tbody>
     </table>
     <div class="prose">
-      <p>할인과 자리 보장은 다른 문제입니다. Savings Plans는 값만 깎아 줄 뿐, AZ에 남는 자리가 없으면 인스턴스는 뜨지 않습니다. <dfn title="On-Demand Capacity Reservation">용량 예약</dfn>은 즉시 사용형이면 약정 없이 언제든 만들고 취소할 수 있지만, <mark>인스턴스를 띄우지 않아도 예약한 만큼 On-Demand 요금이 붙습니다</mark>. Savings Plans와 겹쳐 할인받을 수 있습니다.</p>
+      <p>할인과 자리 보장은 다른 문제입니다. SP는 값만 깎아 줄 뿐, AZ에 남는 자리가 없으면 인스턴스는 뜨지 않습니다. <strong>용량 예약</strong>은 약정 없이 언제든 만들고 취소할 수 있지만, 인스턴스를 띄우지 않아도 예약한 만큼 On-Demand 요금이 붙고, SP 할인은 겹쳐 받을 수 있습니다.</p>
     </div>
   </div>
 </section>
 
-<!-- ===== 4부 Auto Scaling ============================================= -->
+<section class="slide">
+  <h2>싸게 사려면 서버가 사라져도 되어야 한다</h2>
+  <div class="prose prose--cols">
+    <p>3부를 주문 API로 정리해 보겠습니다. 새벽에도 켜진 바닥 4대는 Compute SP로 약정합니다. 나중에 패밀리를 바꾸거나 컨테이너로 옮겨도 할인이 따라오기 때문입니다. 점심의 추가 대수는 On-Demand와 Spot으로 띄우고, 블랙프라이데이처럼 자리가 꼭 필요한 날에는 용량 예약을 겁니다.</p>
+    <p>그런데 이 구성에는 사람 손으로는 감당할 수 없는 일이 두 가지 숨어 있습니다. 첫째, 점심마다 누군가 서버를 4대 띄우고 오후에 지워야 합니다. 둘째, Spot은 예고 2분 만에 사라지므로 사라진 자리를 다른 풀에서 바로 채워야 합니다.</p>
+    <p>1부 끝에서도 같은 요구가 나왔습니다. OS가 고장 난 서버는 고치지 말고 버리고 새로 띄우라는 것이었습니다. 세 요구는 모두 "지금 몇 대가 있어야 하는지 정하고, 그 수를 시스템이 계속 맞추게 하라"로 모입니다.</p>
+    <p>이 일을 하는 것이 4부의 Auto Scaling입니다. 2부에서 데이터를 서버 밖(EBS, DB)에 두는 법을 봤으니, 이제 서버를 마음 놓고 늘리고 지울 수 있습니다.</p>
+  </div>
+</section>
+
+<!-- ===== 4부 Auto Scaling (core) ====================================== -->
 <section class="slide slide--divider" data-section="Auto Scaling" data-depth="core">
   <p class="divider__no">4부</p>
   <h2>서버 수를 사람 대신 맞춘다</h2>
-  <p class="lede">8장의 스케일 아웃을 AWS가 구현한 것이 EC2 Auto Scaling입니다. 몇 대를 유지할지, 언제 늘리고 줄일지, 교체를 어떻게 안전하게 할지 차례로 봅니다.</p>
+  <p class="lede">8장의 스케일 아웃(서버를 키우는 대신 대수를 늘리는 것)을 AWS에서 자동으로 하는 장치를 봅니다. 질문은 셋입니다. 몇 대를 유지하나, 무엇을 보고 언제 늘리고 줄이나, 교체를 어떻게 안전하게 하나.</p>
 </section>
 
 <section class="slide">
   <h2>그룹은 희망 용량을 계속 맞춘다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p><dfn title="Auto Scaling group">Auto Scaling 그룹(ASG)</dfn>은 시작 템플릿, 서브넷 목록, 그리고 <strong>최소, 희망, 최대</strong> 용량을 가집니다. 실제 대수가 희망 용량과 다르면 맞을 때까지 인스턴스를 띄우거나 내립니다.</p>
-      <p>10장의 조정 루프와 같은 원리입니다. <mark>스케일링 정책은 결국 희망 용량 숫자를 바꾸는 장치</mark>이고, 실제 증감은 이 루프가 합니다.</p>
+      <p><dfn title="Auto Scaling group">Auto Scaling 그룹</dfn>(ASG)은 1부의 시작 템플릿, 띄울 서브넷 목록, 그리고 최소·희망·최대 용량 세 숫자를 가진 서버 묶음입니다. 실제 대수가 <strong>희망 용량</strong>과 다르면 같아질 때까지 인스턴스를 띄우거나 내립니다.</p>
+      <p>10장의 조정 루프, 즉 원하는 상태와 실제 상태의 차이를 계속 메우는 루프와 같은 원리입니다. 뒤에서 볼 스케일링 정책은 결국 희망 용량 숫자를 바꾸는 장치이고, 실제 증감은 이 루프가 합니다.</p>
     </div>
     <ol class="steps">
       <li><b>희망 용량 결정</b><p>정책, 예약, 사람이 desired를 바꿉니다(min ≤ desired ≤ max).</p></li>
-      <li><b>AZ에 고르게 배치</b><p>지정한 서브넷의 AZ들에 균형을 맞춰 띄웁니다.</p></li>
-      <li><b>대상 그룹 등록</b><p>ELB 대상 그룹에 자동으로 등록합니다.</p></li>
+      <li><b>AZ에 고르게 배치</b><p>지정한 서브넷의 AZ들에 대수를 고르게 맞춰 띄웁니다.</p></li>
+      <li><b>대상 그룹 등록</b><p>13장의 ALB 대상 그룹에 자동으로 등록합니다.</p></li>
       <li class="is-key"><b>비정상 교체</b><p>헬스 체크에 실패하면 종료하고 새로 띄웁니다.</p></li>
     </ol>
   </div>
 </section>
 
 <section class="slide">
-  <h2>스케일링 정책은 다섯 가지다</h2>
+  <h2>스케일링 정책은 희망 용량을 바꾸는 규칙이다</h2>
+  <div class="prose prose--cols">
+    <p>주문 API ASG를 최소 4, 최대 12로 만들었다고 합시다. 점심에 희망 용량을 8로 올리는 것은 누가 할까요? 이 규칙이 <dfn title="scaling policy">스케일링 정책</dfn>이고, 대부분은 CloudWatch 알람을 방아쇠로 씁니다.</p>
+    <p><dfn title="CloudWatch alarm">CloudWatch 알람</dfn>은 지표 하나를 지켜보다가 정한 조건(예: 평균 CPU가 3분 연속 70% 초과)을 만족하면 상태를 ALARM으로 바꾸고, 연결된 동작을 부르는 장치입니다. 스케일링 정책은 그 동작 자리에 "희망 용량을 이만큼 바꿔라"를 넣습니다.</p>
+    <p>정책은 다섯 가지입니다. <strong>대상 추적</strong>은 "평균 CPU를 50%로 유지하라"처럼 목표만 주면 알람과 계산을 AWS가 대신합니다. <strong>단계</strong>는 알람을 넘은 폭에 따라 "10% 넘으면 +1, 30% 넘으면 +3"처럼 다르게 늘립니다. <strong>단순</strong>은 알람 한 번에 정해진 수만 바꾸는 옛 방식입니다.</p>
+    <p>나머지 둘은 알람이 아니라 시간을 봅니다. <strong>예약</strong>은 "평일 11시 50분에 최소 8대"처럼 정한 시각에 숫자를 바꾸고, <strong>예측</strong>은 지난 몇 주의 일·주 단위 패턴을 학습해 부하가 오기 전에 미리 늘립니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>대상 추적이 기본이고 나머지는 보조다</h2>
   <div class="slide__body">
     <table class="compare">
       <thead><tr><th scope="col">정책</th><th scope="col">동작</th><th scope="col">어울리는 상황</th></tr></thead>
       <tbody>
-        <tr><th scope="row">대상 추적</th><td class="is-flow">지표를 목표값에 맞춤(CPU 50% 등)</td><td>기본 선택, 대부분의 웹</td></tr>
+        <tr><th scope="row">대상 추적</th><td>지표를 목표값에 맞춤(CPU 50% 등)</td><td class="is-flow">기본 선택, 대부분의 웹</td></tr>
         <tr><th scope="row">단계</th><td>알람 초과 폭에 따라 다른 증감</td><td>급증 폭별로 다르게 대응</td></tr>
         <tr><th scope="row">단순</th><td>알람 한 번에 정해진 증감 후 쿨다운</td><td class="is-key">권장하지 않음(레거시)</td></tr>
-        <tr><th scope="row">예약</th><td>정한 시각에 min/max/desired 변경</td><td>출근 시간, 행사 오픈</td></tr>
+        <tr><th scope="row">예약</th><td>정한 시각에 min/max/desired 변경</td><td>점심시간, 행사 오픈</td></tr>
         <tr><th scope="row">예측</th><td>과거 패턴으로 미리 증설</td><td>일, 주 단위 주기가 뚜렷함</td></tr>
       </tbody>
     </table>
     <div class="prose">
-      <p>여러 정책을 함께 걸 수 있고, 둘 이상이 동시에 신호를 내면 <strong>더 큰 용량을 요구하는 쪽</strong>이 이깁니다. 그래서 늘리는 쪽은 빠르고 줄이는 쪽은 보수적으로 움직입니다.</p>
+      <p>여러 정책을 함께 걸 수 있고, 둘 이상이 동시에 신호를 내면 <strong>더 큰 용량을 요구하는 쪽</strong>이 이깁니다. 그래서 늘리는 쪽은 빠르게, 줄이는 쪽은 보수적으로 움직입니다. 주문 API는 대상 추적을 기본으로 걸고, 점심 직전에 예약으로 바닥을 올려 두는 조합이 흔합니다.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
   <h2>대상 추적은 비례 계산으로 대수를 정한다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p>대상 추적 정책을 만들면 AWS가 CloudWatch 알람 두 개(늘리기, 줄이기)를 대신 만들고 관리합니다. 지표가 목표를 넘으면 지표가 목표에 가까워지도록 비례해서 대수를 늘립니다.</p>
-      <p>예: 현재 4대, 평균 CPU 90%, 목표 60%면 4 × 90 / 60 = 6, <mark>2대를 추가</mark>합니다. 10장 HPA의 계산식과 같은 생각입니다.</p>
-    </div>
-    <div class="prose">
-      <p>지표는 인스턴스 수에 반비례해야 제대로 동작합니다. 평균 CPU, 대상당 ALB 요청 수(<code>ALBRequestCountPerTarget</code>)가 대표적입니다. 큐 길이처럼 그룹 전체 합계인 지표는 "인스턴스당 백로그"로 나눠서 써야 합니다.</p>
-      <p>무엇을 기준 지표로 삼을지는 병목 자원을 따라 고릅니다(18장).</p>
-    </div>
+  <div class="prose prose--cols">
+    <p>대상 추적 정책을 만들면 AWS가 CloudWatch 알람 두 개(늘리기, 줄이기)를 대신 만들고 관리합니다. 지표가 목표를 벗어나면, 지표가 목표로 돌아오도록 대수를 비례해서 바꿉니다.</p>
+    <p>예를 들어 주문 API가 4대, 평균 CPU 90%, 목표 60%라면 4 × 90 / 60 = 6이므로 2대를 더합니다. 부하 총량이 그대로라면 6대에 나눠졌을 때 한 대당 60%가 된다는 계산입니다. 10장의 HPA가 쓰는 <code>ceil(현재 개수 × 현재값 / 목표값)</code>과 같은 생각입니다.</p>
+    <p>이 계산이 맞으려면 지표가 <mark>인스턴스 수에 반비례</mark>해야 합니다. 대수를 두 배로 늘리면 값이 절반이 되는 지표여야 한다는 뜻입니다. 평균 CPU, 그리고 대상 하나가 받는 ALB 요청 수(<code>ALBRequestCountPerTarget</code>)가 대표적입니다.</p>
+    <p>큐에 쌓인 메시지 수처럼 그룹 전체의 합계인 지표는 대수를 늘려도 바로 줄지 않으므로 그대로 쓰면 끝없이 늘립니다. 이런 지표는 대수로 나눈 "인스턴스당 백로그"로 바꿔 씁니다. 무엇을 기준 지표로 삼을지는 병목 자원을 따라 고릅니다(18장).</p>
   </div>
 </section>
 
@@ -796,27 +1058,33 @@ aws s3 cp s3://my-artifacts/api.jar \
   <h2>워밍업이 끝나야 지표에 넣는다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>새 인스턴스는 부팅하고 JVM이 데워져야 제 몫을 합니다. 그 사이의 높은 CPU를 지표에 섞으면 정책이 "아직 부족하다"고 오판해 과하게 늘립니다.</p>
-      <p><dfn title="default instance warmup">기본 인스턴스 워밍업</dfn>은 InService가 된 뒤 정한 시간 동안 그 인스턴스를 집계 지표에서 빼 줍니다. <mark>기본으로 꺼져 있으므로</mark> 대상 추적, 단계 정책을 쓰면 꼭 설정합니다.</p>
+      <p>대상 추적의 계산에는 숨은 함정이 있습니다. 새 인스턴스는 부팅하고, 앱이 뜨고, 5장에서 본 JIT 컴파일러가 뜨거운 코드를 컴파일해 JVM이 데워져야 제 몫을 합니다. 이 준비 기간에는 CPU가 높게 나옵니다.</p>
+      <p>그 높은 CPU가 그룹 평균에 섞이면 정책은 "늘렸는데도 아직 부족하다"고 오판해 또 늘립니다. 4대에서 6대로 가야 할 것이 9대, 12대까지 가는 과증설입니다.</p>
+      <p><dfn title="default instance warmup">기본 인스턴스 워밍업</dfn>은 새 인스턴스가 서비스 상태(<code>InService</code>)가 된 뒤 정한 시간 동안 그 인스턴스를 집계 지표에서 빼 줍니다. 기본으로 꺼져 있으므로 대상 추적이나 단계 정책을 쓰면 꼭 설정합니다. 시간은 "시작부터 트래픽을 감당할 때까지"를 실제로 재서 정합니다. 너무 짧으면 과증설, 너무 길면 대응이 늦습니다.</p>
     </div>
-    <div class="prose">
-      <p><dfn title="cooldown">쿨다운</dfn>(기본 300초)은 단순 정책 전용 장치로, 한 번 조정하고 나면 정한 시간 동안 다음 단순 정책 조정을 멈춥니다. 대상 추적과 단계 정책에는 적용되지 않고 워밍업이 그 역할을 합니다.</p>
-      <p>워밍업 시간은 "인스턴스 시작부터 트래픽을 감당할 때까지"를 실제로 재서 정합니다. 너무 짧으면 과증설, 너무 길면 대응이 늦습니다.</p>
+    <div class="slide__body">
+      <table class="compare">
+        <thead><tr><th scope="col">항목</th><th scope="col">기본 인스턴스 워밍업</th><th scope="col">쿨다운</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">하는 일</th><td class="is-flow">새 인스턴스를 집계 지표에서 잠시 뺌</td><td>조정 뒤 다음 조정을 잠시 멈춤</td></tr>
+          <tr><th scope="row">적용 정책</th><td>대상 추적, 단계</td><td>단순 정책만</td></tr>
+          <tr><th scope="row">기본값</th><td class="is-key">꺼짐(직접 설정)</td><td>300초</td></tr>
+        </tbody>
+      </table>
+      <div class="prose">
+        <p>이름이 비슷한 <dfn title="cooldown">쿨다운</dfn>은 단순 정책 전용 장치입니다. 대상 추적과 단계 정책에서는 워밍업이 그 역할을 맡습니다.</p>
+      </div>
     </div>
   </div>
 </section>
 
 <section class="slide">
   <h2>ELB 헬스 체크를 켜야 앱 장애를 잡는다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p>ASG의 기본 헬스 체크는 <strong>EC2 상태 확인</strong>뿐입니다. OS는 살아 있는데 앱이 500을 내거나 멈춰 있어도 정상으로 보고 교체하지 않습니다.</p>
-      <p><strong>ELB 헬스 체크</strong>를 추가로 켜면 대상 그룹에서 비정상 판정을 받은 인스턴스도 교체합니다. 13장의 헬스 체크 경로가 여기서 교체 기준이 됩니다.</p>
-    </div>
-    <div class="prose">
-      <p><dfn title="health check grace period">유예 기간</dfn>은 새 인스턴스가 부팅하는 동안 헬스 체크 실패를 무시하는 시간입니다. 콘솔로 만들면 300초, CLI와 SDK로 만들면 0초가 기본입니다.</p>
-      <p>앱 기동이 3분 걸리는데 유예 기간이 0이면, ELB가 비정상으로 판정하는 순간 ASG가 지우고 다시 띄우기를 <mark>끝없이 반복</mark>합니다. IaC로 만들 때 특히 놓치기 쉽습니다.</p>
-    </div>
+  <div class="prose prose--cols">
+    <p>대수를 맞추는 일 다음은 아픈 서버를 바꾸는 일입니다. ASG의 기본 헬스 체크는 1부에서 본 EC2 상태 확인뿐입니다. 그래서 OS는 살아 있는데 주문 API가 500을 내거나 멈춰 있어도 정상으로 보고 교체하지 않습니다.</p>
+    <p>ELB 헬스 체크를 추가로 켜면, 13장에서 대상 그룹마다 정한 헬스 체크 경로(<code>/health</code> 등)에서 비정상 판정을 받은 인스턴스도 ASG가 교체합니다. 앱 수준의 장애를 잡으려면 사실상 필수입니다.</p>
+    <p>이때 짝으로 정해야 하는 값이 <dfn title="health check grace period">유예 기간</dfn>, 즉 새 인스턴스가 부팅하는 동안 헬스 체크 실패를 무시하는 시간입니다. 콘솔로 만들면 300초, CLI와 SDK로 만들면 <mark>0초</mark>가 기본입니다.</p>
+    <p>주문 API의 기동에 3분이 걸리는데 유예 기간이 0이면, ELB가 비정상으로 판정하는 순간 ASG가 지우고 다시 띄우기를 끝없이 반복합니다. 11장의 IaC 도구(Terraform 등)는 API로 만들므로 이 기본값을 물려받기 쉽습니다. 그럼 교체 직전이나 직후에 내 작업을 끼워 넣고 싶을 때는 어떻게 할까요?</p>
   </div>
 </section>
 
@@ -824,13 +1092,13 @@ aws s3 cp s3://my-artifacts/api.jar \
   <h2>수명 주기 후크로 시작과 종료 사이에 끼어든다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p><dfn title="lifecycle hook">수명 주기 후크</dfn>는 인스턴스를 <code>Pending:Wait</code>나 <code>Terminating:Wait</code> 상태에 붙잡아 두고 내 작업을 끝낼 시간을 줍니다. 기본 대기 시간은 1시간이고, 작업이 끝나면 <code>complete-lifecycle-action</code>으로 놓아 줍니다.</p>
-      <p>시작 쪽에서는 설정 적용, 캐시 예열을, 종료 쪽에서는 로그 업로드, 큐 작업 마무리, 클러스터 탈퇴를 합니다.</p>
+      <p>축소로 지워질 주문 API 서버에는 아직 S3에 올리지 않은 로그가 있을 수 있습니다. <dfn title="lifecycle hook">수명 주기 후크</dfn>는 인스턴스를 <code>Pending:Wait</code>나 <code>Terminating:Wait</code> 상태에 붙잡아 두고 내 작업을 끝낼 시간을 줍니다. 기본 대기 시간은 1시간이고, 작업이 끝나면 <code>complete-lifecycle-action</code>으로 놓아 줍니다.</p>
+      <p>작업은 EventBridge 알림을 받은 Lambda(서버 없이 함수 코드만 실행하는 서비스, 17장)나 서버 안의 에이전트가 합니다.</p>
     </div>
     <ol class="steps">
       <li><b>축소 결정</b><p>ASG가 종료할 인스턴스를 고릅니다.</p></li>
       <li class="is-key"><b>Terminating:Wait</b><p>후크가 인스턴스를 붙잡고 EventBridge로 알립니다.</p></li>
-      <li><b>내 작업</b><p>Lambda나 에이전트가 로그 전송, 작업 마무리를 합니다.</p></li>
+      <li><b>내 작업</b><p>로그 업로드, 처리 중 작업 마무리, 클러스터 탈퇴를 합니다.</p></li>
       <li><b>CONTINUE</b><p>완료 신호를 보내면 실제 종료로 넘어갑니다.</p></li>
     </ol>
   </div>
@@ -838,52 +1106,44 @@ aws s3 cp s3://my-artifacts/api.jar \
 
 <section class="slide">
   <h2>웜 풀은 미리 데운 인스턴스를 세워 둔다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p>부팅과 초기화에 몇 분씩 걸리는 앱은 급증 때 스케일 아웃이 늦습니다. <dfn title="warm pool">웜 풀</dfn>은 초기화까지 끝낸 인스턴스를 그룹 옆에 대기시켜 두고, 늘릴 때 새로 만드는 대신 여기서 꺼내 씁니다.</p>
-      <p>대기 상태는 Stopped, Hibernated, Running 중에 고릅니다.</p>
-    </div>
-    <div class="prose">
-      <p><strong>Stopped</strong>는 EBS와 EIP 요금만 내서 가장 경제적이고, <strong>Hibernated</strong>는 메모리까지 보존해 더 빨리 돌아옵니다. Running 대기는 요금이 그대로 나가 권장하지 않습니다.</p>
-      <p>초기화가 끝나기 전에 Stopped로 들어가면 안 되므로, 시작 쪽 수명 주기 후크와 함께 씁니다. 축소할 때 종료 대신 웜 풀로 돌려보내는 재사용 정책도 있습니다.</p>
-    </div>
+  <div class="prose prose--cols">
+    <p>시작 쪽 후크는 설정 적용이나 캐시 예열에 씁니다. 그런데 이렇게 준비할 것이 많아져 서버 한 대가 일할 수 있기까지 5분씩 걸리면, 점심 주문 폭주가 시작되고 5분 동안은 늘린 효과가 없습니다.</p>
+    <p><dfn title="warm pool">웜 풀</dfn>은 초기화까지 끝낸 인스턴스를 그룹 옆에 대기시켜 두고, 늘릴 때 새로 만드는 대신 여기서 꺼내 씁니다. 부팅과 설치를 미리 해 두었으니 꺼내 쓰는 시간이 훨씬 짧습니다.</p>
+    <p>대기 상태는 Stopped, Hibernated, Running 중에 고릅니다. Stopped는 EBS와 EIP 요금만 내서 가장 경제적이고, Hibernated는 1부에서 본 최대 절전으로 메모리까지 보존해 더 빨리 돌아옵니다. Running 대기는 요금이 그대로 나가 권장하지 않습니다.</p>
+    <p>초기화가 끝나기 전에 Stopped로 들어가면 반쯤 준비된 서버가 대기하게 되므로, 시작 쪽 수명 주기 후크로 "준비 끝"을 확인한 뒤 들어가게 합니다. 축소할 때 종료 대신 웜 풀로 돌려보내는 재사용 정책도 있습니다.</p>
   </div>
 </section>
 
 <section class="slide">
   <h2>인스턴스 새로 고침은 그룹의 롤링 교체다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p>시작 템플릿에 새 AMI를 넣어도 이미 떠 있는 인스턴스는 바뀌지 않습니다. <dfn title="instance refresh">인스턴스 새로 고침</dfn>은 그룹을 묶음 단위로 교체하는 롤링 배포입니다. 배포 전략 일반론은 11장에서 봤습니다.</p>
-      <p><strong>최소 정상 비율</strong>이 90%면 한 번에 10%씩 갈아 끼웁니다. 최소와 최대를 모두 100%로 두면 새 인스턴스를 먼저 띄우고 옛것을 지워 용량이 줄지 않습니다.</p>
-    </div>
-    <div class="prose">
-      <p><strong>체크포인트</strong>는 정한 비율만큼 교체한 뒤 멈춰서 지표를 볼 시간을 주고, <strong>bake 시간</strong>은 끝난 뒤 한동안 지켜봅니다. <strong>skip matching</strong>은 이미 새 설정인 인스턴스를 건너뜁니다.</p>
-      <p>자동 롤백을 켜면 실패 시 이전 템플릿으로 되돌리고, CloudWatch 알람을 걸어 두면 <mark>알람이 울릴 때 자동으로 멈추고 롤백</mark>합니다.</p>
-    </div>
+  <div class="prose prose--cols">
+    <p>대수 조절과 교체를 봤으니 마지막은 새 버전 배포입니다. 주문 API 1.5를 넣은 새 AMI를 시작 템플릿에 반영해도, 이미 떠 있는 인스턴스는 옛 AMI 그대로입니다. 시작 템플릿은 "앞으로 만들 서버"의 설계도이기 때문입니다.</p>
+    <p><dfn title="instance refresh">인스턴스 새로 고침</dfn>은 그룹을 묶음 단위로 새 템플릿의 인스턴스로 바꿔 끼우는 롤링 배포입니다. 롤링, Blue/Green 같은 배포 전략 일반론은 11장에서 봤습니다. 최소 정상 비율이 90%면 한 번에 10%씩 갈아 끼웁니다. 최소와 최대를 모두 100%로 두면 새 인스턴스를 먼저 띄우고 옛것을 지워 용량이 줄지 않습니다.</p>
+    <p><strong>체크포인트</strong>는 정한 비율만큼 교체한 뒤 멈춰 지표를 볼 시간을 주고, <strong>bake 시간</strong>은 교체가 끝난 뒤 한동안 지켜봅니다. skip matching을 켜면 이미 새 설정인 인스턴스는 건너뜁니다.</p>
+    <p>자동 롤백을 켜면 실패 시 이전 템플릿으로 되돌리고, CloudWatch 알람을 연결해 두면 알람이 울릴 때 자동으로 멈추고 롤백합니다. 이제 3부의 결론이던 "바닥은 On-Demand, 위는 Spot"을 한 그룹에 담는 설정을 봅니다.</p>
   </div>
 </section>
 
 <section class="slide">
-  <h2>바닥은 On-Demand, 위는 Spot으로</h2>
+  <h2>바닥은 On-Demand, 위는 Spot으로 섞는다</h2>
   <div class="split split--wide-left">
-    <pre class="code" data-file="create-auto-scaling-group 입력(일부)"><code>"MixedInstancesPolicy": {
+    <pre class="code" data-file="ASG 설정 일부 (JSON)"><code>"MixedInstancesPolicy": {
   "LaunchTemplate": {
     "LaunchTemplateSpecification": {
       "LaunchTemplateName": "api",
       "Version": "$Latest" },
-    "Overrides": [
+<span class="hl">    "Overrides": [
       { "InstanceType": "m7g.large" },
       { "InstanceType": "m6g.large" },
-      { "InstanceType": "c7g.xlarge" } ] },
+      { "InstanceType": "c7g.xlarge" } ] },</span>
   "InstancesDistribution": {
-<span class="hl">    "OnDemandBaseCapacity": 2,</span>
-<span class="hl">    "OnDemandPercentageAboveBaseCapacity": 20,</span>
+<span class="hl">    "OnDemandBaseCapacity": 2,
+    "OnDemandPercentageAboveBaseCapacity": 20,</span>
     "SpotAllocationStrategy":
       "price-capacity-optimized" } }</code></pre>
     <div class="prose">
-      <p>처음 2대는 무조건 On-Demand로, 그 위는 20%만 On-Demand이고 나머지 80%는 Spot으로 띄웁니다. 비율 계산이 소수면 On-Demand 쪽으로 올림합니다.</p>
-      <p>세 유형 모두 Graviton이라 같은 arm64 AMI를 씁니다. <strong>Capacity Rebalancing</strong>을 켜면 리밸런스 권고를 받은 Spot을 미리 교체합니다.</p>
+      <p><dfn title="mixed instances policy">혼합 인스턴스 정책</dfn>은 한 그룹 안에 여러 유형과 구매 방식을 섞습니다. 첫 강조 블록은 <code>api</code> 템플릿을 쓰되 유형을 세 가지로 바꿔 띄워도 된다는 뜻이라 Spot 풀이 넓어집니다. 셋 다 Graviton이라 같은 arm64 AMI를 씁니다.</p>
+      <p>둘째 블록은 처음 2대는 무조건 On-Demand, 그 위는 20%만 On-Demand이고 80%는 Spot이라는 뜻입니다(소수면 On-Demand 쪽으로 올림). Capacity Rebalancing을 켜면 리밸런스 권고를 받은 Spot을 미리 교체합니다.</p>
     </div>
   </div>
 </section>
@@ -892,60 +1152,77 @@ aws s3 cp s3://my-artifacts/api.jar \
   <h2>줄일 때는 AZ 균형부터 맞춘다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>ASG는 AZ 사이 대수를 고르게 유지하려 하고, 이 균형이 종료 정책보다 우선합니다. AZ 하나에 자리가 없어 실패하면 다른 AZ에 띄웠다가, 자리가 나면 <dfn title="AZ rebalancing">AZ 재조정</dfn>으로 새로 띄운 뒤 넘치는 쪽을 지웁니다.</p>
-      <p>정족수가 필요한 시스템처럼 불균형을 견딜 수 없다면 AZ 분산 전략을 "균형만(balanced only)"으로 바꿀 수 있습니다.</p>
+      <p>마지막으로, 줄일 때 어느 서버를 지울지 정하는 규칙이 <dfn title="termination policy">종료 정책</dfn>입니다. ASG는 AZ 사이 대수를 고르게 유지하려 하고, 이 균형이 종료 정책보다 우선합니다. AZ 하나에 자리가 없어 다른 AZ에 띄웠다면, 자리가 날 때 <strong>AZ 재조정</strong>으로 새로 띄운 뒤 넘치는 쪽을 지웁니다.</p>
+      <p>정족수가 필요한 시스템처럼 이 재조정 중의 일시적 불균형도 견딜 수 없다면 AZ 분산 전략을 "균형만(balanced only)"으로 바꿀 수 있습니다. 기본 종료 정책은 오른쪽 순서로 고릅니다.</p>
     </div>
     <ol class="steps">
       <li><b>AZ 선택</b><p>인스턴스가 가장 많은 AZ를 고릅니다.</p></li>
       <li><b>구매 옵션 맞춤</b><p>혼합 그룹이면 On-Demand와 Spot 비율에 맞는 쪽을 고릅니다.</p></li>
-      <li class="is-key"><b>오래된 설정</b><p>시작 구성, 다른 템플릿, 가장 오래된 버전 순으로 고릅니다.</p></li>
+      <li><b>오래된 설정</b><p>시작 템플릿의 옛 형식인 시작 구성, 다른 템플릿, 오래된 버전 순입니다.</p></li>
       <li><b>과금 시간</b><p>다음 과금 시간에 가장 가까운 것, 같으면 무작위입니다.</p></li>
     </ol>
   </div>
 </section>
 
-<!-- ===== 5부 ECR, ECS ================================================= -->
+<section class="slide">
+  <h2>서버 단위 배포는 무겁고 느리다</h2>
+  <div class="prose prose--cols">
+    <p>4부까지 오면 주문 API는 ASG 위에서 스스로 늘고 줄고, 고장 나면 교체되고, Spot이 사라지면 다른 풀에서 채워집니다. 서버 운영으로서는 거의 완성입니다. 그런데 배포 과정을 다시 보면 무거운 부분이 남습니다.</p>
+    <p>주문 API 코드 한 줄을 고쳐도 새 AMI를 굽고(수 분~수십 분), 시작 템플릿 버전을 올리고, 인스턴스 새로 고침으로 서버를 통째로 갈아 끼워야 합니다. 서버 한 대가 뜨는 데만 1~2분, 앱 기동까지 더하면 몇 분이 걸립니다.</p>
+    <p>또 서버 한 대에 앱 하나를 올리는 구조라서 작은 앱을 여러 개 운영하면 서버마다 남는 CPU와 메모리가 버려집니다. 결제 API, 알림 워커, 관리 도구를 각각 <code>large</code> 한 대씩 띄우면 셋 다 반쯤 놀고 있는 식입니다.</p>
+    <p>9장의 컨테이너가 이 두 문제를 풉니다. 이미지만 바꾸면 몇 초 만에 새 버전이 뜨고, 서버 한 대에 여러 앱을 빽빽하게 담을 수 있습니다. 5부는 그 컨테이너를 AWS에서 돌리는 법을 봅니다.</p>
+  </div>
+</section>
+
+<!-- ===== 5부 ECR과 ECS (core) ======================================== -->
 <section class="slide slide--divider" data-section="ECR과 ECS" data-depth="core">
   <p class="divider__no">5부</p>
-  <h2>컨테이너를 AWS에서 돌리는 세 갈래</h2>
-  <p class="lede">9장에서 만든 이미지를 어디에 두고, 누가 띄우고, 어떤 기계 위에서 돌릴지 정합니다. 저장소 ECR, AWS 자체 오케스트레이터 ECS, 서버를 숨기는 Fargate, 관리형 Kubernetes EKS 순서로 봅니다.</p>
+  <h2>컨테이너 이미지를 어디에 두고 누가 띄우나</h2>
+  <p class="lede">주문 API를 9장의 방식대로 컨테이너 이미지로 만들었다고 합시다. 이 부는 두 질문을 풉니다. 그 이미지를 AWS 안 어디에 안전하게 두는가, 그리고 이미지를 어느 서버에 몇 개 띄우고 죽으면 다시 띄우는 일을 누가 하는가.</p>
 </section>
 
 <section class="slide">
   <h2>ECR은 IAM으로 잠긴 이미지 저장소다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p><dfn title="Elastic Container Registry">ECR</dfn>은 리전마다 있는 프라이빗 레지스트리입니다. 리포지토리 하나에 이미지 하나(<code>api</code>, <code>worker</code>)를 두고, 푸시와 풀은 IAM 권한으로 통제합니다. 같은 리전의 ECS, EKS가 풀하면 Docker Hub 같은 외부 레지스트리의 횟수 제한을 피하고 전송도 빠릅니다.</p>
-    </div>
-    <div class="prose">
-      <p><dfn title="tag immutability">태그 불변성</dfn>을 켜면 이미 있는 태그로 다시 푸시할 때 <code>ImageTagAlreadyExistsException</code>이 납니다. <code>1.4.2</code>가 어제와 오늘 다른 이미지를 가리키는 사고를 막으므로, 11장에서 본 git SHA나 SemVer 태그 전략과 함께 켭니다.</p>
-      <p>Private 서브넷에서 풀하려면 NAT, 또는 ECR API, ECR DKR 인터페이스 엔드포인트와 S3 게이트웨이 엔드포인트가 필요합니다(13장). 이미지 레이어는 S3에서 내려오기 때문입니다.</p>
-    </div>
+  <div class="prose prose--cols">
+    <p>9장에서 봤듯이 이미지는 <strong>레지스트리</strong>(이미지를 올리고 내려받는 서버)에 두고, 그 안에서 앱별로 <strong>리포지토리</strong>를 나누고, 버전마다 <strong>태그</strong>를 붙입니다. 공개 레지스트리인 Docker Hub는 익명 다운로드 횟수에 제한이 있어서, 서버 수십 대가 한꺼번에 이미지를 받으면 제한에 걸려 배포가 멈출 수 있습니다.</p>
+    <p><dfn title="Elastic Container Registry">ECR</dfn>은 AWS가 리전마다 제공하는 프라이빗 레지스트리입니다. 리포지토리 하나에 이미지 하나(<code>api</code>, <code>worker</code>)를 두고, 올리기(push)와 받기(pull)를 12장의 IAM 권한으로 통제합니다. 같은 리전의 서버가 받으면 외부 제한이 없고 전송도 빠릅니다.</p>
+    <p>주의할 점은 Private 서브넷에서 받는 경로입니다. 주문 API 서버는 인터넷에 직접 나갈 수 없으므로 NAT를 거치거나, 13장의 VPC 엔드포인트를 세 개 둡니다. ECR API용과 Docker 프로토콜(DKR)용 인터페이스 엔드포인트, 그리고 S3 게이트웨이 엔드포인트입니다.</p>
+    <p>S3가 필요한 이유는 ECR이 이미지 레이어(9장에서 본, 이미지를 이루는 파일 변경분 묶음)의 실제 내용을 S3에 저장하기 때문입니다. ECR 엔드포인트만 두면 "어떤 레이어가 필요한지"는 알아내지만 레이어 자체를 받지 못해 실패합니다.</p>
   </div>
 </section>
 
 <section class="slide">
-  <h2>수명 주기 정책이 이미지 쓰레기를 치운다</h2>
+  <h2>태그 불변성은 같은 이름의 다른 이미지를 막는다</h2>
+  <div class="prose prose--cols">
+    <p>태그는 원래 다시 붙일 수 있는 이름표입니다. 어제 <code>api:1.4.2</code>로 올린 이미지가 있어도, 오늘 다른 내용을 같은 태그로 올리면 이름표가 새 이미지로 옮겨 갑니다. 그러면 "1.4.2를 배포했다"는 기록만으로는 어떤 코드가 돌았는지 알 수 없고, 어제 잘 되던 1.4.2로 롤백했는데 오늘의 버그가 그대로인 사고가 납니다.</p>
+    <p>ECR 리포지토리에 <dfn title="tag immutability">태그 불변성</dfn>을 켜면 이미 있는 태그로 다시 올릴 때 <code>ImageTagAlreadyExistsException</code>이 나며 거부됩니다. 한 태그는 영원히 한 이미지만 가리키게 됩니다.</p>
+    <p>그래서 11장에서 본 태그 전략, 즉 기계가 쓰는 git 커밋 SHA 태그와 사람이 읽는 SemVer 태그를 붙이는 방식과 함께 켭니다. 커밋마다 새 태그가 생기므로 불변성과 충돌하지 않습니다. 단, <code>latest</code>처럼 일부러 옮겨 다니게 만든 태그는 이 리포지토리에서 쓸 수 없게 되므로, 그런 태그가 필요하면 예외 필터를 둡니다.</p>
+    <p>커밋마다 새 이미지가 쌓인다는 것은 다른 문제를 부릅니다. 하루 수십 번 빌드하면 몇 달 만에 이미지가 수천 개가 되고, 저장 용량만큼 요금이 붙습니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>수명 주기 정책이 오래된 이미지를 치운다</h2>
   <div class="split split--wide-left">
-    <pre class="code" data-file="lifecycle-policy.json"><code>{ "rules": [
+    <pre class="code" data-file="수명 주기 정책 (JSON)"><code>{ "rules": [
   { "rulePriority": 1,
     "description": "untagged 7일 뒤 삭제",
-    "selection": {
+<span class="hl">    "selection": {
       "tagStatus": "untagged",
       "countType": "sinceImagePushed",
-      "countUnit": "days", "countNumber": 7 },
+      "countUnit": "days", "countNumber": 7 },</span>
     "action": { "type": "expire" } },
   { "rulePriority": 2,
     "description": "release 태그는 최근 30개만",
-    "selection": {
+<span class="hl">    "selection": {
       "tagStatus": "tagged",
       "tagPrefixList": ["release-"],
-<span class="hl">      "countType": "imageCountMoreThan",</span>
-<span class="hl">      "countNumber": 30 },</span>
+      "countType": "imageCountMoreThan",
+      "countNumber": 30 },</span>
     "action": { "type": "expire" } } ] }</code></pre>
     <div class="prose">
-      <p>CI가 커밋마다 이미지를 밀어 넣으면 저장 비용이 계속 쌓입니다. 수명 주기 정책은 나이나 개수 기준으로 오래된 이미지를 자동으로 지웁니다.</p>
-      <p>규칙은 우선순위 숫자가 작은 것부터 평가합니다. 운영 중인 태그까지 지우지 않도록, 롤백에 쓸 만큼의 개수는 남겨 둡니다.</p>
+      <p><dfn title="lifecycle policy">수명 주기 정책</dfn>은 나이나 개수 기준으로 오래된 이미지를 자동으로 지웁니다. 규칙 1은 태그가 하나도 없는 이미지(같은 태그를 새 이미지가 가져가 이름표를 잃은 것)를 올린 지 7일 뒤 지웁니다. 규칙 2는 <code>release-</code>로 시작하는 태그를 단 이미지를 최근 30개만 남깁니다.</p>
+      <p>규칙은 <code>rulePriority</code> 숫자가 작은 것부터 평가합니다. 롤백에 쓸 만큼의 개수는 반드시 남깁니다.</p>
     </div>
   </div>
 </section>
@@ -953,24 +1230,41 @@ aws s3 cp s3://my-artifacts/api.jar \
 <section class="slide">
   <h2>스캔, 복제, 캐시로 공급망을 다룬다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>이미지 안의 OS 패키지와 라이브러리에는 시간이 지나며 취약점이 발견됩니다. 공개된 취약점마다 붙는 번호가 <dfn title="Common Vulnerabilities and Exposures">CVE</dfn>입니다. ECR은 이를 찾는 스캔과, 이미지를 다른 곳에 옮기는 기능을 함께 줍니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">기능</th><th scope="col">동작</th><th scope="col">쓰는 이유</th></tr></thead>
       <tbody>
-        <tr><th scope="row">기본 스캔</th><td>푸시 시 또는 수동으로 OS 패키지 CVE 검사</td><td>무료로 시작하는 취약점 확인</td></tr>
-        <tr><th scope="row">향상된 스캔</th><td class="is-flow">Amazon Inspector가 OS와 언어 패키지를 지속 스캔</td><td>새 CVE가 나오면 기존 이미지도 재평가</td></tr>
-        <tr><th scope="row">복제</th><td>레지스트리 단위로 다른 리전, 계정에 자동 복사</td><td>멀티 리전 배포, DR</td></tr>
-        <tr><th scope="row">pull-through cache</th><td>Docker Hub, Quay, GHCR 등을 ECR에 캐시</td><td>외부 한도 회피, 외부 장애 격리</td></tr>
+        <tr><th scope="row">기본 스캔</th><td>푸시 때 또는 수동으로 OS 패키지 CVE 검사</td><td>무료로 시작하는 확인</td></tr>
+        <tr><th scope="row">향상된 스캔</th><td>Amazon Inspector가 OS와 언어 패키지를 지속 스캔</td><td class="is-flow">새 CVE에 기존 이미지 재평가</td></tr>
+        <tr><th scope="row">복제</th><td>다른 리전, 계정으로 자동 복사</td><td>멀티 리전 배포, DR</td></tr>
+        <tr><th scope="row">pull-through cache</th><td>Docker Hub, GHCR 등을 ECR에 캐시</td><td>외부 한도 회피, 장애 격리</td></tr>
       </tbody>
     </table>
     <div class="prose">
-      <p>pull-through cache는 <code>계정.dkr.ecr.리전.amazonaws.com/docker-hub/library/nginx</code>처럼 ECR 주소로 풀하면 처음 한 번 원본에서 가져와 저장하고, 이후에는 ECR에서 줍니다. Docker Hub처럼 인증이 필요한 원본은 자격 증명을 Secrets Manager에 둡니다.</p>
+      <p>pull-through cache는 <code>계정.dkr.ecr.리전.amazonaws.com/docker-hub/library/nginx</code>처럼 ECR 주소로 받으면, 처음 한 번만 원본에서 가져와 저장하고 이후에는 ECR에서 줍니다. Docker Hub가 느리거나 멈춰도 이미 받은 이미지는 계속 받을 수 있습니다.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <h2>ECS는 태스크 정의를 서비스가 유지한다</h2>
+  <h2>ECS는 AWS가 만든 컨테이너 오케스트레이터다</h2>
+  <div class="prose prose--cols">
+    <p>이미지를 둘 곳이 생겼으니, 이제 누가 띄울지입니다. 10장에서 봤듯이 컨테이너를 여러 서버에 나눠 배치하고, 정해진 개수를 유지하고, 죽으면 다시 띄우고, 새 버전으로 차례로 바꾸는 일을 하는 시스템을 오케스트레이터라고 합니다. Kubernetes가 대표적입니다.</p>
+    <p><dfn title="Elastic Container Service">ECS</dfn>는 AWS가 직접 만든 오케스트레이터입니다. Kubernetes보다 개념이 적고, 컨트롤 플레인(배치를 결정하는 두뇌 부분)을 AWS가 완전히 숨겨서 운영하며 따로 요금도 받지 않습니다. 대신 AWS에서만 돕니다.</p>
+    <p>ECS의 개념은 네 개입니다. <dfn title="cluster">클러스터</dfn>는 태스크가 돌 자리의 논리적 묶음(예: <code>prod</code>)입니다. <dfn title="task definition">태스크 정의</dfn>는 "어떤 이미지를 어떤 CPU, 메모리, 포트, 역할로 띄울지" 적은 명세입니다.</p>
+    <p><dfn title="task">태스크</dfn>는 그 명세로 실제 띄운 실행 단위로, 컨테이너 하나 또는 함께 사는 여러 개입니다. <dfn title="service">서비스</dfn>는 "이 태스크 정의로 태스크를 늘 N개 유지하라"는 장기 실행 설정입니다. 다음 그림에서 넷의 관계를 봅니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>서비스가 태스크 정의로 태스크를 유지한다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>서비스는 희망 개수만큼 태스크를 유지하고, 죽은 태스크를 다시 띄우고, 태스크를 ALB 대상 그룹에 등록합니다. 태스크가 실제로 돌 자리(EC2 서버 또는 Fargate)는 뒤의 용량 공급자가 정합니다.</p>
+      <p>10장의 Kubernetes에 대응시키면 태스크 정의는 Pod 명세, 태스크는 Pod, 서비스는 Deployment에 해당합니다. 4부의 ASG가 서버 대수를 지켰다면, ECS 서비스는 그 위에서 컨테이너 개수를 지킵니다.</p>
+    </div>
     <figure class="figure">
       <svg class="dg" viewBox="0 0 1400 400" role="img" aria-labelledby="f53t">
         <title id="f53t">태스크 정의가 서비스에 들어가고, 서비스는 클러스터 안에서 태스크 세 개를 유지한다. 태스크는 EC2나 Fargate 용량 위에서 돌고, ALB 대상 그룹이 태스크로 트래픽을 보낸다.</title>
@@ -1005,29 +1299,30 @@ aws s3 cp s3://my-artifacts/api.jar \
         <path class="dg-arrow dg-arrow--flow" d="M618,336 H692"/>
       </svg>
     </figure>
-    <div class="prose">
-      <p><dfn title="task definition">태스크 정의</dfn>는 10장의 Pod 명세에, <dfn title="task">태스크</dfn>는 Pod에, <dfn title="service">서비스</dfn>는 Deployment에 해당합니다. 서비스는 희망 개수만큼 태스크를 유지하고, 죽은 태스크를 다시 띄우고, 대상 그룹에 등록합니다.</p>
-    </div>
   </div>
 </section>
 
 <section class="slide">
   <h2>태스크 정의는 컨테이너 묶음의 명세다</h2>
-  <div class="slide__body">
-    <pre class="code" data-file="taskdef.json(일부)"><code>{ "family": "api",
-<span class="hl">  "networkMode": "awsvpc",</span>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="태스크 정의 (JSON, 줄임)"><code>{ "family": "api",
+  "networkMode": "awsvpc",
   "requiresCompatibilities": ["FARGATE"],
-  "cpu": "1024", "memory": "2048",
-  "executionRoleArn": "arn:aws:iam::111122223333:role/apiExec",
-  "taskRoleArn": "arn:aws:iam::111122223333:role/apiTask",
+<span class="hl">  "cpu": "1024", "memory": "2048",</span>
+  "executionRoleArn": "arn:…:role/apiExec",
+  "taskRoleArn": "arn:…:role/apiTask",
   "containerDefinitions": [{ "name": "app",
-    "image": "111122223333.dkr.ecr.us-east-1.amazonaws.com/api:1.4",
+    "image": "1111….dkr.ecr.ap-northeast-2
+              .amazonaws.com/api:1.4",
     "portMappings": [{ "containerPort": 8080 }],
-    "logConfiguration": { "logDriver": "awslogs", "options": {
-      "awslogs-group": "/ecs/api", "awslogs-region": "us-east-1",
+    "logConfiguration": {
+      "logDriver": "awslogs", "options": {
+      "awslogs-group": "/ecs/api",
+      "awslogs-region": "ap-northeast-2",
       "awslogs-stream-prefix": "app" } } }] }</code></pre>
     <div class="prose">
-      <p>태스크 수준 <code>cpu</code>, <code>memory</code>는 태스크 전체의 크기이고(1024 = 1 vCPU), 컨테이너마다 다시 나눌 수 있습니다. 정의는 수정할 수 없고 바꿀 때마다 <code>api:7</code>, <code>api:8</code>처럼 새 리비전이 생깁니다.</p>
+      <p><code>family</code>는 이름, <code>networkMode</code>는 다음 슬라이드의 네트워크 방식, 강조 줄은 태스크 전체 크기(1024 = 1 vCPU, 메모리 2048MiB)입니다. 두 역할은 뒤에서 따로 봅니다. 컨테이너 정의에는 ECR 이미지, 8080 포트, 로그를 CloudWatch Logs로 보내는 설정이 있습니다.</p>
+      <p>정의는 수정할 수 없고, 바꿀 때마다 <code>api:7</code>, <code>api:8</code>처럼 새 리비전이 생깁니다. 배포는 서비스가 가리키는 리비전을 바꾸는 일입니다.</p>
     </div>
   </div>
 </section>
@@ -1035,64 +1330,70 @@ aws s3 cp s3://my-artifacts/api.jar \
 <section class="slide">
   <h2>awsvpc는 태스크마다 ENI를 준다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>태스크 정의의 <code>networkMode</code>는 태스크가 네트워크에 어떻게 붙을지 정합니다. 9장의 Docker 브리지처럼 서버 안에 가상 네트워크를 만들 수도 있고, 13장의 ENI를 태스크마다 직접 꽂을 수도 있습니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">네트워크 모드</th><th scope="col">동작</th><th scope="col">특징</th></tr></thead>
       <tbody>
-        <tr><th scope="row">awsvpc</th><td class="is-flow">태스크마다 자기 ENI와 사설 IP</td><td>태스크 단위 보안 그룹, Fargate 필수</td></tr>
-        <tr><th scope="row">bridge</th><td>호스트 안 Docker 브리지(9장)</td><td>동적 포트 매핑, EC2 리눅스 기본값</td></tr>
-        <tr><th scope="row">host</th><td>호스트 네트워크를 그대로 사용</td><td class="is-key">같은 포트 태스크는 호스트당 하나</td></tr>
+        <tr><th scope="row">awsvpc</th><td>태스크마다 자기 ENI와 사설 IP</td><td class="is-flow">태스크 단위 보안 그룹, Fargate 필수</td></tr>
+        <tr><th scope="row">bridge</th><td>서버 안 Docker 브리지(9장)</td><td>동적 포트 매핑, EC2 리눅스 기본값</td></tr>
+        <tr><th scope="row">host</th><td>서버 네트워크를 그대로 사용</td><td>같은 포트 태스크는 서버당 하나</td></tr>
         <tr><th scope="row">none</th><td>외부 네트워크 없음</td><td>격리된 배치 작업</td></tr>
       </tbody>
     </table>
-    <div class="prose">
-      <p>AWS 권장값은 awsvpc입니다. 태스크가 VPC의 일급 시민이 되어 보안 그룹, Flow Logs, ALB의 <code>ip</code> 대상 유형을 태스크 단위로 씁니다. 대가는 ENI 수 한도입니다. EC2 인스턴스는 붙일 수 있는 ENI 개수가 정해져 있어서, <code>c5.large</code>는 태스크를 2개만 올릴 수 있습니다. <code>awsvpcTrunking</code> 계정 설정을 켜면 트렁크 ENI로 한도가 12개(태스크 10개)까지 늘어납니다.</p>
-    </div>
+    <p class="small">AWS 권장값은 awsvpc입니다. 그 이유와 대가를 다음 슬라이드에서 봅니다.</p>
   </div>
 </section>
 
 <section class="slide">
-  <h2>실행 역할은 ECS가, 작업 역할은 앱이 쓴다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p>12장에서 역할을 주는 원리를 봤습니다. ECS에는 역할이 두 개 붙고 쓰는 주체가 다릅니다.</p>
-      <p><strong>태스크 실행 역할</strong>은 태스크를 띄우는 ECS 에이전트가 씁니다. ECR에서 이미지를 풀하고, awslogs로 로그를 보내고, Secrets Manager나 Parameter Store의 비밀을 환경 변수로 주입할 때 필요합니다.</p>
-    </div>
-    <div class="prose">
-      <p><strong>태스크 역할</strong>은 컨테이너 안의 앱 코드가 씁니다. 앱이 S3에 쓰거나 SQS를 읽을 권한은 여기에 줍니다. SDK는 컨테이너 자격 증명 엔드포인트에서 자동으로 임시 키를 받습니다.</p>
-      <p>두 역할을 섞으면 <mark>앱에 필요 없는 ECR, 비밀 읽기 권한까지 앱에 주게</mark> 됩니다. 이미지 풀 실패는 실행 역할을, 앱의 AccessDenied는 태스크 역할을 먼저 봅니다.</p>
-    </div>
+  <h2>awsvpc의 대가는 서버당 ENI 수 한도다</h2>
+  <div class="prose prose--cols">
+    <p>awsvpc에서는 태스크가 VPC의 일급 시민이 됩니다. 태스크마다 자기 사설 IP와 ENI가 있으니 13장의 보안 그룹을 태스크 단위로 붙이고, VPC Flow Logs에도 태스크 IP가 그대로 찍히고, ALB가 태스크 IP로 직접 보낼 수 있습니다. 주문 API 태스크만 DB에 접근하게 하는 규칙을 서버가 아닌 태스크 단위로 쓸 수 있다는 뜻입니다.</p>
+    <p>대가는 ENI 개수입니다. EC2 인스턴스는 유형마다 꽂을 수 있는 ENI 수가 정해져 있고, 그중 하나는 서버 자신이 씁니다. 예를 들어 <code>c5.large</code>는 ENI 3개라서 awsvpc 태스크를 2개만 올릴 수 있습니다. CPU와 메모리가 남아도 태스크가 더 안 들어갑니다.</p>
+    <p>이를 푸는 것이 <dfn title="ENI trunking">ENI 트렁킹</dfn>입니다. 계정 설정 <code>awsvpcTrunking</code>을 켜면 서버에 트렁크 ENI라는 특수 ENI를 하나 꽂고, 그 위에 태스크용 가상 ENI를 여러 개 얹습니다. <code>c5.large</code>라면 한도가 12개(태스크 10개)까지 늘어납니다.</p>
+    <p>이 한도는 태스크를 EC2 서버에 올릴 때의 이야기이고, 6부의 Fargate는 태스크마다 별도 자리를 주므로 해당하지 않습니다. 태스크 정의에 있던 두 역할로 넘어갑니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>실행 역할은 ECS가, 태스크 역할은 앱이 쓴다</h2>
+  <div class="prose prose--cols">
+    <p>12장에서 ECS가 역할 두 개를 나눠 쓴다는 것을 원리로 봤습니다. 여기서는 주문 API 태스크 정의에 실제로 무엇을 넣는지로 다시 짚습니다. 핵심은 역할마다 <strong>쓰는 주체가 다르다</strong>는 점입니다.</p>
+    <p><dfn title="task execution role">태스크 실행 역할</dfn>(<code>apiExec</code>)은 태스크를 띄우는 ECS 에이전트가 씁니다. ECR에서 이미지를 받고, awslogs로 로그를 보내고, Secrets Manager나 Parameter Store(둘 다 AWS의 비밀·설정 저장소, 16장)의 비밀을 꺼내 환경 변수로 넣는 일입니다. 모두 앱이 시작되기 <strong>전</strong>에 일어납니다.</p>
+    <p><dfn title="task role">태스크 역할</dfn>(<code>apiTask</code>)은 컨테이너 안의 앱 코드가 씁니다. 주문 API가 S3에 영수증을 쓰거나 메시지 큐 서비스 SQS(17장)를 읽을 권한은 여기에 줍니다. 컨테이너 안의 SDK는 ECS가 마련한 자격 증명 엔드포인트에서 임시 키를 자동으로 받습니다. 1부의 IMDS와 같은 역할을 하는 컨테이너용 창구입니다.</p>
+    <p>두 역할을 하나로 합치면 앱에 필요 없는 ECR, 비밀 읽기 권한까지 앱 코드에 주게 됩니다. 장애 때는 거꾸로 씁니다. 이미지 받기 실패는 실행 역할을, 앱의 <code>AccessDenied</code>는 태스크 역할을 먼저 봅니다.</p>
   </div>
 </section>
 
 <section class="slide">
   <h2>태스크가 설 자리는 용량 공급자가 정한다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>태스크는 어떤 서버 위에서 돌까요? 태스크에 자리를 대는 출처를 <dfn title="capacity provider">용량 공급자</dfn>라 합니다. 내 EC2(4부의 ASG), AWS가 고르고 패치해 주는 EC2(ECS Managed Instances), 서버가 아예 보이지 않는 Fargate(6부에서 자세히)가 있습니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">용량</th><th scope="col">누가 서버를 관리</th><th scope="col">장점</th><th scope="col">대가</th></tr></thead>
       <tbody>
-        <tr><th scope="row">EC2(ASG 용량 공급자)</th><td>나: AMI, 패치, 크기</td><td>GPU, 데몬, 단가 최저</td><td class="is-key">노드 운영 부담</td></tr>
-        <tr><th scope="row">ECS Managed Instances</th><td>AWS가 EC2를 골라 패치</td><td>EC2 유형 선택, 관리 부담 적음</td><td>노드 세부 제어는 줄어듦</td></tr>
-        <tr><th scope="row">Fargate</th><td class="is-flow">AWS, 서버가 보이지 않음</td><td>태스크 단위 과금, 격리</td><td>vCPU당 단가 높음, 제약</td></tr>
+        <tr><th scope="row">EC2(ASG)</th><td>나: AMI, 패치, 크기</td><td>GPU, 데몬, 단가 최저</td><td class="is-key">서버 운영 부담</td></tr>
+        <tr><th scope="row">ECS Managed Instances</th><td>AWS가 EC2를 골라 패치</td><td>EC2 유형 선택 가능</td><td>서버 세부 제어 줄어듦</td></tr>
+        <tr><th scope="row">Fargate</th><td>AWS, 서버가 안 보임</td><td class="is-flow">태스크 단위 과금, 격리</td><td>vCPU당 단가 높음, 제약</td></tr>
         <tr><th scope="row">Fargate Spot</th><td>AWS</td><td>Fargate보다 쌈</td><td>2분 경고 후 회수</td></tr>
       </tbody>
     </table>
     <div class="prose">
-      <p><dfn title="capacity provider">용량 공급자</dfn> 전략으로 "base 2개는 Fargate, 그 위는 Fargate와 Fargate Spot을 1:3"처럼 섞습니다. EC2 공급자의 <strong>관리형 스케일링</strong>을 켜면 띄울 태스크가 자리를 못 찾을 때 ECS가 ASG 희망 용량을 대신 늘립니다.</p>
+      <p>용량 공급자 전략으로 "base 2개는 Fargate, 그 위는 Fargate와 Fargate Spot을 1:3"처럼 섞습니다. 3부의 "바닥은 안정, 위는 Spot"을 컨테이너에 옮긴 것입니다.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
   <h2>롤링 배포는 두 퍼센트로 속도를 정한다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p><code>minimumHealthyPercent</code>는 배포 중 유지할 정상 태스크의 하한(올림), <code>maximumPercent</code>는 동시에 떠 있을 수 있는 태스크의 상한(내림)입니다. 10장 Deployment의 maxUnavailable, maxSurge와 같은 생각입니다.</p>
-      <p>희망 개수 4일 때 100/200이면 새 태스크 4개를 먼저 띄우고 옛것을 내립니다. 50/100이면 2개를 먼저 내리고 그 자리에 새것을 띄웁니다.</p>
-    </div>
-    <div class="prose">
-      <p>앞쪽은 빠르고 안전하지만 순간적으로 용량이 두 배 필요합니다. 뒤쪽은 추가 용량 없이 가지만 배포 중 처리 능력이 절반으로 줄어듭니다.</p>
-      <p>함정: 희망 개수 2에 최소 75%면 2개 모두 유지해야 해서 하나도 내릴 수 없고, 최대가 100%라 하나도 더 띄울 수 없으면 <mark>배포가 영원히 멈춥니다</mark>. 둘 중 하나는 반드시 여유를 둡니다.</p>
-    </div>
+  <div class="prose prose--cols">
+    <p>주문 API 1.5를 배포하려고 서비스의 태스크 정의를 <code>api:8</code>로 바꾸면, 서비스는 옛 태스크를 새 태스크로 차례로 바꿉니다. 그 속도를 두 숫자가 정합니다. <code>minimumHealthyPercent</code>는 배포 중 유지할 정상 태스크의 하한(올림), <code>maximumPercent</code>는 동시에 떠 있을 수 있는 태스크의 상한(내림)입니다. 10장 Deployment의 maxUnavailable, maxSurge와 같은 생각을 퍼센트로 적은 것입니다.</p>
+    <p>희망 개수 4일 때 100/200이면 새 태스크 4개를 먼저 띄우고 옛것을 내립니다. 50/100이면 옛것 2개를 먼저 내리고 그 자리에 새것을 띄웁니다.</p>
+    <p>앞쪽은 빠르고 처리 능력이 줄지 않지만 순간적으로 자리가 두 배 필요합니다. EC2 용량이라면 그만큼 서버에 빈자리가 있어야 합니다. 뒤쪽은 추가 자리 없이 가지만 배포 중 처리 능력이 절반으로 줄어듭니다.</p>
+    <p>함정이 하나 있습니다. 희망 개수 2에 최소 75%면 올림으로 2개 모두 유지해야 해서 하나도 내릴 수 없고, 최대가 100%라 하나도 더 띄울 수 없으면 배포가 영원히 멈춥니다. 둘 중 하나는 반드시 여유를 둡니다.</p>
   </div>
 </section>
 
@@ -1104,103 +1405,113 @@ aws s3 cp s3://my-artifacts/api.jar \
   --task-definition api:8 \
   --deployment-configuration \
 "minimumHealthyPercent=100,maximumPercent=200,\
-<span class="hl">deploymentCircuitBreaker={enable=true,\</span>
-<span class="hl">rollback=true}"</span></code></pre>
+<span class="hl">deploymentCircuitBreaker={enable=true,\
+rollback=true}"</span></code></pre>
     <div class="prose">
-      <p>새 태스크가 RUNNING에 오르지 못하거나 헬스 체크로 교체되는 횟수가 임계값을 넘으면 배포를 실패로 판정하고, 롤백을 켰다면 마지막 완료 배포로 되돌립니다.</p>
-      <p>기본 임계값은 희망 개수의 50%이고 최소 3, 최대 200으로 묶입니다. 서킷 브레이커가 없으면 이미지 오타 하나에 ECS가 <mark>태스크를 끝없이 다시 띄웁니다</mark>.</p>
+      <p>새 이미지 태그에 오타가 있으면 새 태스크는 뜨자마자 죽고, 서비스는 희망 개수를 맞추려 끝없이 다시 띄웁니다. 전기 회로의 차단기처럼 실패가 쌓이면 흐름을 끊는 장치가 <dfn title="deployment circuit breaker">배포 서킷 브레이커</dfn>입니다.</p>
+      <p>새 태스크가 실행 상태에 오르지 못하거나 헬스 체크로 교체되는 횟수가 임계값을 넘으면 배포를 실패로 판정하고, 롤백을 켰다면 마지막으로 성공한 배포로 되돌립니다. 임계값은 희망 개수의 50%이고 최소 3, 최대 200으로 묶입니다.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
   <h2>Blue/Green은 ECS가 직접 하게 됐다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p>롤링 대신 새 버전(green) 전체를 옆에 띄우고 트래픽을 한 번에 또는 단계적으로 넘기는 방식입니다. 예전에는 CodeDeploy와 연동해야 했지만, 지금은 ECS 서비스 배포 유형으로 <strong>blue/green, linear, canary</strong>를 바로 고를 수 있습니다.</p>
-      <p>ALB 리스너 규칙의 대상 그룹 두 개를 바꿔 끼우는 방식으로 동작합니다.</p>
-    </div>
-    <div class="prose">
-      <p>테스트 리스너로 green에 먼저 요청을 보내 검증하고, 단계마다 Lambda로 확인하는 <strong>수명 주기 후크</strong>를 걸 수 있습니다. 전환 뒤 두 버전을 함께 띄워 두는 <strong>bake 시간</strong> 동안 문제가 생기면 즉시 blue로 돌아갑니다.</p>
-      <p>배포 전략의 비교와 선택 기준은 11장, AWS 배포 도구 전체 흐름은 18장에서 다룹니다.</p>
-    </div>
+  <div class="prose prose--cols">
+    <p>롤링은 옛 버전과 새 버전이 섞여 도는 시간이 있습니다. 11장의 Blue/Green은 새 버전(green) 전체를 옆에 띄워 검증한 뒤 트래픽을 넘기는 방식이라 섞이는 시간이 없고 롤백이 빠릅니다. 예전 ECS에서는 이를 위해 AWS의 배포 서비스 CodeDeploy를 따로 연동해야 했지만, 지금은 ECS 서비스의 배포 방식으로 blue/green, linear(일정 비율씩), canary(소량 먼저)를 바로 고를 수 있습니다.</p>
+    <p>동작은 13장의 ALB 위에서 이루어집니다. 리스너 규칙에 대상 그룹 두 개(blue, green)를 두고, 가리키는 쪽을 바꿔 끼웁니다.</p>
+    <p>전환 전에는 테스트 리스너(운영과 다른 포트)로 green에만 요청을 보내 검증하고, 단계마다 Lambda로 확인하는 수명 주기 후크를 걸 수 있습니다. 전환 뒤 두 버전을 함께 띄워 두는 bake 시간 동안 문제가 생기면 즉시 blue로 돌아갑니다.</p>
+    <p>배포 전략의 비교와 선택 기준은 11장, AWS 배포 도구 전체의 흐름은 18장에서 다룹니다. 배포를 봤으니 이제 트래픽이 태스크에 어떻게 들어오는지 봅니다.</p>
   </div>
 </section>
 
 <section class="slide">
-  <h2>밖은 ALB로, 안은 Service Connect로</h2>
+  <h2>밖은 ALB로, 안은 Service Connect로 잇는다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>외부 트래픽은 서비스에 ALB 대상 그룹을 연결해서 받습니다. awsvpc 모드면 대상 유형을 <code>ip</code>로 하고 태스크 IP가 바로 등록됩니다. bridge 모드에서는 호스트 포트를 0으로 두는 <strong>동적 포트 매핑</strong>으로 한 인스턴스에 같은 컨테이너를 여러 개 띄웁니다.</p>
-      <p>배포 중 내려가는 태스크는 대상 그룹 등록 해제 지연(13장)만큼 연결을 비운 뒤 SIGTERM을 받습니다.</p>
+      <p>외부 트래픽은 서비스에 ALB 대상 그룹을 연결해서 받습니다. awsvpc 모드면 대상 유형을 <code>ip</code>로 하고 태스크 IP가 바로 등록됩니다. bridge 모드라면 호스트 포트를 0으로 두어 Docker가 빈 포트를 고르게 하는 <strong>동적 포트 매핑</strong>으로, 서버 한 대에 같은 컨테이너를 여러 개 띄우고 각각을 다른 포트로 등록합니다.</p>
+      <p>배포나 축소로 내려가는 태스크는 13장의 등록 해제 지연만큼 ALB가 새 요청을 보내지 않고 진행 중인 요청을 마치게 한 뒤, 9장에서 본 <code>SIGTERM</code>(정상 종료 요청 신호)을 받습니다.</p>
     </div>
-    <div class="prose">
-      <p>서비스끼리의 내부 호출은 <dfn title="Service Connect">Service Connect</dfn>를 씁니다. 태스크마다 Envoy 기반 프록시를 사이드카로 넣고 <code>http://orders:8080</code> 같은 짧은 이름으로 부르게 해 주며, 재시도와 요청 지표도 붙여 줍니다.</p>
-      <p>이름 등록부는 <dfn title="AWS Cloud Map">Cloud Map</dfn> 네임스페이스입니다. 프록시 없이 DNS 이름만 필요하면 Cloud Map 서비스 디스커버리를 직접 씁니다.</p>
+    <div class="slide__body">
+      <div class="prose">
+        <p>주문 API가 재고 서비스를 부르는 것처럼 서비스끼리의 내부 호출에는 <dfn title="ECS Service Connect">Service Connect</dfn>를 씁니다. 태스크마다 Envoy(널리 쓰이는 오픈소스 프록시)를 10장에서 본 사이드카로 넣어, <code>http://inventory:8080</code> 같은 짧은 이름으로 부르게 하고 재시도와 요청 지표도 붙여 줍니다.</p>
+        <p>이름과 주소의 대응을 기록하는 등록부는 AWS Cloud Map의 네임스페이스입니다. 프록시 없이 DNS 이름만 필요하면 Cloud Map 서비스 디스커버리를 직접 씁니다.</p>
+      </div>
+      <table class="compare">
+        <thead><tr><th scope="col">호출 방향</th><th scope="col">연결 장치</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">고객 → 주문 API</th><td>ALB 대상 그룹(awsvpc는 <code>ip</code>)</td></tr>
+          <tr><th scope="row">주문 API → 재고</th><td class="is-flow">Service Connect(Envoy + Cloud Map)</td></tr>
+        </tbody>
+      </table>
     </div>
   </div>
 </section>
 
 <section class="slide">
   <h2>로그와 오토스케일링도 서비스에 붙인다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p>컨테이너의 stdout은 <code>awslogs</code> 드라이버로 CloudWatch Logs에 바로 보냅니다. 여러 목적지(OpenSearch, S3, 외부 SaaS)로 거르고 나눠 보내려면 Fluent Bit 사이드카를 쓰는 <dfn title="FireLens">FireLens</dfn>를 씁니다.</p>
-      <p>로그 전달 <code>mode</code>가 <code>blocking</code>이면 CloudWatch 쪽이 막힐 때 앱의 stdout 쓰기까지 멈춥니다. 지금 기본값인 <code>non-blocking</code>은 버퍼(<code>max-buffer-size</code>)가 넘치면 로그를 버리는 대신 앱을 지킵니다.</p>
-    </div>
-    <div class="prose">
-      <p>태스크 개수 조절은 Application Auto Scaling이 맡습니다. 정책은 EC2와 같은 대상 추적, 단계, 예약, 예측입니다. 평균 CPU(<code>ECSServiceAverageCPUUtilization</code>)나 대상당 ALB 요청 수가 흔한 지표입니다.</p>
-      <p>태스크가 늘어 EC2 자리가 모자라면 용량 공급자가 ASG를 늘리는 <mark>두 단계 스케일링</mark>이 일어납니다. 배포 중에는 축소가 자동으로 멈춥니다.</p>
-    </div>
+  <div class="prose prose--cols">
+    <p>컨테이너는 로그를 파일이 아니라 표준 출력(stdout)에 쓰는 것이 관례입니다(9장). 태스크 정의에서 본 <code>awslogs</code> 드라이버는 이 출력을 CloudWatch Logs로 바로 보냅니다. 로그를 걸러 여러 목적지(로그 검색 엔진 OpenSearch, S3, 외부 로그 서비스)로 나눠 보내려면, 로그 수집기 Fluent Bit을 사이드카로 붙이는 ECS 기능인 FireLens를 씁니다.</p>
+    <p>로그 전달 방식(<code>mode</code>)에는 주의할 점이 있습니다. blocking이면 CloudWatch 쪽이 막힐 때 앱의 stdout 쓰기까지 멈춰 주문 처리가 멈춥니다. 지금 기본값인 non-blocking은 버퍼(<code>max-buffer-size</code>)가 넘치면 로그를 버리는 대신 앱을 지킵니다.</p>
+    <p>태스크 개수 조절은 EC2 밖의 자원(ECS 태스크, DynamoDB 용량 등)을 늘리고 줄이는 AWS 공용 장치인 Application Auto Scaling이 맡습니다. 정책은 4부와 같은 대상 추적, 단계, 예약, 예측이고, 평균 CPU(<code>ECSServiceAverageCPUUtilization</code>)나 대상당 ALB 요청 수가 흔한 지표입니다.</p>
+    <p>태스크가 늘어 EC2 자리가 모자라면 용량 공급자가 ASG를 늘리는 두 단계 스케일링이 일어납니다. 그러면 이 두 단계 중 아래 단계, 서버를 아예 신경 쓰지 않을 수는 없을까요?</p>
   </div>
 </section>
 
-<!-- ===== Fargate, EKS ================================================= -->
+<!-- ===== 6부 Fargate와 EKS (core) ==================================== -->
 <section class="slide slide--divider" data-section="Fargate와 EKS" data-depth="core">
-  <p class="divider__no">5부(계속)</p>
+  <p class="divider__no">6부</p>
   <h2>서버를 숨기거나, Kubernetes를 빌리거나</h2>
-  <p class="lede">Fargate는 노드를 아예 보이지 않게 하고, EKS는 10장의 Kubernetes 컨트롤 플레인을 AWS가 대신 운영합니다. Kubernetes 자체의 원리는 10장에 두고, 여기서는 AWS가 붙이는 부분만 봅니다.</p>
+  <p class="lede">5부 끝에서 "서버 관리까지 넘길 수는 없나"를 물었습니다. 이 부는 두 방향을 봅니다. 서버를 아예 보이지 않게 하면 무엇을 얻고 잃는가, 그리고 이미 Kubernetes를 쓰는 팀이 AWS에서 클러스터를 빌리면 AWS가 무엇을 맡고 무엇을 붙이는가.</p>
 </section>
 
 <section class="slide">
   <h2>Fargate는 태스크마다 VM을 따로 준다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p><dfn title="AWS Fargate">Fargate</dfn>에서는 태스크(또는 EKS Pod) 하나가 전용 경량 VM에서 돕니다. 노드 AMI 패치, 용량 계획, 빈 자리 맞추기(빈 패킹)가 사라지고, 태스크에 할당한 vCPU와 메모리만큼 초 단위로 과금됩니다.</p>
-      <p>격리 단위가 VM이라 다른 고객이나 다른 태스크와 커널을 공유하지 않습니다.</p>
-    </div>
-    <div class="prose">
-      <p>대신 할 수 없는 일이 생깁니다. <mark>privileged 컨테이너, 호스트 네트워크, DaemonSet</mark>이 안 되고, EKS의 Fargate Pod에는 EBS를 붙일 수 없으며 GPU도 없습니다. 노드 에이전트형 도구는 사이드카로 바꿔야 합니다.</p>
-      <p>임시 스토리지는 기본 20GiB이고 <code>ephemeralStorage</code>로 200GiB까지 늘립니다. 네트워크 모드는 awsvpc만 됩니다.</p>
-    </div>
+  <div class="prose prose--cols">
+    <p><dfn title="AWS Fargate">Fargate</dfn>는 ECS 태스크나 EKS Pod를 돌릴 서버를 AWS가 대신 준비하는 방식입니다. 태스크 하나가 그 태스크만을 위한 경량 VM에서 돌고, 우리 눈에는 서버가 보이지 않습니다. 태스크 정의에 적은 vCPU와 메모리만큼 초 단위로 과금됩니다.</p>
+    <p>그래서 서버 운영에서 하던 일이 사라집니다. 서버 AMI 패치, 용량 계획(서버를 몇 대 미리 둘지), 그리고 <strong>빈 패킹</strong>, 즉 크기가 제각각인 태스크를 서버들에 빈틈없이 채워 넣는 계산입니다. 4부의 ASG와 5부의 ENI 한도 걱정도 없습니다.</p>
+    <p>격리 단위가 VM이라는 점은 보안에서도 의미가 있습니다. 같은 서버 위 컨테이너들은 9장에서 봤듯이 커널 하나를 나눠 쓰지만, Fargate 태스크는 다른 고객이나 다른 태스크와 커널을 공유하지 않습니다.</p>
+    <p>대신 서버를 전제로 한 기능은 쓸 수 없습니다. 호스트 권한을 갖는 privileged 컨테이너, 호스트 네트워크, 노드마다 하나씩 띄우는 10장의 DaemonSet이 안 되고, EKS의 Fargate Pod에는 EBS를 붙일 수 없으며 GPU도 없습니다. 노드에 깔던 모니터링 에이전트는 사이드카로 바꿔야 합니다. 임시 디스크는 기본 20GiB이고 200GiB까지 늘리며, 네트워크 모드는 awsvpc만 됩니다.</p>
   </div>
 </section>
 
 <section class="slide">
   <h2>Fargate 크기는 정해진 조합에서 고른다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>EC2처럼 유형을 고르지 않는 대신, vCPU와 메모리를 정해진 조합에서 고릅니다. 메모리는 vCPU의 2~8배 범위라서 vCPU 0.25에 메모리 4GB 같은 조합은 없습니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">vCPU</th><th scope="col">고를 수 있는 메모리</th><th scope="col">비고</th></tr></thead>
       <tbody>
-        <tr><th scope="row">0.25</th><td class="num">0.5, 1, 2 GB</td><td>리눅스</td></tr>
-        <tr><th scope="row">0.5</th><td class="num">1~4 GB</td><td>리눅스</td></tr>
-        <tr><th scope="row">1</th><td class="num">2~8 GB</td><td>리눅스, 윈도</td></tr>
-        <tr><th scope="row">2 / 4</th><td class="num">4~16 GB / 8~30 GB(1GB 단위)</td><td>리눅스, 윈도</td></tr>
-        <tr><th scope="row">8 / 16</th><td class="num">16~60 GB / 32~120 GB</td><td>플랫폼 1.4.0 이상</td></tr>
+        <tr><th scope="row">0.25</th><td>0.5, 1, 2 GB</td><td>리눅스</td></tr>
+        <tr><th scope="row">0.5</th><td>1~4 GB</td><td>리눅스</td></tr>
+        <tr><th scope="row">1</th><td>2~8 GB</td><td>리눅스, 윈도</td></tr>
+        <tr><th scope="row">2 / 4</th><td>4~16 GB / 8~30 GB(1GB 단위)</td><td>리눅스, 윈도</td></tr>
+        <tr><th scope="row">8 / 16</th><td>16~60 GB / 32~120 GB</td><td>플랫폼 1.4.0 이상</td></tr>
       </tbody>
     </table>
     <div class="prose">
-      <p>메모리를 vCPU의 2~8배 범위에서 고르는 구조라서, vCPU 0.25에 메모리 4GB 같은 조합은 없습니다. 32 vCPU(60, 120, 244GB)까지 있습니다. Fargate Spot은 회수 2분 전에 컨테이너로 SIGTERM을 보내므로, 앱이 SIGTERM을 받아 정리하고 <code>stopTimeout</code>(기본 30초, 최대 120초) 안에 끝나야 합니다.</p>
+      <p>32 vCPU(60, 120, 244GB)까지 있습니다. 주문 API 태스크(1 vCPU, 2GB)는 셋째 줄에 해당합니다. Fargate Spot은 회수 2분 전에 컨테이너로 <code>SIGTERM</code>을 보내므로, 앱이 이를 받아 정리하고 <code>stopTimeout</code>(기본 30초, 최대 120초) 안에 끝나야 합니다.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <h2>EKS는 컨트롤 플레인을 AWS VPC에 둔다</h2>
+  <h2>EKS는 Kubernetes의 두뇌를 AWS가 운영한다</h2>
+  <div class="prose prose--cols">
+    <p>이제 두 번째 방향입니다. 팀이 이미 10장의 Kubernetes에 익숙하고, Helm 차트(쿠버네티스 앱 설치 묶음)와 운영 도구를 갖고 있다면 ECS로 옮기기보다 Kubernetes를 그대로 쓰고 싶습니다. 문제는 Kubernetes 자체를 운영하는 일이 무겁다는 점입니다.</p>
+    <p>10장에서 봤듯이 클러스터는 두 부분으로 나뉩니다. <strong>컨트롤 플레인</strong>은 모든 요청을 받는 kube-apiserver, 클러스터 상태를 저장하는 etcd, 스케줄러와 컨트롤러로 이루어진 두뇌이고, <strong>데이터 플레인</strong>은 Pod가 실제로 도는 워커 노드들입니다. 컨트롤 플레인을 직접 운영하면 etcd 백업, 인증서 갱신, 여러 AZ에 걸친 고가용성, 버전 업그레이드를 모두 해야 합니다.</p>
+    <p><dfn title="Elastic Kubernetes Service">EKS</dfn>는 이 컨트롤 플레인을 AWS 소유 VPC에서 여러 AZ에 걸쳐 대신 운영합니다. 우리는 API 엔드포인트 주소만 받아 <code>kubectl</code>로 쓰고, 패치, 백업, 확장은 AWS가 합니다.</p>
+    <p>요금은 클러스터당 시간당 0.10달러(한 달 약 73달러)이고, 워커 노드, 로드 밸런서 등은 따로 냅니다. 두 VPC가 어떻게 이어지는지 그림으로 봅니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>컨트롤 플레인은 AWS VPC, 노드는 내 VPC</h2>
   <div class="split split--center">
     <div class="prose">
-      <p><dfn title="Elastic Kubernetes Service">EKS</dfn>는 10장의 kube-apiserver와 etcd를 AWS 소유 VPC에서 여러 AZ에 걸쳐 운영합니다. 우리는 API 엔드포인트만 받고, 컨트롤 플레인의 패치, 백업, 확장은 AWS가 합니다.</p>
-      <p>요금은 클러스터당 시간당 <mark>0.10달러</mark>이고, 노드와 로드 밸런서 등은 따로 냅니다. 워커 노드는 내 VPC에 있고, EKS가 내 서브넷에 만든 ENI로 API 서버와 통신합니다.</p>
+      <p>워커 노드는 13장의 내 VPC 서브넷에 있고, EKS가 내 서브넷에 만든 ENI를 통해 AWS 쪽 API 서버와 통신합니다. 노드의 kubelet이 API 서버에 상태를 보고하고 할 일을 받는 길이 이 ENI입니다.</p>
+      <p>컨트롤 플레인은 AWS의 몫이지만, 데이터 플레인을 누가 관리할지는 고르기에 따라 달라집니다. 그림의 세 가지 노드 형태가 그 선택지이고, 다음 슬라이드에서 하나씩 봅니다.</p>
     </div>
     <figure class="figure">
       <svg class="dg" viewBox="0 0 760 450" role="img" aria-labelledby="f63t">
@@ -1231,43 +1542,47 @@ aws s3 cp s3://my-artifacts/api.jar \
 </section>
 
 <section class="slide">
-  <h2>데이터 플레인은 다섯 가지 중에 고른다</h2>
+  <h2>노드를 만드는 방법은 다섯 가지다</h2>
+  <div class="prose prose--cols">
+    <p><dfn title="managed node group">관리형 노드 그룹</dfn>은 EKS가 노드용 ASG(4부)를 만들어 관리하는 방식입니다. 노드 AMI 버전을 올리면 EKS가 노드를 하나씩 비우고(drain, 10장) 교체해 줍니다. 무난한 기본값입니다. <strong>자체 관리 노드</strong>는 ASG와 노드 부팅 스크립트를 직접 만드는 방식으로, 특수 AMI가 필요할 때 씁니다.</p>
+    <p><strong>Fargate</strong>는 앞에서 본 그대로 Pod마다 VM을 줍니다. 어느 네임스페이스의 Pod를 Fargate로 보낼지 적은 Fargate 프로파일만 정의하면 됩니다.</p>
+    <p><strong>Karpenter</strong>는 10장에서 Cluster Autoscaler와 비교한 노드 오토스케일러입니다. ASG 없이 Pending Pod를 보고 맞는 EC2를 직접 만듭니다. 다음 슬라이드에서 자세히 봅니다.</p>
+    <p><dfn>EKS Auto Mode</dfn>는 Karpenter 방식의 노드 관리 자체를 AWS가 운영하는 가장 새로운 선택지입니다. 이 다섯 가지는 한 클러스터 안에서 섞어 쓸 수 있습니다. 시스템 Pod는 관리형 노드 그룹에, 들쭉날쭉한 워크로드는 Karpenter에 두는 식입니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>데이터 플레인은 관리 부담과 제어권의 교환이다</h2>
   <div class="slide__body">
     <table class="compare">
       <thead><tr><th scope="col">방식</th><th scope="col">노드를 누가 만드나</th><th scope="col">내가 할 일</th><th scope="col">어울리는 곳</th></tr></thead>
       <tbody>
-        <tr><th scope="row">관리형 노드 그룹</th><td>EKS가 ASG를 만들어 관리</td><td>AMI 버전 올리기, 크기 선택</td><td>무난한 기본값</td></tr>
+        <tr><th scope="row">관리형 노드 그룹</th><td>EKS가 ASG를 만들어 관리</td><td>AMI 버전 올리기, 크기 선택</td><td class="is-flow">무난한 기본값</td></tr>
         <tr><th scope="row">자체 관리 노드</th><td>내가 ASG와 부트스트랩</td><td class="is-key">전부(드레인, 업그레이드)</td><td>특수 AMI, 세밀한 제어</td></tr>
         <tr><th scope="row">Fargate</th><td>AWS, Pod마다 VM</td><td>프로파일만 정의</td><td>작은 클러스터, 격리</td></tr>
         <tr><th scope="row">Karpenter</th><td>Pod 요구에 맞춰 EC2 직접 생성</td><td>Karpenter 설치, NodePool</td><td>다양한 유형, Spot 활용</td></tr>
-        <tr><th scope="row">EKS Auto Mode</th><td class="is-flow">AWS가 Karpenter 방식으로 관리</td><td>NodePool 정도만</td><td>운영 인력이 적은 팀</td></tr>
+        <tr><th scope="row">EKS Auto Mode</th><td>AWS가 Karpenter 방식으로</td><td>NodePool 정도만</td><td>운영 인력이 적은 팀</td></tr>
       </tbody>
     </table>
-    <div class="prose">
-      <p>한 클러스터 안에서 섞어 쓸 수 있습니다. 시스템 Pod는 관리형 노드 그룹에, 들쭉날쭉한 워크로드는 Karpenter에 두는 식입니다.</p>
-    </div>
+    <p class="small">위에서 아래로 갈수록 대체로 할 일이 줄고, AWS에 맡기는 범위가 늘어납니다(자체 관리 노드는 예외적으로 가장 무겁습니다).</p>
   </div>
 </section>
 
 <section class="slide">
   <h2>Karpenter는 그룹 없이 노드를 바로 만든다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p>10장의 Cluster Autoscaler는 미리 만든 노드 그룹(ASG)의 개수만 조절합니다. 그래서 유형마다 그룹을 따로 만들어야 했습니다. <dfn title="Karpenter">Karpenter</dfn>는 Pending Pod의 요청량과 제약을 읽고, 거기에 맞는 인스턴스 유형을 골라 EC2 Fleet API로 <mark>바로 띄웁니다</mark>.</p>
-      <p>허용할 유형, 아키텍처, Spot 여부는 <code>NodePool</code>에, 서브넷, 보안 그룹, AMI는 <code>EC2NodeClass</code>에 적습니다.</p>
-    </div>
-    <div class="prose">
-      <p><strong>통합(consolidation)</strong>은 노드가 비거나 더 싼 조합으로 옮길 수 있으면 Pod를 옮기고 노드를 지웁니다. PodDisruptionBudget(10장)을 지키며 진행합니다.</p>
-      <p><dfn title="EKS Auto Mode">EKS Auto Mode</dfn>는 이 Karpenter 방식을 AWS가 운영하고, VPC CNI, 로드 밸런서 컨트롤러, EBS CSI까지 내장해 관리합니다. 노드는 불변 AMI에 최대 21일 수명이라 저절로 교체되며, EC2 요금 위에 관리 요금이 붙습니다.</p>
-    </div>
+  <div class="prose prose--cols">
+    <p>10장의 Cluster Autoscaler는 미리 만든 노드 그룹(ASG)의 대수만 조절합니다. 그래서 큰 메모리용, GPU용, Spot용처럼 유형마다 그룹을 따로 만들어 둬야 했습니다. Karpenter는 자리가 없어 Pending인 Pod들의 CPU·메모리 요청량과 제약(아키텍처, AZ 등)을 읽고, 그것을 담을 가장 알맞은 인스턴스 유형을 골라 여러 유형을 한 번에 요청하는 EC2 Fleet API로 바로 띄웁니다.</p>
+    <p>허용할 유형, 아키텍처, Spot 여부는 <code>NodePool</code>에, 서브넷, 보안 그룹, AMI는 <code>EC2NodeClass</code>에 적습니다. 1부의 시작 템플릿과 3부의 구매 방식을 쿠버네티스 리소스로 적는 셈입니다.</p>
+    <p><dfn title="consolidation">통합</dfn>은 노드가 비었거나, Pod들을 더 싼 조합으로 옮길 수 있으면 Pod를 옮기고 노드를 지우는 기능입니다. 10장의 PodDisruptionBudget(동시에 빠져도 되는 Pod 수의 한도)을 지키며 진행합니다.</p>
+    <p>EKS Auto Mode는 이 Karpenter를 AWS가 운영하고, 뒤에서 볼 VPC CNI, 로드 밸런서 컨트롤러, EBS CSI까지 내장해 관리합니다. 노드는 바꿀 수 없는 AMI로 최대 21일 수명이라 저절로 교체되고, EC2 요금 위에 관리 요금이 붙습니다.</p>
   </div>
 </section>
 
 <section class="slide">
-  <h2>VPC CNI는 Pod에 VPC IP를 준다</h2>
+  <h2>VPC CNI는 Pod에 진짜 VPC IP를 준다</h2>
   <div class="split split--center">
     <div class="prose">
-      <p>10장에서 Pod마다 IP가 있다고 했습니다. EKS의 기본 CNI인 <dfn title="Amazon VPC CNI">VPC CNI</dfn>는 그 IP를 오버레이가 아닌 <strong>VPC 서브넷의 실제 사설 IP</strong>로 줍니다. 노드에 ENI를 붙이고 각 ENI의 보조 IP를 Pod에 나눠 줍니다.</p>
+      <p>10장에서 Pod마다 IP가 있고 이를 CNI 플러그인이 나눠 준다고 했습니다. 많은 CNI는 노드 사이에 가상 네트워크를 하나 더 덮어(오버레이) 그 안의 IP를 줍니다. EKS 기본 CNI인 <dfn title="Amazon VPC CNI">VPC CNI</dfn>는 오버레이 없이 <strong>VPC 서브넷의 실제 사설 IP</strong>를 줍니다. 노드에 ENI를 더 꽂고, 각 ENI의 보조 IP를 Pod에 나눠 줍니다.</p>
       <p>그래서 Pod가 VPC 안에서 바로 라우팅되고 보안 그룹과 Flow Logs가 그대로 통하지만, <mark>Pod 수만큼 서브넷 IP를 씁니다</mark>.</p>
     </div>
     <figure class="figure">
@@ -1299,16 +1614,22 @@ aws s3 cp s3://my-artifacts/api.jar \
 </section>
 
 <section class="slide">
+  <h2>노드당 Pod 수는 ENI 슬롯이 정한다</h2>
+  <div class="prose prose--cols">
+    <p>그림의 계산을 풀어 보겠습니다. <code>m5.large</code>는 ENI를 3개까지 꽂고 ENI마다 IP 10개를 가질 수 있습니다. 각 ENI의 첫 IP는 ENI 자신의 주소라 Pod에 줄 수 없으므로 ENI당 9개, 세 개면 27개입니다.</p>
+    <p>여기에 2를 더하는 이유는 노드 네트워크를 그대로 쓰는(<code>hostNetwork</code>) 시스템 Pod 때문입니다. kube-proxy와 VPC CNI 자신은 Pod IP를 받지 않으므로 IP 한도와 무관하게 더 들어갑니다. 그래서 최대 Pod 수는 3 × (10 − 1) + 2 = 29입니다.</p>
+    <p>이 숫자는 CPU와 메모리와 무관하다는 점이 중요합니다. 주문 API Pod가 작아서 <code>m5.large</code>에 40개는 들어갈 자원이 있어도, 30번째 Pod는 IP가 없어 뜨지 못합니다. 작은 인스턴스일수록 CPU보다 IP가 먼저 바닥납니다.</p>
+    <p>또 노드마다 Pod 수만큼, 그리고 미리 잡아 두는 여분 IP만큼 서브넷 주소를 씁니다. 노드 수십 대 규모가 되면 13장에서 설계한 서브넷이 IP 고갈에 빠집니다. 두 한도를 함께 푸는 기능이 다음의 프리픽스 위임입니다.</p>
+  </div>
+</section>
+
+<section class="slide">
   <h2>프리픽스 위임으로 노드당 Pod를 늘린다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p><dfn title="prefix delegation">프리픽스 위임</dfn>은 ENI 슬롯 하나에 IP 하나 대신 <code>/28</code> 프리픽스(IP 16개)를 붙입니다. 같은 ENI 수로 훨씬 많은 Pod IP를 얻고, IP를 하나씩 받느라 EC2 API를 부르는 횟수도 줄어 Pod 시작이 빨라집니다.</p>
-      <p>관리형 노드 그룹은 그래도 maxPods를 vCPU 30개 미만이면 110, 이상이면 250으로 묶습니다.</p>
-    </div>
-    <div class="prose">
-      <p>대가는 서브넷 조각화입니다. 연속된 /28 블록이 있어야 해서, IP가 흩어져 남은 서브넷에서는 "IP는 남는데 프리픽스를 못 받는" 일이 생깁니다. 노드 전용 서브넷을 크게 잡는 것이 안전합니다.</p>
-      <p>VPC 대역 자체가 모자라면 <code>100.64.0.0/10</code> 같은 보조 CIDR를 VPC에 붙이고 <strong>사용자 지정 네트워킹</strong>으로 Pod만 그 대역에서 IP를 받게 합니다. IPv6 클러스터도 근본 해법입니다.</p>
-    </div>
+  <div class="prose prose--cols">
+    <p><dfn title="prefix delegation">프리픽스 위임</dfn>은 ENI의 IP 슬롯 하나에 IP 하나 대신 <code>/28</code> 프리픽스, 즉 연속된 IP 16개 묶음(2장의 CIDR 표기)을 붙입니다. 같은 ENI 수로 훨씬 많은 Pod IP를 얻고, IP를 하나씩 받느라 EC2 API를 부르는 횟수도 줄어 Pod 시작이 빨라집니다.</p>
+    <p>그래도 무한정 늘지는 않습니다. 노드 하나의 kubelet이 감당할 Pod 수를 고려해, 관리형 노드 그룹은 <code>maxPods</code>를 vCPU 30개 미만이면 110, 이상이면 250으로 묶습니다.</p>
+    <p>대가는 서브넷 조각화입니다. <code>/28</code>은 연속된 16개 블록이어야 해서, IP가 여기저기 흩어져 남은 서브넷에서는 "IP는 남는데 프리픽스를 못 받는" 일이 생깁니다. 그래서 노드 전용 서브넷을 넉넉하게 따로 잡는 것이 안전합니다.</p>
+    <p>VPC 대역 자체가 모자라면, <code>100.64.0.0/10</code>처럼 사내망과 겹치지 않는 보조 CIDR 대역을 VPC에 붙이고, <strong>사용자 지정 네트워킹</strong>으로 Pod만 그 대역에서 IP를 받게 합니다. IPv4 대신 주소가 사실상 무한한 IPv6 클러스터로 만드는 것도 근본 해법입니다.</p>
   </div>
 </section>
 
@@ -1324,7 +1645,7 @@ metadata:
       internet-facing
 <span class="hl">    alb.ingress.kubernetes.io/target-type: ip</span>
 spec:
-  ingressClassName: alb
+<span class="hl">  ingressClassName: alb</span>
   rules:
     - http:
         paths:
@@ -1333,8 +1654,8 @@ spec:
             backend: { service: { name: api,
                 port: { number: 80 } } }</code></pre>
     <div class="prose">
-      <p><dfn title="AWS Load Balancer Controller">AWS Load Balancer Controller</dfn>는 Ingress를 보고 ALB를, <code>type: LoadBalancer</code> Service를 보고 NLB를 만듭니다. 10장의 Ingress 개념이 13장의 ALB가 되는 연결 고리입니다.</p>
-      <p><code>ip</code> 대상은 Pod IP로 바로 보내 NodePort를 거치는 한 홉이 없고, Fargate Pod에서는 이것만 됩니다.</p>
+      <p>10장의 Ingress는 "이 경로는 이 Service로"라는 규칙일 뿐, 실제 로드 밸런서는 컨트롤러가 만듭니다. EKS에서 그 일을 하는 것이 <dfn>AWS Load Balancer Controller</dfn>입니다. <code>ingressClassName: alb</code>인 Ingress를 보고 13장의 ALB를, <code>type: LoadBalancer</code> Service를 보고 NLB를 만듭니다.</p>
+      <p><code>target-type: ip</code>는 Pod IP로 바로 보내라는 뜻입니다. VPC CNI 덕분에 Pod IP가 진짜 VPC IP라서 가능하며, NodePort를 거치는 한 홉이 없어지고 Fargate Pod에서는 이것만 됩니다.</p>
     </div>
   </div>
 </section>
@@ -1343,36 +1664,42 @@ spec:
   <h2>스토리지와 AWS 권한도 드라이버로 붙인다</h2>
   <div class="split split--wide-left">
     <pre class="code" data-file="터미널"><code><span class="c"># Pod Identity: SA와 IAM 역할을 EKS API로 연결</span>
-<span class="prompt">$ </span>aws eks create-pod-identity-association \
+<span class="hl"><span class="prompt">$ </span>aws eks create-pod-identity-association \
   --cluster-name prod --namespace payments \
   --service-account payments-api \
   --role-arn arn:aws:iam::111122223333:\
-role/payments-api
+role/payments-api</span>
 <span class="c"># IRSA라면 ServiceAccount에 어노테이션</span>
 <span class="c"># eks.amazonaws.com/role-arn: arn:aws:iam::…</span></code></pre>
     <div class="prose">
-      <p>10장의 PV와 StorageClass는 CSI 드라이버로 AWS에 닿습니다. <strong>EBS CSI</strong>는 Pod가 뜬 AZ에 볼륨을 만들어 붙이고(한 AZ에 묶임), <strong>EFS CSI</strong>는 여러 AZ에서 함께 쓰는 볼륨을 줍니다.</p>
-      <p>Pod의 AWS 권한은 12장의 원리대로 Pod Identity나 IRSA로 줍니다. Pod Identity는 OIDC 공급자 없이 노드의 에이전트가 자격 증명을 나눠 줍니다.</p>
+      <p>10장의 PV와 StorageClass는 CSI 드라이버를 통해 AWS 디스크를 만듭니다. EBS CSI는 Pod가 뜬 AZ에 EBS 볼륨을 만들어 붙이고(2부대로 AZ에 묶임), EFS CSI는 여러 AZ에서 함께 쓰는 볼륨을 줍니다.</p>
+      <p>Pod의 AWS 권한은 12장의 원리대로 IRSA나 Pod Identity로 줍니다. 위 명령은 <code>payments</code> 네임스페이스의 서비스 계정을 IAM 역할에 연결합니다. Pod Identity는 IRSA와 달리 클러스터마다 OIDC 공급자를 IAM에 등록할 필요가 없습니다.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
   <h2>EKS는 버전을 미루면 비용이 여섯 배다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p>Kubernetes 마이너 버전은 EKS 출시 후 <strong>14개월 표준 지원</strong>, 이어서 <strong>12개월 연장 지원</strong>을 받습니다. 연장 지원 기간에는 클러스터 요금이 시간당 0.10달러에서 <mark>0.60달러</mark>로 오르고, 연장 지원도 끝나면 AWS가 자동으로 업그레이드합니다.</p>
-      <p>업그레이드는 컨트롤 플레인 먼저, 노드와 애드온 나중 순서로 한 마이너씩 올립니다.</p>
-    </div>
-    <div class="prose">
-      <p><dfn title="EKS add-on">EKS 애드온</dfn>은 VPC CNI, CoreDNS, kube-proxy, EBS/EFS CSI, Pod Identity Agent 같은 핵심 구성 요소를 AWS가 검증한 버전으로 설치, 갱신해 줍니다. 클러스터 버전을 올릴 때 애드온 버전 호환표도 함께 확인합니다.</p>
-      <p>누가 kubectl을 쓸 수 있는지는 <dfn title="access entries">액세스 항목</dfn>으로 IAM 역할과 Kubernetes 권한을 EKS API에서 연결합니다. 예전의 <code>aws-auth</code> ConfigMap은 잘못 고치면 클러스터 접근을 잃어 레거시가 됐습니다.</p>
-    </div>
+  <div class="prose prose--cols">
+    <p>EKS는 컨트롤 플레인을 맡아 주지만 버전을 올리는 시점은 우리가 정합니다. Kubernetes는 1년에 세 번 정도 마이너 버전(1.33, 1.34…)을 내고, EKS는 각 버전을 출시 후 14개월 동안 표준 지원, 이어서 12개월 동안 연장 지원합니다.</p>
+    <p>연장 지원 기간에는 클러스터 요금이 시간당 0.10달러에서 0.60달러로 오르고, 연장 지원도 끝나면 AWS가 자동으로 업그레이드합니다. 준비 없이 강제로 올라가는 것을 피하려면 정해진 주기로 직접 올려야 합니다.</p>
+    <p>업그레이드는 컨트롤 플레인 먼저, 그다음 노드와 애드온 순서로, 한 번에 한 마이너 버전씩 올립니다. Kubernetes는 컨트롤 플레인보다 노드가 조금 뒤처지는 것은 허용하지만 앞서는 것은 허용하지 않기 때문입니다.</p>
+    <p>여기서 <dfn title="EKS add-on">애드온</dfn>은 VPC CNI, CoreDNS(클러스터 안 DNS, 10장), kube-proxy, EBS/EFS CSI, Pod Identity 에이전트처럼 클러스터가 돌기 위한 핵심 구성 요소를, AWS가 검증한 버전으로 설치하고 갱신해 주는 장치입니다. 클러스터 버전을 올릴 때 애드온의 호환 버전표도 함께 확인합니다.</p>
   </div>
 </section>
 
 <section class="slide">
-  <h2>ECS는 단순함, EKS는 생태계를 산다</h2>
+  <h2>클러스터 접근은 액세스 항목으로 준다</h2>
+  <div class="prose prose--cols">
+    <p>마지막으로 누가 <code>kubectl</code>로 이 클러스터를 다룰 수 있는지입니다. EKS에서 사람이나 CI는 12장의 IAM 역할로 인증합니다. 남는 문제는 "이 IAM 역할에 Kubernetes 안에서 어떤 권한을 줄 것인가"라는 연결입니다.</p>
+    <p>예전에는 클러스터 안의 <code>aws-auth</code>라는 ConfigMap(Kubernetes에서 설정 값을 담아 두는 오브젝트)에 이 연결을 적었습니다. 문제는 이 ConfigMap을 잘못 고치면 관리자 자신도 클러스터에 들어갈 수 없게 되고, 그 상태를 되돌릴 길이 마땅치 않았다는 점입니다.</p>
+    <p>지금은 <dfn title="access entry">액세스 항목</dfn>으로 IAM 역할과 Kubernetes 권한의 연결을 EKS API에서 관리합니다. 클러스터 밖의 AWS API로 관리하므로 클러스터 안 설정을 망가뜨려도 접근을 잃지 않고, IaC로 다루기도 쉽습니다. <code>aws-auth</code>는 이제 레거시입니다.</p>
+    <p>이로써 ECS와 EKS를 모두 봤습니다. 주문 API를 둘 중 어디에 올려야 할까요? 다음 슬라이드에서 기준을 나란히 놓습니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>ECS는 단순함을, EKS는 생태계를 산다</h2>
   <div class="slide__body">
     <table class="compare">
       <thead><tr><th scope="col">기준</th><th scope="col">ECS</th><th scope="col">EKS</th></tr></thead>
@@ -1380,12 +1707,12 @@ role/payments-api
         <tr><th scope="row">학습, 운영 부담</th><td class="is-flow">AWS 콘솔, API 개념만</td><td>Kubernetes 전체 + AWS 연동</td></tr>
         <tr><th scope="row">컨트롤 플레인 요금</th><td>없음</td><td>클러스터당 시간당 0.10달러</td></tr>
         <tr><th scope="row">이식성, 생태계</th><td>AWS 전용</td><td class="is-flow">Helm, Operator, 멀티 클라우드</td></tr>
-        <tr><th scope="row">업그레이드 주기</th><td>없음(서비스가 알아서)</td><td class="is-key">1년에 2~3번 버전 업</td></tr>
+        <tr><th scope="row">업그레이드 주기</th><td>없음(AWS가 알아서)</td><td class="is-key">1년에 세 번 정도 버전 업</td></tr>
         <tr><th scope="row">AWS 통합</th><td>IAM, ALB, 로그가 기본 내장</td><td>컨트롤러, 애드온으로 연결</td></tr>
       </tbody>
     </table>
     <div class="prose">
-      <p>팀에 Kubernetes 경험이 없고 AWS에만 배포한다면 ECS가 대개 빠른 길입니다. 이미 Kubernetes 도구와 인력이 있거나, 여러 환경에서 같은 매니페스트를 써야 하면 EKS가 맞습니다.</p>
+      <p>팀에 Kubernetes 경험이 없고 AWS에만 배포한다면 ECS가 대개 빠른 길입니다. 이미 Kubernetes 도구와 인력이 있거나, 여러 환경에서 같은 매니페스트를 써야 하면 EKS가 맞습니다. Operator는 Kubernetes 위에서 DB 같은 복잡한 앱의 운영을 자동화하는 컨트롤러입니다.</p>
     </div>
   </div>
 </section>
@@ -1393,27 +1720,28 @@ role/payments-api
 <section class="slide">
   <h2>더 단순한 길도 있다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>ECS조차 무겁다면 그 위를 한 번 더 감싼 서비스들이 있습니다. 표의 VPS는 고정 사양의 가상 서버를 월정액으로 빌리는 상품이고, WAS는 Tomcat처럼 Java 웹 앱을 올려 돌리는 서버입니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">서비스</th><th scope="col">무엇을 대신 해 주나</th><th scope="col">어울리는 곳</th></tr></thead>
       <tbody>
-        <tr><th scope="row">ECS Express Mode</th><td>이미지 하나로 Fargate, ALB, 오토스케일링 구성</td><td>웹 API를 빠르게 띄울 때</td></tr>
+        <tr><th scope="row">ECS Express Mode</th><td>이미지 하나로 Fargate, ALB, 오토스케일링 구성</td><td class="is-flow">웹 API를 빠르게 띄울 때</td></tr>
         <tr><th scope="row">App Runner</th><td>소스나 이미지로 웹 앱 배포</td><td class="is-key">신규 고객 받지 않음</td></tr>
         <tr><th scope="row">Elastic Beanstalk</th><td>EC2, ASG, ELB를 묶어 앱 배포</td><td>전통적인 WAS 앱</td></tr>
         <tr><th scope="row">Lightsail</th><td>고정 월 요금 VPS</td><td>개인 프로젝트, 작은 사이트</td></tr>
         <tr><th scope="row">AWS Batch</th><td>작업 큐에 맞춰 EC2/Fargate 확보</td><td>대량 배치, 과학 계산</td></tr>
       </tbody>
     </table>
-    <div class="prose">
-      <p>App Runner는 신규 고객을 더 받지 않고, AWS는 대신 ECS Express Mode를 권합니다. 모두 결국 앞에서 본 EC2, ECS, Fargate를 감싼 것이라 문제가 생기면 그 층을 보게 됩니다.</p>
-    </div>
+    <p class="small">App Runner 대신 AWS는 ECS Express Mode를 권합니다. 모두 결국 앞에서 본 EC2, ECS, Fargate를 감싼 것이라, 문제가 생기면 그 아래층을 보게 됩니다.</p>
   </div>
 </section>
 
-<!-- ===== 6부 실무 ===================================================== -->
+<!-- ===== 7부 운영 (practice) ========================================== -->
 <section class="slide slide--divider" data-section="운영에서 부딪히는 문제" data-depth="practice">
-  <p class="divider__no">6부</p>
+  <p class="divider__no">7부</p>
   <h2>설정은 맞는데 운영에서 터지는 지점</h2>
-  <p class="lede">크기를 고르고, 아키텍처를 바꾸고, Spot을 굴리고, 컨테이너가 안 뜰 때 원인을 좁히는 법을 봅니다.</p>
+  <p class="lede">1~6부로 주문 API를 EC2, ECS, EKS 어디에든 올릴 수 있게 됐습니다. 이 부는 운영하며 실제로 부딪히는 질문을 다룹니다. 크기는 어떻게 깎나, Graviton과 Spot은 어떻게 안전하게 들이나, 서버와 컨테이너가 이유 없이 느려지거나 안 뜨면 어디부터 보나.</p>
   <div class="depth-shift" aria-label="깊이 전환: 원리에서 실무로">
     <span class="depth-shift__step"><span class="depth" data-depth="core"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>원리</span>
     <span class="depth-shift__line" aria-hidden="true"></span>
@@ -1426,61 +1754,58 @@ role/payments-api
   <h2>크기는 지표로 깎는다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>처음 고른 인스턴스는 대개 넉넉합니다. <dfn title="AWS Compute Optimizer">Compute Optimizer</dfn>는 최근 14일(유료 옵션으로 93일)의 CloudWatch 지표를 보고 EC2, ASG, EBS, Lambda, Fargate 위 ECS 서비스에 대해 과다, 부족, 적정 판정과 추천 유형을 줍니다.</p>
-      <p>단, 기본 EC2 지표에는 <mark>메모리가 없습니다</mark>. CloudWatch 에이전트로 메모리를 보내야 추천이 메모리까지 반영합니다.</p>
+      <p>처음 고른 인스턴스는 불안해서 대개 넉넉합니다. <dfn title="AWS Compute Optimizer">Compute Optimizer</dfn>는 최근 14일(유료 옵션으로 93일)의 CloudWatch 지표를 보고 EC2, ASG, EBS, Lambda, Fargate 위 ECS 서비스에 대해 과다·부족·적정 판정과 추천 유형을 주는 서비스입니다.</p>
+      <p>단, 기본 EC2 지표에는 메모리가 없습니다. 하이퍼바이저 밖에서는 게스트 OS 안의 메모리 사용량을 볼 수 없기 때문입니다. CloudWatch 에이전트를 서버에 깔아 메모리를 보내야 추천이 메모리까지 반영합니다.</p>
     </div>
     <ol class="steps">
       <li><b>지표 수집</b><p>CPU, 메모리, 네트워크, EBS의 p99와 최대값을 2주 이상 봅니다.</p></li>
-      <li><b>병목 자원 찾기</b><p>여유가 큰 자원에 맞춰 패밀리나 크기를 내립니다.</p></li>
-      <li class="is-key"><b>여유 남기기</b><p>AZ 하나를 잃어도 버틸 만큼(18장) 남깁니다.</p></li>
-      <li><b>약정은 마지막</b><p>크기를 맞춘 뒤에 Savings Plans를 삽니다.</p></li>
+      <li><b>병목 자원 찾기</b><p>여유가 큰 자원에 맞춰 패밀리나 크기를 내립니다(1부의 비율).</p></li>
+      <li><b>여유 남기기</b><p>AZ 하나를 잃어도 버틸 만큼(18장) 남깁니다.</p></li>
+      <li class="is-key"><b>약정은 마지막</b><p>크기를 맞춘 뒤에 Savings Plans를 삽니다. 순서가 바뀌면 큰 크기에 약정이 묶입니다.</p></li>
     </ol>
   </div>
 </section>
 
 <section class="slide">
   <h2>Graviton 전환은 빌드에서 시작한다</h2>
-  <div class="slide__body">
+  <div class="split split--even">
     <ol class="steps">
-      <li><b>의존성 점검</b><p>네이티브 라이브러리, 에이전트, 사이드카 이미지의 arm64 빌드 여부를 확인합니다.</p></li>
+      <li><b>의존성 점검</b><p>JNI 라이브러리, 에이전트, 사이드카 이미지의 arm64 빌드 여부를 확인합니다.</p></li>
       <li><b>멀티 아키텍처 이미지</b><p><code>docker buildx --platform linux/amd64,linux/arm64</code>로 한 태그에 둘 다 넣습니다.</p></li>
-      <li><b>성능 비교</b><p>같은 부하로 지연 p99, 처리량, GC를 비교합니다. JDK는 최신 LTS가 유리합니다.</p></li>
-      <li class="is-key"><b>일부만 먼저</b><p>노드 그룹이나 ASG 일부를 Graviton으로 바꿔 canary로 봅니다.</p></li>
+      <li><b>성능 비교</b><p>같은 부하로 p99 지연, 처리량, GC를 비교합니다. JDK는 최신 LTS가 유리합니다.</p></li>
+      <li><b>일부만 먼저</b><p>노드 그룹이나 ASG 일부만 Graviton으로 바꿔 지켜봅니다(11장의 canary).</p></li>
       <li><b>약정 정리</b><p>EC2 Instance SP는 패밀리에 묶이니, 전환 전후는 Compute SP가 안전합니다.</p></li>
     </ol>
     <aside class="callout callout--key">
       <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>exec format error는 아키텍처 불일치입니다</p>
-      <p>amd64 전용 이미지를 Graviton 노드가 풀하면 컨테이너가 이 오류로 바로 죽습니다. 이미지 매니페스트의 플랫폼부터 확인합니다.</p>
+      <p>amd64 전용 이미지를 Graviton 노드가 받아 실행하면 컨테이너가 이 오류로 바로 죽습니다. 1부에서 본 명령어 집합 차이 때문입니다. 이미지 매니페스트의 플랫폼 목록부터 확인합니다.</p>
     </aside>
   </div>
 </section>
 
 <section class="slide">
   <h2>Spot은 회수가 일상이라는 전제로 굴린다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p>Spot을 쓰는 서비스는 아무 때나 서버 하나가 2분 안에 사라져도 괜찮아야 합니다. 상태는 밖(DB, S3, ElastiCache)에 두고, 요청은 짧게 끝나며, 배치는 체크포인트로 다시 시작할 수 있어야 합니다.</p>
-      <p>회수는 같은 용량 풀에 몰리므로 <mark>유형 여러 개 × AZ 여러 개</mark>로 풀을 넓히는 것이 가장 효과가 큰 대책입니다.</p>
-    </div>
-    <div class="prose">
-      <p>ASG는 Capacity Rebalancing, EKS는 Karpenter나 관리형 노드 그룹의 Spot 처리, 또는 AWS Node Termination Handler로 알림을 받아 노드를 cordon, drain 합니다. ALB 등록 해제 지연은 2분보다 짧게 둡니다.</p>
-      <p>On-Demand 바닥 용량(base)을 남겨 Spot이 한꺼번에 빠져도 서비스가 서 있게 합니다. 전체를 Spot으로 두는 것은 배치나 개발 환경에서만 합니다.</p>
-    </div>
+  <div class="prose prose--cols">
+    <p>Spot을 쓰는 서비스는 아무 때나 서버 하나가 2분 안에 사라져도 괜찮아야 합니다. 그러려면 세 조건이 필요합니다. 상태는 서버 밖(DB, S3, 관리형 Redis인 ElastiCache, 15장)에 두고, 요청은 2분 안에 끝날 만큼 짧고, 배치는 중간 지점(체크포인트)을 저장해 거기서 다시 시작할 수 있어야 합니다.</p>
+    <p>회수는 같은 용량 풀에 몰리므로, 3부에서 본 대로 유형 여러 개 × AZ 여러 개로 풀을 넓히는 것이 가장 효과가 큰 대책입니다.</p>
+    <p>알림을 받아 미리 정리하는 장치도 계층마다 있습니다. ASG는 Capacity Rebalancing, EKS는 Karpenter나 관리형 노드 그룹의 Spot 처리, 또는 AWS Node Termination Handler(알림을 받아 노드를 정리하는 도구)가 노드에 새 Pod가 오지 않게 막고(cordon) 기존 Pod를 내보냅니다(drain, 10장). ALB 등록 해제 지연은 2분보다 짧게 둡니다.</p>
+    <p>On-Demand 바닥 용량(base)을 남겨 Spot이 한꺼번에 빠져도 서비스가 서 있게 합니다. 전체를 Spot으로 두는 것은 배치나 개발 환경에서만 합니다.</p>
   </div>
 </section>
 
 <section class="slide">
   <h2>크레딧 고갈은 서서히 느려지는 장애다</h2>
-  <div class="split split--even">
+  <div class="slide__body">
     <div class="prose">
-      <p>오류는 없는데 응답 시간이 며칠에 걸쳐 조금씩 늘다가 어느 순간 급격히 나빠지는 패턴이 있습니다. 대개 크레딧 기반 자원이 바닥난 것입니다. T 계열 CPU 크레딧, gp2 I/O 크레딧, 작은 인스턴스의 네트워크와 EBS 버스트가 모두 같은 모양입니다.</p>
+      <p>오류는 없는데 응답 시간이 며칠에 걸쳐 조금씩 늘다가 어느 순간 급격히 나빠지는 패턴이 있습니다. 대개 크레딧 기반 자원이 바닥난 것입니다. 이 장에서 본 T 계열 CPU 크레딧(1부), gp2 I/O 크레딧(2부), 작은 인스턴스의 네트워크와 EBS 버스트(1, 2부)가 모두 같은 모양입니다. 아껴 둔 몫으로 버티다가 바닥나는 순간 기준 성능으로 떨어지기 때문입니다.</p>
     </div>
     <table class="compare">
       <thead><tr><th scope="col">자원</th><th scope="col">볼 지표</th><th scope="col">근본 대책</th></tr></thead>
       <tbody>
         <tr><th scope="row">T 계열 CPU</th><td><code>CPUCreditBalance</code></td><td>M/C로, 또는 unlimited</td></tr>
         <tr><th scope="row">gp2 볼륨</th><td><code>BurstBalance</code></td><td class="is-flow">gp3로 전환</td></tr>
-        <tr><th scope="row">네트워크</th><td>ENA allowance 초과</td><td>한 단계 큰 크기</td></tr>
+        <tr><th scope="row">네트워크</th><td>ENA <code>*_allowance_exceeded</code></td><td>한 단계 큰 크기</td></tr>
+        <tr><th scope="row">EBS 대역폭</th><td><code>EBSIOBalance%</code></td><td>한 단계 큰 크기</td></tr>
       </tbody>
     </table>
   </div>
@@ -1489,19 +1814,20 @@ role/payments-api
 <section class="slide">
   <h2>ECS 태스크가 안 뜨면 멈춘 이유부터 읽는다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>ECS는 멈춘 태스크마다 <code>stoppedReason</code>(멈춘 이유)과 컨테이너 종료 코드를 남깁니다. 9장에서 본 대로 종료 코드 137은 SIGKILL로 강제 종료된 것이고, 컨테이너에서는 대개 메모리 한도 초과(OOM)입니다.</p>
+    </div>
     <table class="compare">
-      <thead><tr><th scope="col">증상(stoppedReason 등)</th><th scope="col">원인</th><th scope="col">조치</th></tr></thead>
+      <thead><tr><th scope="col">증상</th><th scope="col">원인</th><th scope="col">조치</th></tr></thead>
       <tbody>
-        <tr><th scope="row">CannotPullContainerError</th><td>이미지 태그 오타, 길 없음(NAT/엔드포인트)</td><td>태그 확인, ECR 엔드포인트 추가</td></tr>
-        <tr><th scope="row">ResourceInitializationError</th><td class="is-key">실행 역할 권한, 비밀 읽기 실패</td><td>실행 역할 정책, KMS 키 권한</td></tr>
-        <tr><th scope="row">PENDING에서 멈춤</th><td>CPU/메모리/ENI 자리 부족</td><td>용량 공급자, 트렁킹, 크기 조정</td></tr>
-        <tr><th scope="row">Essential container exited</th><td>앱 기동 실패, OOM(종료 코드 137)</td><td>로그 확인, 메모리 상향</td></tr>
-        <tr><th scope="row">헬스 체크 실패로 반복 교체</th><td>기동 시간 &gt; 유예 기간, 경로 오류</td><td>유예 기간, 헬스 체크 경로 수정</td></tr>
+        <tr><th scope="row"><code>CannotPullContainerError</code></th><td>태그 오타, 길 없음(NAT/엔드포인트)</td><td>태그 확인, ECR 엔드포인트</td></tr>
+        <tr><th scope="row"><code>ResourceInitializationError</code></th><td>실행 역할 권한, 비밀 읽기 실패</td><td>실행 역할, KMS 키 권한</td></tr>
+        <tr><th scope="row">PENDING에서 멈춤</th><td>CPU, 메모리, ENI 자리 부족</td><td>용량 공급자, 트렁킹</td></tr>
+        <tr><th scope="row">Essential container exited</th><td class="is-key">앱 기동 실패, OOM(137)</td><td>로그 확인, 메모리 상향</td></tr>
+        <tr><th scope="row">헬스 체크로 반복 교체</th><td>기동 시간 &gt; 유예 기간</td><td>유예 기간, 경로 수정</td></tr>
       </tbody>
     </table>
-    <div class="prose">
-      <p><code>aws ecs describe-tasks</code>의 <code>stoppedReason</code>과 서비스 이벤트가 첫 단서입니다. 멈춘 태스크는 잠깐만 조회되므로 EventBridge로 태스크 상태 변경 이벤트를 저장해 두면 나중에 원인을 찾기 쉽습니다.</p>
-    </div>
+    <p class="small"><code>aws ecs describe-tasks</code>의 <code>stoppedReason</code>과 서비스 이벤트가 첫 단서입니다. 멈춘 태스크는 잠깐만 조회되므로 EventBridge로 태스크 상태 변경 이벤트를 저장해 둡니다.</p>
   </div>
 </section>
 
@@ -1509,14 +1835,14 @@ role/payments-api
   <h2>헬스 체크와 기동 시간을 맞춰야 한다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>흔한 사고 하나: Spring Boot 앱이 기동에 90초 걸리는데, 서비스의 <code>healthCheckGracePeriodSeconds</code>가 0이고 ALB 헬스 체크는 30초 간격에 2번 실패로 비정상 판정입니다. 태스크가 준비되기도 전에 비정상으로 찍혀 교체되고, 새 태스크도 같은 길을 갑니다.</p>
-      <p>배포 서킷 브레이커가 이 반복을 실패로 판정해 롤백하지만, 원인은 설정입니다.</p>
+      <p>표의 마지막 줄은 가장 흔한 사고입니다. 주문 API가 기동에 90초 걸리는데, 서비스의 <code>healthCheckGracePeriodSeconds</code>(4부의 유예 기간과 같은 값)가 0이고, ALB 헬스 체크는 30초 간격에 2번 실패면 비정상입니다. 태스크가 준비되기도 전에 비정상으로 찍혀 교체되고, 새 태스크도 같은 길을 갑니다.</p>
+      <p>5부의 서킷 브레이커가 이 반복을 실패로 판정해 롤백하지만, 원인은 설정입니다.</p>
     </div>
     <ol class="steps">
       <li><b>기동 시간 측정</b><p>컨테이너 시작부터 첫 200 응답까지 실제로 잽니다.</p></li>
       <li><b>유예 기간 설정</b><p>측정값보다 넉넉하게 서비스 유예 기간을 둡니다.</p></li>
       <li><b>헬스 경로 분리</b><p>DB까지 확인하는 무거운 경로 대신 가벼운 readiness 경로를 씁니다.</p></li>
-      <li class="is-key"><b>기동 단축</b><p>지연 초기화, CDS, 이미지 크기 축소로 근본 시간을 줄입니다.</p></li>
+      <li><b>기동 단축</b><p>지연 초기화, 클래스 로딩 결과를 미리 저장하는 JVM의 CDS로 시간을 줄입니다.</p></li>
     </ol>
   </div>
 </section>
@@ -1530,80 +1856,102 @@ PODS:.status.allocatable.pods
 NAME                        PODS
 <span class="hl">ip-10-0-1-23.ec2.internal   29</span>
 <span class="prompt">$ </span>kubectl describe pod api-7d9f | tail -3
-<span class="hl">  Warning FailedCreatePodSandBox …</span>
+  Warning FailedCreatePodSandBox …
 <span class="hl">  failed to assign an IP address</span>
 <span class="prompt">$ </span>aws ec2 describe-subnets --subnet-ids \
   subnet-0abc --query \
   'Subnets[].AvailableIpAddressCount'</code></pre>
     <div class="prose">
-      <p>CPU는 남는데 Pod가 안 뜬다면 두 한도 중 하나입니다. 노드의 Pod 한도(29)에 닿으면 <code>Too many pods</code>로 Pending이고, 서브넷 IP가 바닥나면 샌드박스 생성이 실패합니다.</p>
-      <p>대책은 큰 노드, 프리픽스 위임, 보조 CIDR, 노드 서브넷 확대입니다. <code>WARM_IP_TARGET</code>을 낮추면 노드가 미리 잡아 두는 IP가 줄어듭니다.</p>
+      <p>EKS에서 CPU는 남는데 Pod가 안 뜬다면 6부의 두 한도 중 하나입니다. 첫 명령은 노드의 Pod 한도(29)를 보여 줍니다. 여기 닿으면 Pod는 <code>Too many pods</code>로 Pending입니다. 두 번째는 서브넷 IP가 바닥나 Pod의 네트워크 공간(샌드박스)을 못 만든 경우이고, 세 번째 명령으로 남은 IP를 셉니다.</p>
+      <p>대책은 큰 노드, 프리픽스 위임, 보조 CIDR, 노드 서브넷 확대입니다. VPC CNI 설정 <code>WARM_IP_TARGET</code>을 낮추면 노드가 미리 잡아 두는 여분 IP가 줄어듭니다.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
   <h2>업그레이드와 노드 교체를 일상으로 만든다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p>EKS 버전, 노드 AMI, ECS 최적화 AMI, 골든 이미지는 모두 몇 달 단위로 낡습니다. 미루면 여러 버전을 한꺼번에 건너야 하고, EKS는 연장 지원 요금까지 붙습니다.</p>
-      <p>그래서 인스턴스 새로 고침, 관리형 노드 그룹 업데이트, Karpenter의 drift 교체처럼 <mark>노드를 자주 갈아 끼워도 서비스가 흔들리지 않는 구조</mark>를 먼저 만듭니다.</p>
-    </div>
-    <div class="prose">
-      <p>그 구조의 조건은 앞 장들에서 본 것들입니다. 앱의 Graceful Shutdown(11장), PodDisruptionBudget과 readiness probe(10장), ELB 등록 해제 지연(13장), 그리고 여러 AZ에 걸친 여유 용량입니다.</p>
-      <p>관리형 노드 그룹은 드레인이 15분을 넘으면 Pod가 남아 있어도 노드를 지웁니다. 종료가 오래 걸리는 Pod는 이 시간을 고려해 설계합니다.</p>
-    </div>
+  <div class="prose prose--cols">
+    <p>EKS 버전, 노드 AMI, ECS에 최적화된 AMI, 1부의 골든 이미지는 모두 몇 달 단위로 낡습니다. 보안 패치가 계속 나오기 때문입니다. 미루면 여러 버전을 한꺼번에 건너야 하고, EKS는 연장 지원 요금까지 붙습니다.</p>
+    <p>그래서 노드를 자주 갈아 끼워도 서비스가 흔들리지 않는 구조를 먼저 만들고, 교체를 정기 작업으로 돌립니다. 도구는 이 장에서 다 봤습니다. ASG의 인스턴스 새로 고침, 관리형 노드 그룹 업데이트, 그리고 Karpenter의 drift 교체입니다. <dfn>drift</dfn>는 실제 노드가 NodePool이나 EC2NodeClass에 적힌 설정(예: AMI 버전)과 달라진 상태로, Karpenter는 이를 감지해 노드를 새것으로 바꿉니다.</p>
+    <p>흔들리지 않는 구조의 조건은 앞 장들에서 본 것들입니다. 앱의 Graceful Shutdown(11장), PodDisruptionBudget과 readiness probe(10장), ELB 등록 해제 지연(13장), 그리고 여러 AZ에 걸친 여유 용량입니다.</p>
+    <p>관리형 노드 그룹은 노드를 비우는 drain이 15분을 넘으면 Pod가 남아 있어도 노드를 지웁니다. 종료에 오래 걸리는 Pod는 이 시간을 고려해 설계합니다.</p>
   </div>
 </section>
 
-<!-- ===== 정리 ========================================================= -->
 <section class="slide slide--summary" data-section="정리" data-depth="none">
   <h2>정리</h2>
   <ul class="summary">
-    <li><b>EC2는 Nitro 위의 가상 머신이고, 이름에 성격이 적혀 있다.</b> 패밀리는 vCPU당 메모리 비율, 옵션 문자는 프로세서와 로컬 디스크, 크기는 두 배씩 오릅니다.</li>
-    <li><b>EBS는 AZ에 묶인 네트워크 디스크다.</b> gp3는 크기와 무관하게 3,000 IOPS를 주고, 스냅샷은 증분이며 AZ와 리전을 넘는 다리입니다.</li>
-    <li><b>바닥은 약정으로, 출렁임은 On-Demand와 Spot으로 산다.</b> Spot은 여러 유형과 AZ에 나눠 2분 회수를 견디게 설계합니다.</li>
-    <li><b>Auto Scaling은 희망 용량을 맞추는 루프다.</b> 대상 추적, 워밍업, ELB 헬스 체크와 유예 기간, 인스턴스 새로 고침이 핵심 설정입니다.</li>
-    <li><b>ECS는 단순하게, EKS는 Kubernetes 생태계로 컨테이너를 돌린다.</b> awsvpc와 VPC CNI 모두 태스크와 Pod에 VPC IP를 주므로 IP 계획이 중요합니다.</li>
+    <li><b>EC2는 Nitro 위의 가상 머신이고, 이름에 성격이 적혀 있다.</b> I/O는 Nitro 카드가 맡고, 패밀리는 vCPU당 메모리 비율입니다.</li>
+    <li><b>EBS는 AZ에 묶인 네트워크 블록 장치다.</b> 스냅샷이 AZ와 리전을 넘는 다리이고, 볼륨을 키우면 파티션과 파일 시스템도 늘려야 합니다.</li>
+    <li><b>바닥은 약정으로, 출렁임은 On-Demand와 Spot으로 산다.</b> Spot은 여러 풀에 나눠 2분 회수를 견딥니다.</li>
+    <li><b>Auto Scaling은 희망 용량을 맞추는 루프다.</b> 대상 추적, 워밍업, 유예 기간이 핵심 설정입니다.</li>
+    <li><b>ECS는 단순하게, EKS는 Kubernetes 생태계로 컨테이너를 돌린다.</b> 둘 다 태스크와 Pod에 VPC IP를 주므로 IP 계획이 중요합니다.</li>
+    <li><b>크레딧, 유예 기간, IP 한도가 "설정은 맞는데" 장애의 단골 원인이다.</b> 모두 지표로 미리 보입니다.</li>
   </ul>
 </section>
 
+<!-- ===== Self-check 1 ===== -->
 <section class="slide" data-section="부록: 스스로 점검" data-depth="none">
   <h2>스스로 점검 (1)</h2>
   <ol class="selfcheck">
     <li><details><summary><code>r7gd.2xlarge</code>를 이름만 보고 설명하면?</summary>
-      <div class="answer"><p>메모리 최적화(r) 7세대 Graviton(g)에 로컬 NVMe 인스턴스 스토어(d)가 붙은 8 vCPU 크기입니다. 로컬 디스크는 정지하면 사라집니다.</p></div></details></li>
+      <div class="answer"><p>메모리 최적화(r) 7세대 Graviton(g)에 로컬 NVMe 인스턴스 스토어(d)가 붙은 8 vCPU 크기입니다. Graviton이라 vCPU 8개가 물리 코어 8개이고, 로컬 디스크는 정지하면 사라집니다.</p></div></details></li>
+    <li><details><summary>Xen 시절 EC2에서 네트워크가 바쁜 이웃 VM이 내 성능을 흔든 이유는?</summary>
+      <div class="answer"><p>VM의 I/O를 하이퍼바이저가 가로채 호스트 CPU로 처리했기 때문입니다. Nitro는 이 일을 전용 카드로 옮겨 호스트 CPU를 다투지 않게 했습니다.</p></div></details></li>
     <li><details><summary>t3 서버가 며칠째 조금씩 느려지다 갑자기 크게 느려졌다면 무엇부터 보나요?</summary>
-      <div class="answer"><p>CPUCreditBalance입니다. standard 모드에서 크레딧이 0이 되면 기준 사용률로 묶입니다.</p></div></details></li>
-    <li><details><summary>IMDSv2가 SSRF를 막는 원리는?</summary>
-      <div class="answer"><p>먼저 PUT과 TTL 헤더로 토큰을 받아야 하는데, 대부분의 SSRF는 임의 메서드와 헤더를 못 보냅니다. 홉 제한은 토큰이 인스턴스 밖으로 나가지 못하게 합니다.</p></div></details></li>
-    <li><details><summary>100GiB gp2 볼륨이 평소엔 빠르다가 배치 30분 뒤 느려지는 이유는?</summary>
-      <div class="answer"><p>기준 300 IOPS인데 I/O 크레딧으로 3,000까지 버스트하다 크레딧이 바닥났기 때문입니다. gp3로 바꾸면 크기와 무관하게 3,000 IOPS가 기본입니다.</p></div></details></li>
-    <li><details><summary>AZ a의 EBS 볼륨을 AZ b의 인스턴스에서 쓰려면?</summary>
-      <div class="answer"><p>스냅샷을 만들고 AZ b에서 그 스냅샷으로 새 볼륨을 만듭니다. 복원 직후는 지연 로딩으로 첫 읽기가 느립니다.</p></div></details></li>
+      <div class="answer"><p><code>CPUCreditBalance</code>입니다. standard 모드에서 크레딧이 0이 되면 CPU가 기준 사용률로 묶입니다.</p></div></details></li>
+    <li><details><summary>컨테이너 안의 SDK만 IMDS 자격 증명을 못 받는다면 무엇을 의심하나요?</summary>
+      <div class="answer"><p>홉 제한 1입니다. 브리지 네트워크의 컨테이너는 한 홉 더 떨어져 있어 TTL 1인 토큰 응답이 도착하기 전에 사라집니다. 홉 제한을 2로 올립니다.</p></div></details></li>
   </ol>
 </section>
 
+<!-- ===== Self-check 2 ===== -->
 <section class="slide" data-section="부록: 스스로 점검" data-depth="none">
   <h2>스스로 점검 (2)</h2>
+  <ol class="selfcheck">
+    <li><details><summary>EBS를 200GiB로 키웠는데 <code>df</code>는 여전히 100GiB라면?</summary>
+      <div class="answer"><p>블록 장치만 커졌고 파티션과 파일 시스템은 옛 크기를 기억하고 있습니다. <code>growpart</code>로 파티션을, <code>xfs_growfs</code>나 <code>resize2fs</code>로 파일 시스템을 늘립니다.</p></div></details></li>
+    <li><details><summary>100GiB gp2 볼륨이 평소엔 빠르다가 배치 30분 뒤 느려지는 이유는?</summary>
+      <div class="answer"><p>기준 300 IOPS인데 I/O 크레딧으로 3,000까지 버스트하다 크레딧이 바닥났기 때문입니다. gp3로 바꾸면 크기와 무관하게 3,000 IOPS가 기본입니다.</p></div></details></li>
+    <li><details><summary>AZ a의 EBS 볼륨을 AZ c의 인스턴스에서 쓰려면?</summary>
+      <div class="answer"><p>스냅샷을 만들고 AZ c에서 그 스냅샷으로 새 볼륨을 만듭니다. 복원 직후는 지연 로딩으로 첫 읽기가 느리므로 미리 읽어 데우거나 FSR을 씁니다.</p></div></details></li>
+  </ol>
+</section>
+
+<!-- ===== Self-check 3 ===== -->
+<section class="slide" data-section="부록: 스스로 점검" data-depth="none">
+  <h2>스스로 점검 (3)</h2>
   <ol class="selfcheck">
     <li><details><summary>CLI로 만든 ASG에서 새 인스턴스가 계속 교체만 반복된다면?</summary>
       <div class="answer"><p>CLI 기본 유예 기간이 0초라 앱이 뜨기 전에 ELB 헬스 체크 실패로 교체됩니다. 기동 시간보다 긴 유예 기간을 둡니다.</p></div></details></li>
     <li><details><summary>현재 5대, 평균 CPU 80%, 목표 50%면 대상 추적은 몇 대로 맞추나요?</summary>
-      <div class="answer"><p>5 × 80 / 50 = 8, 3대를 늘려 8대로 맞춥니다.</p></div></details></li>
-    <li><details><summary>앱이 S3에서 AccessDenied를 받으면 실행 역할과 태스크 역할 중 무엇을 고치나요?</summary>
-      <div class="answer"><p>태스크 역할입니다. 실행 역할은 이미지 풀, 로그 전송, 비밀 주입처럼 ECS 에이전트가 하는 일에만 씁니다.</p></div></details></li>
-    <li><details><summary>m5.large 노드에 Pod가 29개 넘게 안 뜨는 이유는?</summary>
-      <div class="answer"><p>VPC CNI가 ENI 보조 IP를 Pod에 주는데, ENI 3개 × (10 − 1) + 2 = 29가 한도입니다. 프리픽스 위임이나 큰 노드로 늘립니다.</p></div></details></li>
+      <div class="answer"><p>5 × 80 / 50 = 8이므로 3대를 늘려 8대로 맞춥니다. 새 인스턴스는 워밍업이 끝날 때까지 평균에서 빠집니다.</p></div></details></li>
+    <li><details><summary>Savings Plans를 사기 전에 크기 조정을 먼저 하는 이유는?</summary>
+      <div class="answer"><p>SP는 금액을 약정하므로 과한 크기 기준으로 사면 크기를 줄인 뒤 약정액이 남아 사라집니다. 크기를 맞춘 뒤의 바닥 사용량에 약정합니다.</p></div></details></li>
+    <li><details><summary>Private 서브넷의 태스크가 ECR 엔드포인트를 두었는데도 이미지를 못 받는다면?</summary>
+      <div class="answer"><p>S3 게이트웨이 엔드포인트가 없을 가능성이 큽니다. ECR은 레이어 내용을 S3에 두므로 레이어 다운로드가 S3로 갑니다.</p></div></details></li>
+  </ol>
+</section>
+
+<!-- ===== Self-check 4 ===== -->
+<section class="slide" data-section="부록: 스스로 점검" data-depth="none">
+  <h2>스스로 점검 (4)</h2>
+  <ol class="selfcheck">
+    <li><details><summary>앱이 S3에서 <code>AccessDenied</code>를 받으면 실행 역할과 태스크 역할 중 무엇을 고치나요?</summary>
+      <div class="answer"><p>태스크 역할입니다. 실행 역할은 이미지 받기, 로그 전송, 비밀 주입처럼 ECS 에이전트가 앱 시작 전에 하는 일에만 씁니다.</p></div></details></li>
     <li><details><summary>희망 개수 2, minimumHealthyPercent 100, maximumPercent 100이면 배포가 어떻게 되나요?</summary>
       <div class="answer"><p>하나도 내릴 수 없고 하나도 더 띄울 수 없어 배포가 진행되지 않습니다. 최대를 200으로 올리거나 최소를 낮춥니다.</p></div></details></li>
+    <li><details><summary><code>m5.large</code> 노드에 Pod가 29개 넘게 안 뜨는 이유는?</summary>
+      <div class="answer"><p>VPC CNI가 ENI 보조 IP를 Pod에 주는데, ENI 3개 × (10 − 1) + 2 = 29가 한도입니다. 프리픽스 위임이나 큰 노드로 늘립니다.</p></div></details></li>
+    <li><details><summary>Fargate로 옮기려는 앱이 노드마다 DaemonSet 로그 수집기를 쓴다면?</summary>
+      <div class="answer"><p>Fargate에는 노드가 없어 DaemonSet이 돌지 않습니다. 수집기를 사이드카로 바꾸거나 FireLens 같은 태스크 단위 방식으로 옮깁니다.</p></div></details></li>
   </ol>
 </section>
 
 <section class="slide" data-section="다음 단계" data-depth="none">
   <h2>다음으로 올라갈 층</h2>
   <div class="slide__body">
-    <p class="lede">서버는 언제든 갈아 끼울 수 있게 만들었습니다. 그렇다면 갈아 끼워도 사라지면 안 되는 데이터는 어디에 둘까요? 15장은 S3, EFS, RDS, Aurora, DynamoDB로 그 답을 찾습니다.</p>
+    <p class="lede">주문 API 서버와 컨테이너는 이제 언제든 갈아 끼울 수 있는 소모품이 됐습니다. 그렇다면 갈아 끼워도 사라지면 안 되는 주문 데이터와 영수증 파일은 어디에 둘까요? 15장은 S3, EFS, RDS, Aurora, DynamoDB로 그 답을 찾습니다.</p>
     <div class="nav-pair">
       <a class="next" href="15-aws-data.html">
         <span class="next__text">
@@ -1620,6 +1968,7 @@ NAME                        PODS
     <p class="small"><a href="index.html">전체 학습 지도로 돌아가기</a></p>
   </div>
 </section>
+
 
 </main>
 <script src="assets/deck.js"></script>

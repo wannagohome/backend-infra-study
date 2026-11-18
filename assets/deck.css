@@ -344,7 +344,7 @@ summary, .next, .stackmap__layer a { touch-action: manipulation; }
 .prose { max-width: 40em; }          /* ~40 Korean chars per line */
 /* book-style reading spread: long explanation in two columns, no figure */
 .prose--cols { max-width: none; column-count: 2; column-gap: 64px; }
-.prose--cols > * { break-inside: avoid-column; }
+.prose--cols > * { orphans: 2; widows: 2; }
 .is-scroll .prose--cols, .is-page .prose--cols { column-count: 1; }
 .prose > * { margin: 0; }
 .prose > * + * { margin-top: 0.75em; }

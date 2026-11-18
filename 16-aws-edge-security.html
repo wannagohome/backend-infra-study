@@ -18,11 +18,11 @@
     <div class="cover__main">
       <p class="cover__chapter"><b>16장</b> AWS 엣지와 보안</p>
       <h1>요청은 엣지에서 받고, 비밀은 키로 지킨다</h1>
-      <p class="cover__lede">사용자 가까이에서 응답하는 CloudFront부터 WAF, Shield, ACM, KMS, Secrets Manager, 감사와 탐지까지, 서비스 앞단과 데이터 주변을 지키는 장치를 차례로 쌓습니다.</p>
+      <p class="cover__lede">서울 리전에 지은 쇼핑몰을 세상에 내놓으며, 앞단에서 받아 주고 걸러 내는 장치와 안쪽을 잠그고 기록하는 장치를 차례로 세웁니다.</p>
       <dl class="cover__meta">
         <div><dt>선수 지식</dt><dd>2장 TLS, 7장 암호와 OAuth, 8장 CDN, 12장 IAM</dd></div>
-        <div><dt>슬라이드</dt><dd>90장</dd></div>
-        <div><dt>예상 학습 시간</dt><dd>160분</dd></div>
+        <div><dt>슬라이드</dt><dd>118장</dd></div>
+        <div><dt>예상 학습 시간</dt><dd>200분</dd></div>
       </dl>
     </div>
     <div class="cover__map">
@@ -35,44 +35,128 @@
 <!-- ===== 1부 기초 ===================================================== -->
 <section class="slide slide--divider" data-section="엣지와 보안의 지도" data-depth="basic">
   <p class="divider__no">1부</p>
-  <h2>서비스 바깥쪽 경계를 그린다</h2>
-  <p class="lede">15장까지는 데이터가 사는 곳을 만들었습니다. 이제 그 앞에서 요청을 받아 주고, 걸러 내고, 기록하는 바깥 경계를 세웁니다.</p>
+  <h2>리전 하나에 지은 쇼핑몰을 세상에 내놓는다</h2>
+  <p class="lede">13~15장에서 서울 리전에 네트워크, 서버, 데이터를 차례로 올렸습니다. 이 부에서는 그 서비스를 전 세계 사용자 앞에 내놓을 때 생기는 두 문제, 거리와 노출을 짚고, 바깥 경계의 첫 장치인 CloudFront의 뼈대를 세웁니다.</p>
 </section>
 
 <section class="slide">
-  <h2>데이터를 만들었으니 이제 앞과 둘레를 지킨다</h2>
+  <h2>이 장의 예제는 서울 리전의 쇼핑몰이다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>이 장 내내 쇼핑몰 <code>shop.example.com</code> 하나를 들고 갑니다. 화면은 React로 만든 웹 앱이고, 빌드한 파일과 상품 이미지는 S3 버킷에 있습니다. 주문 API는 ALB 뒤의 ECS 서비스(14장)가 받고, 주문은 RDS(15장)에 저장됩니다.</p>
+      <p>지금 구조에서는 모든 요청이 인터넷을 건너 <strong>서울 리전까지 곧장</strong> 옵니다. ALB는 공개 주소를 가지고, 정적 파일을 내주려면 버킷도 열어야 합니다. 이 그림에서 생기는 문제를 하나씩 풀어 가는 것이 이 장의 줄거리입니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 420" role="img" aria-labelledby="f2t">
+        <title id="f2t">사용자의 요청이 인터넷을 건너 서울 리전의 ALB와 S3 버킷으로 바로 들어오고, ALB 뒤의 주문 API가 RDS 주문 DB를 쓴다.</title>
+        <rect class="dg-box" x="20" y="150" width="140" height="64"/>
+        <text x="90" y="182" text-anchor="middle">사용자</text>
+        <rect class="dg-zone" x="200" y="20" width="540" height="380"/>
+        <text class="dg-label--sm" x="470" y="46" text-anchor="middle">서울 리전(ap-northeast-2)</text>
+        <rect class="dg-zone" x="230" y="64" width="480" height="210"/>
+        <text class="dg-label--sm" x="470" y="90" text-anchor="middle">VPC</text>
+        <rect class="dg-box dg-box--key" x="260" y="110" width="170" height="64"/>
+        <text x="345" y="142" text-anchor="middle">ALB(공개)</text>
+        <rect class="dg-box dg-box--flow" x="490" y="110" width="200" height="64"/>
+        <text x="590" y="142" text-anchor="middle">주문 API(ECS)</text>
+        <rect class="dg-box dg-box--muted" x="490" y="194" width="200" height="64"/>
+        <text x="590" y="226" text-anchor="middle">주문 DB(RDS)</text>
+        <rect class="dg-box dg-box--key" x="260" y="310" width="430" height="64"/>
+        <text x="475" y="342" text-anchor="middle">S3: 웹 파일, 상품 이미지</text>
+        <line class="dg-arrow dg-arrow--flow" x1="168" y1="170" x2="252" y2="142"/>
+        <path class="dg-arrow dg-arrow--flow" d="M90,222 V312 Q90,342 120,342 H252"/>
+        <line class="dg-arrow" x1="438" y1="142" x2="482" y2="142"/>
+        <line class="dg-arrow" x1="590" y1="174" x2="590" y2="186"/>
+      </svg>
+      <figcaption>호박색 상자가 인터넷에 직접 드러난 입구입니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>멀리 있는 사용자는 연결만 맺어도 느리다</h2>
   <div class="prose">
-    <p>15장에서 S3, RDS, DynamoDB에 데이터를 두었습니다. 그런데 이 자원들은 모두 <strong>한 리전</strong>에 있습니다. 서울 리전의 서비스에 상파울루 사용자가 접속하면 왕복 지연만 수백 밀리초가 붙고, 공격 트래픽도 그대로 리전까지 밀려옵니다.</p>
-    <p>그래서 AWS는 리전 바깥, 사용자 가까이에 <dfn>엣지</dfn>(edge)라는 층을 둡니다. 엣지에서 캐시로 답하고, TLS를 끝내고, 공격을 걸러 냅니다.</p>
-    <p>동시에 리전 안쪽에서는 데이터를 <mark>키로 암호화하고, 비밀번호를 코드 밖에 두고, 모든 조작을 기록</mark>해야 합니다. 이 장은 이 두 방향, 바깥 경계와 안쪽 보호를 함께 다룹니다.</p>
+    <p>빛은 광섬유 안에서 초당 약 20만 km를 갑니다. 서울에서 상파울루까지는 직선으로도 약 1만 8천 km이니, 왕복만 최소 180ms이고 실제 케이블 경로를 따르면 250~300ms가 흔합니다. 이것이 두 지점 사이의 <strong>RTT</strong>(왕복 시간, 2장)입니다.</p>
+    <p>2장에서 봤듯이 HTTPS 요청은 TCP 핸드셰이크 1 RTT와 TLS 1.3 핸드셰이크 1 RTT를 거친 뒤에야 첫 요청을 보냅니다. 상파울루 사용자는 요청 한 번의 왕복까지 합쳐 <mark>첫 바이트를 받기 전에 1초 가까이</mark>를 씁니다. 서버를 아무리 빠르게 만들어도 이 시간은 줄지 않습니다.</p>
+    <p>줄이는 방법은 하나뿐입니다. 사용자 가까이에 응답할 무언가를 두는 것입니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>공개된 입구는 공격도 그대로 받는다</h2>
+  <div class="prose">
+    <p>두 번째 문제는 노출입니다. ALB와 버킷이 인터넷에 열려 있으면 정상 사용자와 공격자가 같은 문으로 들어옵니다. 공격은 크게 두 갈래입니다. 하나는 수많은 기기에서 한꺼번에 트래픽을 쏟아 서비스를 쓰러뜨리는 <dfn title="Distributed Denial of Service">DDoS</dfn>처럼 <strong>양으로 밀어붙이는 공격</strong>이고, 다른 하나는 7장의 SQL Injection과 XSS, 그리고 유출된 아이디·비밀번호를 로그인에 마구 넣어 보는 봇처럼 <strong>요청 내용으로 속이는 공격</strong>입니다.</p>
+    <p>안쪽에도 빈틈이 있습니다. DB 비밀번호가 설정 파일에 평문으로 있고, 데이터를 암호화한 키를 누가 쓸 수 있는지 정해져 있지 않고, 누가 버킷 설정을 바꿨는지 기록도 없습니다.</p>
+    <p>그래서 보호는 두 방향입니다. 바깥은 사용자 가까운 곳에서 받아 주고 걸러 내고, 안쪽은 키로 잠그고 모든 조작을 기록합니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>엣지는 리전 밖, 사용자 곁에 있는 AWS다</h2>
+  <div class="prose">
+    <p>12장에서 리전 밖에도 AWS 인프라가 있다고 했습니다. 그중 전 세계 주요 도시 수백 곳에 흩어진 작은 데이터 센터가 <dfn title="edge location">엣지 로케이션</dfn>입니다. 통신 업계에서는 이런 접속 지점을 <dfn title="Point of Presence">POP</dfn>이라고도 부릅니다. 이 장에서 <strong>엣지</strong>라고 하면 이 층을 말합니다.</p>
+    <p>엣지는 리전처럼 서버를 띄우는 곳이 아니라, 사용자의 요청을 가장 먼저 받는 곳입니다. 그래서 세 가지 일을 맡습니다. 자주 찾는 파일을 <strong>캐시</strong>해 두었다가 바로 답하고, TCP와 TLS 연결을 <strong>가까이서 끝내</strong> 왕복 시간을 줄이고, 나쁜 요청을 리전에 닿기 전에 <strong>걸러 냅니다</strong>.</p>
+    <p>앞 슬라이드의 두 문제, 거리와 노출이 모두 이 한 층에서 풀립니다. 다만 엣지에 무엇을 맡기느냐에 따라 쓰는 서비스가 달라집니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>요청이 지나는 순서대로 장치를 놓는다</h2>
+  <div class="prose">
+    <p>쇼핑몰 요청 하나가 지나는 길을 따라 이 장의 장치를 미리 한 줄씩 소개합니다. 자세한 동작은 각 부에서 봅니다.</p>
+    <ul>
+      <li><strong>CloudFront</strong>는 AWS가 운영하는 CDN입니다. 엣지에서 캐시로 답하고 TLS를 끝냅니다(1·2부).</li>
+      <li><strong>WAF</strong>는 요청 내용을 읽어 거르는 방화벽, <strong>Shield</strong>는 DDoS를 막는 장치입니다. 둘 다 엣지에서 동작합니다(3부).</li>
+      <li><strong>ACM</strong>은 TLS 인증서를 발급·갱신하고, <strong>KMS</strong>는 암호화 키를 대신 보관하며 써 줍니다(4부).</li>
+      <li><strong>Secrets Manager</strong>는 DB 비밀번호 같은 비밀의 저장소, <strong>Cognito</strong>는 회원 로그인 서비스입니다(4부).</li>
+      <li><strong>CloudTrail</strong>은 모든 조작을 기록하고, <strong>Config</strong>는 자원 상태의 이력을, <strong>GuardDuty</strong>는 기록에서 위협을 찾습니다(5부).</li>
+    </ul>
   </div>
 </section>
 
 <section class="slide">
   <h2>보안 서비스마다 지키는 층이 다르다</h2>
   <div class="slide__body">
+    <p class="lede">앞의 장치들을 "무엇을 막느냐"로 다시 줄 세우면, 서로 겹치지 않고 층을 나눠 맡는다는 점이 보입니다.</p>
     <table class="compare">
       <thead><tr><th scope="col">층</th><th scope="col">막는 것</th><th scope="col">AWS 서비스</th></tr></thead>
       <tbody>
         <tr><th scope="row">엣지 전달</th><td>먼 거리, 오리진 과부하</td><td>CloudFront, Global Accelerator</td></tr>
-        <tr><th scope="row">L3/L4 공격</th><td>SYN flood, UDP 반사 공격</td><td>Shield Standard/Advanced</td></tr>
-        <tr><th scope="row">L7 공격</th><td>SQLi, XSS, 봇, 요청 폭주</td><td class="is-flow">WAF</td></tr>
+        <tr><th scope="row">양으로 미는 공격</th><td>패킷·연결 폭주(DDoS)</td><td>Shield Standard/Advanced</td></tr>
+        <tr><th scope="row">내용으로 속이는 공격</th><td>SQLi, XSS, 봇, 요청 폭주</td><td class="is-flow">WAF</td></tr>
         <tr><th scope="row">전송·저장 암호화</th><td>도청, 디스크 유출</td><td>ACM, KMS</td></tr>
         <tr><th scope="row">비밀·사용자</th><td>하드코딩된 비밀번호</td><td>Secrets Manager, Cognito</td></tr>
         <tr><th scope="row">감사·탐지</th><td>누가 무엇을 했는지 모름</td><td>CloudTrail, Config, GuardDuty</td></tr>
       </tbody>
     </table>
-    <p class="small">권한(IAM)은 12장, 네트워크 격리(보안 그룹, NACL)는 13장에서 다뤘습니다. 이 장은 그 위아래를 채웁니다.</p>
+    <p class="small">권한(IAM)은 12장, 네트워크 격리(보안 그룹, NACL)는 13장에서 다뤘습니다. 이 장은 그 바깥과 안쪽을 채웁니다. Global Accelerator는 2부 끝에서 CloudFront와 비교합니다.</p>
   </div>
 </section>
 
+<section class="slide">
+  <h2>CloudFront는 AWS가 운영하는 CDN이다</h2>
+  <div class="prose">
+    <p>8장에서 <strong>CDN</strong>을 "세계 곳곳의 엣지 서버에 콘텐츠를 캐시해 두는 네트워크"로 소개했습니다. 사용자와 가까우니 RTT가 짧고, 원본 서버는 같은 파일을 반복해서 보내지 않아도 됩니다. <dfn>CloudFront</dfn>는 AWS가 엣지 로케이션에서 운영하는 CDN입니다.</p>
+    <p>CDN이 캐시에 없는 파일을 가지러 가는 원본 서버를 <dfn title="origin">오리진</dfn>이라고 합니다. 쇼핑몰에서는 웹 파일이 든 S3 버킷과 주문 API 앞의 ALB가 오리진입니다. 요청한 파일이 캐시에 있으면 <dfn title="cache hit">적중</dfn>(hit), 없어서 오리진까지 가야 하면 <dfn title="cache miss">미스</dfn>(miss)라고 부릅니다.</p>
+    <p>그런데 엣지 서버 하나하나의 캐시는 작습니다. 수백 곳의 엣지가 각자 미스를 내면 오리진이 오히려 바빠집니다. CloudFront는 이 문제를 캐시를 여러 층으로 쌓아 풉니다.</p>
+  </div>
+</section>
 
 <section class="slide">
-  <h2>CloudFront는 캐시를 세 겹으로 쌓았다</h2>
+  <h2>캐시는 세 층으로 쌓여 있다</h2>
+  <div class="prose">
+    <p>맨 앞의 <strong>엣지 로케이션</strong> 캐시는 사용자와 가장 가깝지만 작아서, 많이 찾는 객체만 남고 덜 찾는 객체는 금방 밀려납니다.</p>
+    <p>그 뒤에 <dfn>리전 엣지 캐시</dfn>가 있습니다. AWS 리전 근처에 둔 더 큰 캐시로, 여러 엣지 로케이션이 함께 씁니다. 엣지에서 밀려난 객체도 여기 오래 남으니, 가끔 찾는 상품 이미지처럼 <strong>요청이 드문드문 오는 긴 꼬리</strong> 객체가 오리진까지 가지 않습니다.</p>
+    <p>맨 뒤의 <dfn>Origin Shield</dfn>는 켜야 생기는 선택 층입니다. 오리진과 가까운 리전 하나를 지정하면 모든 리전 엣지 캐시의 미스가 이곳으로 모입니다. 새 상품 이미지를 여러 대륙에서 동시에 찾아도 <mark>오리진에는 요청이 하나만 가도록</mark> 합쳐집니다. 대신 이 층을 지나는 요청 수만큼 요금이 붙습니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>요청은 가까운 층부터 차례로 찾는다</h2>
   <div class="slide__body">
     <figure class="figure">
-      <svg class="dg" viewBox="0 0 1400 320" role="img" aria-labelledby="f6t">
-        <title id="f6t">사용자 요청은 가장 가까운 엣지 로케이션으로 가고, 캐시가 없으면 리전 엣지 캐시, 선택적으로 Origin Shield를 거쳐 오리진에 닿는다. PUT, POST 같은 메서드는 엣지에서 오리진으로 바로 간다.</title>
+      <svg class="dg" viewBox="0 0 1400 320" role="img" aria-labelledby="f10t">
+        <title id="f10t">사용자 요청은 가장 가까운 엣지 로케이션으로 가고, 캐시가 없으면 리전 엣지 캐시, 선택적으로 Origin Shield를 거쳐 오리진에 닿는다. PUT, POST 같은 메서드는 엣지에서 오리진으로 바로 간다.</title>
         <rect class="dg-box" x="30" y="100" width="180" height="72"/>
         <text x="120" y="136" text-anchor="middle">사용자</text>
         <rect class="dg-box dg-box--flow" x="290" y="100" width="240" height="72"/>
@@ -95,17 +179,8 @@
         <rect class="dg-fill-paper" x="560" y="262" width="580" height="36"/>
         <text class="dg-label--sm" x="850" y="280" text-anchor="middle">PUT, POST, PATCH, DELETE와 동적 요청은 오리진으로 직행</text>
       </svg>
-      <figcaption>CDN이 왜 빠른지는 8장에서 봤습니다. CloudFront는 엣지 로케이션(POP)에서 먼저 찾고, 없으면 리전 엣지 캐시, 켰다면 Origin Shield를 거쳐 오리진에 닿습니다. 캐시가 없어도 TLS는 가까운 엣지에서 끝납니다.</figcaption>
+      <figcaption>각 층은 적중하면 그 자리에서 답하고, 미스일 때만 다음 층으로 넘깁니다. 주문 생성 같은 쓰기 요청은 캐시할 대상이 아니므로 중간 캐시 층을 건너뜁니다. 캐시가 없는 요청도 TLS는 가까운 엣지에서 끝납니다.</figcaption>
     </figure>
-  </div>
-</section>
-
-<section class="slide">
-  <h2>층마다 맡는 역할이 다르다</h2>
-  <div class="prose">
-    <p><dfn title="Point of Presence">엣지 로케이션</dfn>은 사용자에게 가장 가까운 지점입니다. DNS가 사용자를 지연 시간이 가장 짧은 엣지로 보내고, 인기 있는 객체가 이곳 캐시에 남습니다.</p>
-    <p><dfn>리전 엣지 캐시</dfn>는 엣지보다 캐시가 커서, 엣지에서 밀려난 덜 인기 있는 객체도 오래 붙잡아 둡니다. 여러 엣지의 미스를 모아 오리진으로 가는 요청을 줄입니다.</p>
-    <p><dfn>Origin Shield</dfn>는 오리진과 가장 가까운 리전에 켜는 추가 캐시 층입니다. 모든 리전 엣지 캐시의 요청이 이곳을 거치므로, 같은 객체에 대한 동시 요청이 <mark>오리진에 하나만 가도록</mark> 합쳐집니다. 요청 수에 따라 추가 요금이 붙습니다.</p>
   </div>
 </section>
 
@@ -113,14 +188,14 @@
   <h2>배포 하나가 경로별로 오리진을 고른다</h2>
   <div class="split split--center">
     <div class="prose">
-      <p>CloudFront 설정의 단위는 <dfn title="distribution">배포</dfn>입니다. 배포는 <code>d111abc.cloudfront.net</code> 같은 도메인을 받고, 여기에 내 도메인을 대체 도메인 이름(CNAME)으로 붙입니다.</p>
-      <p>배포 안에는 여러 <dfn title="origin">오리진</dfn>과 <dfn title="cache behavior">캐시 동작</dfn>이 있습니다. 캐시 동작은 경로 패턴마다 어느 오리진으로 보낼지, 어떻게 캐시할지를 정합니다.</p>
+      <p>CloudFront 설정의 단위는 <dfn title="distribution">배포</dfn>입니다. 배포를 만들면 <code>d111abc.cloudfront.net</code> 같은 도메인이 생기고, 여기에 <code>www.shop.example.com</code>을 대체 도메인 이름으로 등록한 뒤 Route 53에서 Alias 레코드(13장)로 이 배포를 가리킵니다.</p>
+      <p>배포 안에는 오리진 목록과 <dfn title="cache behavior">캐시 동작</dfn> 목록이 있습니다. 캐시 동작은 "이 경로 패턴의 요청은 어느 오리진으로 보내고 어떻게 캐시할지"를 정한 규칙 한 줄입니다.</p>
     </div>
     <figure class="figure">
-      <svg class="dg" viewBox="0 0 760 440" role="img" aria-labelledby="f8t">
-        <title id="f8t">배포 안에서 /api/* 동작은 ALB로, /static/* 동작과 기본 동작은 S3 버킷으로 요청을 보낸다.</title>
+      <svg class="dg" viewBox="0 0 760 440" role="img" aria-labelledby="f11t">
+        <title id="f11t">쇼핑몰 배포 안에서 /api/* 동작은 ALB로, /static/* 동작과 기본 동작은 S3 버킷으로 요청을 보낸다.</title>
         <rect class="dg-box dg-box--solid" x="40" y="20" width="680" height="64"/>
-        <text class="dg-label--on" x="380" y="52" text-anchor="middle">배포: www.example.com</text>
+        <text class="dg-label--on" x="380" y="52" text-anchor="middle">배포: www.shop.example.com</text>
         <text class="dg-label--sm" x="180" y="116" text-anchor="middle">캐시 동작(위에서부터 비교)</text>
         <text class="dg-label--sm" x="590" y="116" text-anchor="middle">오리진</text>
         <rect class="dg-box dg-box--flow" x="40" y="136" width="280" height="64"/>
@@ -130,9 +205,9 @@
         <rect class="dg-box" x="40" y="312" width="280" height="64"/>
         <text x="180" y="344" text-anchor="middle">* (기본 동작)</text>
         <rect class="dg-box" x="460" y="136" width="260" height="64"/>
-        <text x="590" y="168" text-anchor="middle">ALB (동적 API)</text>
+        <text x="590" y="168" text-anchor="middle">ALB (주문 API)</text>
         <rect class="dg-box" x="460" y="268" width="260" height="64"/>
-        <text x="590" y="300" text-anchor="middle">S3 버킷 (OAC)</text>
+        <text x="590" y="300" text-anchor="middle">S3 버킷 (웹 파일)</text>
         <line class="dg-arrow dg-arrow--flow" x1="328" y1="168" x2="452" y2="168"/>
         <line class="dg-arrow" x1="328" y1="256" x2="452" y2="292"/>
         <line class="dg-arrow" x1="328" y1="344" x2="452" y2="310"/>
@@ -143,10 +218,29 @@
 </section>
 
 <section class="slide">
-  <h2>오리진은 무엇을 두느냐로 종류가 갈린다</h2>
+  <h2>캐시 동작은 위에서부터 비교해 첫 일치를 쓴다</h2>
+  <div class="prose">
+    <p>요청이 오면 CloudFront는 캐시 동작을 목록 순서대로 비교해 <strong>처음 일치한 하나만</strong> 적용합니다. 경로 패턴은 대소문자를 구분하고, <code>*</code>(아무 글자 0개 이상)와 <code>?</code>(아무 글자 1개) 와일드카드를 씁니다. 그래서 <code>/api/admin/*</code>처럼 좁은 패턴을 <code>/api/*</code>보다 위에 둡니다. 어디에도 맞지 않는 요청을 받는 기본 동작 <code>*</code>는 지울 수 없고 항상 맨 아래에 있습니다.</p>
+    <p>캐시 동작 하나에는 오리진 말고도 여러 설정이 들어갑니다. 대표적인 것이 <strong>허용 메서드</strong>입니다. 기본값은 GET과 HEAD뿐이라, 주문 API 경로에 이것을 그대로 두면 주문 생성 POST가 403으로 거절됩니다. API 경로에는 GET부터 DELETE까지 일곱 메서드를 모두 허용하는 선택지를 고릅니다.</p>
+    <p>그 밖에 HTTPS 강제 여부, 캐시 방식, 엣지 함수 연결도 동작마다 정합니다. 이 설정들은 2부에서 하나씩 봅니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>오리진은 CloudFront가 원본을 가지러 가는 곳이다</h2>
+  <div class="prose prose--cols">
+    <p>오리진으로 가장 흔한 것은 <strong>S3 버킷</strong>입니다. 다만 S3에는 주소가 두 종류 있습니다. 일반 API 주소인 REST 엔드포인트와, 15장에서 본 정적 웹 사이트 호스팅을 켜면 생기는 <strong>웹 사이트 엔드포인트</strong>입니다. 웹 사이트 엔드포인트는 HTTP만 지원하고 버킷을 공개해야 하므로, CloudFront 뒤에서는 REST 엔드포인트를 씁니다.</p>
+    <p>REST 엔드포인트를 쓰면 버킷을 닫아 둔 채 CloudFront만 읽게 할 수 있습니다. 이 장치가 <dfn title="Origin Access Control">OAC</dfn>입니다. 지금은 "CloudFront가 서명한 요청만 버킷이 받아 주는 방식" 정도로 알아 두고, 동작은 2부에서 봅니다.</p>
+    <p>ALB나 EC2처럼 HTTP로 말하는 서버는 모두 <strong>커스텀 오리진</strong>으로 취급합니다. 온프레미스 서버나 다른 클라우드의 서버도 공개 도메인만 있으면 오리진이 됩니다. 문제는 오리진이 공개되어 있으면 누구든 CloudFront를 건너뛰고 직접 부를 수 있다는 점입니다. 그래서 ALB는 <dfn>VPC 오리진</dfn>, 즉 프라이빗 서브넷에 숨긴 채 CloudFront만 닿게 하는 방식으로 붙입니다(역시 2부).</p>
+    <p>마지막으로 <dfn title="origin group">오리진 그룹</dfn>은 주 오리진과 보조 오리진을 묶어, 주 오리진이 실패하면 보조로 넘기는 장애 조치 단위입니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>오리진 종류마다 잠그는 방법이 다르다</h2>
   <div class="slide__body">
     <table class="compare">
-      <thead><tr><th scope="col">오리진</th><th scope="col">언제 쓰나</th><th scope="col">접근 제한 방법</th></tr></thead>
+      <thead><tr><th scope="col">오리진</th><th scope="col">언제 쓰나</th><th scope="col">직접 접근을 막는 방법</th></tr></thead>
       <tbody>
         <tr><th scope="row">S3 버킷(REST)</th><td>정적 파일, 업로드 파일</td><td class="is-flow">OAC로 버킷을 비공개 유지</td></tr>
         <tr><th scope="row">S3 웹 사이트 엔드포인트</th><td>리다이렉트 규칙이 필요할 때</td><td class="is-key">OAC 불가, 커스텀 오리진 취급</td></tr>
@@ -155,24 +249,41 @@
         <tr><th scope="row">오리진 그룹</th><td>주/보조 장애 조치</td><td>구성 오리진의 방법을 따름</td></tr>
       </tbody>
     </table>
-    <p class="small">한 배포에 오리진은 기본 100개, 캐시 동작은 75개까지 둘 수 있습니다(조정 가능 할당량).</p>
+    <p class="small">어떤 오리진이든 "CloudFront를 거치지 않은 요청은 거절한다"가 목표입니다. 그래야 3부의 WAF와 2부의 접근 통제가 우회되지 않습니다. 한 배포에 오리진은 기본 100개, 캐시 동작은 75개까지 둘 수 있습니다(늘릴 수 있는 할당량, 12장).</p>
   </div>
 </section>
 
 <section class="slide">
-  <h2>정적은 오래, API는 캐시 없이 나눈다</h2>
+  <h2>쇼핑몰 배포는 경로 네 개로 나뉜다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>캐시 동작마다 "어떻게 캐시할지"를 고를 때 AWS가 미리 만들어 둔 설정 묶음인 <strong>관리형 캐시 정책</strong>을 쓸 수 있습니다. 지금은 <code>CachingOptimized</code>는 오래 캐시, <code>CachingDisabled</code>는 캐시하지 않음 정도로 보면 됩니다. 정책의 정체는 2부 첫머리에서 봅니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">경로 패턴</th><th scope="col">오리진</th><th scope="col">캐시 정책</th><th scope="col">이유</th></tr></thead>
       <tbody>
         <tr><th scope="row"><code>/api/*</code></th><td>ALB</td><td>CachingDisabled</td><td>응답이 사용자마다 다름</td></tr>
         <tr><th scope="row"><code>/static/*</code></th><td>S3</td><td class="is-flow">CachingOptimized</td><td>파일명에 해시, 1년 캐시</td></tr>
-        <tr><th scope="row"><code>/img/*.webp</code></th><td>S3</td><td>CachingOptimized</td><td>와일드카드로 확장자 매칭</td></tr>
-        <tr><th scope="row"><code>*</code>(기본)</th><td>S3</td><td>짧은 TTL</td><td>index.html은 자주 바뀜</td></tr>
+        <tr><th scope="row"><code>/img/*</code></th><td>S3</td><td>CachingOptimized</td><td>상품 이미지는 잘 안 바뀜</td></tr>
+        <tr><th scope="row"><code>*</code>(기본)</th><td>S3</td><td>짧은 TTL</td><td>index.html은 배포마다 바뀜</td></tr>
       </tbody>
     </table>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>요청 한 건이 엣지에서 겪는 일</h2>
+  <div class="split split--even">
+    <ol class="steps">
+      <li><b>DNS 응답</b><p>CloudFront의 DNS가 사용자에게 가까운 엣지 로케이션의 IP를 돌려줍니다.</p></li>
+      <li><b>연결 종료</b><p>TCP와 TLS 핸드셰이크가 그 엣지에서 끝납니다.</p></li>
+      <li><b>캐시 동작 선택</b><p>경로를 위에서부터 비교해 첫 일치 동작을 고릅니다.</p></li>
+      <li class="is-key"><b>캐시 조회</b><p>요청에서 캐시 키를 만들어 저장된 객체를 찾습니다.</p></li>
+      <li><b>적중 또는 미스</b><p>적중이면 바로 답하고, 미스면 다음 캐시 층과 오리진으로 갑니다.</p></li>
+    </ol>
     <div class="prose">
-      <p>경로 패턴은 대소문자를 구분하고 <code>*</code>와 <code>?</code> 와일드카드를 씁니다. 동작은 목록 순서대로 비교하므로 <strong>구체적인 패턴을 위에</strong> 두고, 기본 동작 <code>*</code>는 항상 맨 아래에 남습니다.</p>
+      <p>1부의 내용을 요청 하나의 일생으로 묶으면 이렇습니다. 1~3단계는 배포와 캐시 동작을 잘 나누면 끝나는 일입니다.</p>
+      <p>남은 질문은 4단계에 있습니다. 엣지는 두 요청을 무엇으로 <strong>같은 것</strong>이라고 판단하고, 그 객체를 얼마나 오래 들고 있으며, 누구에게만 내줄까요? 2부는 여기서 시작합니다.</p>
     </div>
   </div>
 </section>
@@ -180,8 +291,8 @@
 <!-- ===== 2부 원리: CloudFront ========================================= -->
 <section class="slide slide--divider" data-section="CloudFront의 동작 원리" data-depth="core">
   <p class="divider__no">2부</p>
-  <h2>무엇을 같은 요청으로 볼 것인가</h2>
-  <p class="lede">캐시 적중률은 캐시 키 설계가 거의 전부를 결정합니다. 캐시 키, TTL, 접근 제어, 엣지에서 도는 코드까지 CloudFront 내부 동작을 봅니다.</p>
+  <h2>엣지는 무엇을 같은 요청으로 보는가</h2>
+  <p class="lede">1부에서는 쇼핑몰 요청을 경로별로 나눴습니다. 이제 각 경로 안에서 엣지가 무엇을 같은 객체로 보고(캐시 키), 얼마나 오래 들고 있고(TTL), 누구에게만 내주며(OAC, 서명), 어떻게 연결하는지(HTTPS, 엣지 코드)를 차례로 봅니다.</p>
   <div class="depth-shift" aria-label="깊이 전환: 기초에서 원리로">
     <span class="depth-shift__step"><span class="depth" data-depth="basic"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>기초</span>
     <span class="depth-shift__line" aria-hidden="true"></span>
@@ -194,8 +305,9 @@
   <h2>캐시 키가 같으면 같은 객체로 본다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>엣지는 요청에서 <dfn title="cache key">캐시 키</dfn>를 만들어 저장된 객체를 찾습니다. 기본 캐시 키는 도메인과 URL 경로뿐입니다.</p>
-      <p>쿼리 문자열, 헤더, 쿠키를 캐시 키에 넣으면 값마다 다른 객체로 저장됩니다. 넣을수록 정확해지지만 <mark>같은 파일이 여러 벌로 쪼개져 적중률이 떨어집니다</mark>.</p>
+      <p>엣지는 요청에서 <dfn title="cache key">캐시 키</dfn>라는 문자열을 만들어 저장된 객체를 찾습니다. 기본 캐시 키는 <strong>도메인과 URL 경로</strong>뿐입니다.</p>
+      <p>요청에는 그 밖에도 URL의 <code>?</code> 뒤에 붙는 쿼리 문자열, 이름-값 쌍인 헤더, 브라우저가 자동으로 싣는 쿠키(2장)가 있습니다. 이 중 무엇을 키에 넣으면 그 값이 다를 때마다 <strong>다른 객체</strong>로 따로 저장됩니다.</p>
+      <p>오른쪽 표처럼 쿼리 전체를 키에 넣으면, 인스타그램 광고에서 들어온 <code>?utm=x</code> 요청은 같은 파일인데도 미스가 납니다.</p>
     </div>
     <table class="compare">
       <thead><tr><th scope="col">요청</th><th scope="col">키에 쿼리 제외</th><th scope="col">키에 쿼리 전체</th></tr></thead>
@@ -205,6 +317,24 @@
         <tr><th scope="row"><code>/a.js?utm=x</code></th><td>객체 A</td><td class="is-key">객체 C</td></tr>
       </tbody>
     </table>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>응답을 바꾸는 값만 키에 넣는다</h2>
+  <div class="prose">
+    <p>캐시 키는 정확도와 적중률을 맞바꿉니다. 키에 넣을수록 같은 파일이 여러 벌로 쪼개져 <mark>적중률이 떨어지고</mark>, 뺄수록 잘 적중하지만 서로 다른 응답이 하나로 섞일 위험이 생깁니다.</p>
+    <p>판단 기준은 "이 값이 다르면 오리진의 응답이 달라지는가"입니다. 쇼핑몰이 상품 이미지를 <code>/img/p1.jpg?w=300</code>처럼 크기 파라미터로 줄여서 준다면 <code>w</code>는 반드시 키에 넣어야 합니다. 빼면 300px 요청에 600px 이미지가 나갑니다. 반대로 <code>utm_source</code> 같은 광고 추적 값은 응답을 바꾸지 않으니 빼야 합니다.</p>
+    <p>그래서 쿼리, 헤더, 쿠키는 "전부"나 "없음" 대신 <strong>허용 목록</strong>으로 필요한 이름만 고르는 것이 기본입니다. 그런데 예전 CloudFront에는 이렇게 고르기 어렵게 만드는 구조적 제약이 있었습니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>예전에는 오리진에 넘기는 값이 곧 캐시 키였다</h2>
+  <div class="prose">
+    <p>옛 설정 방식(레거시 캐시 설정)에서는 "오리진에 전달할 헤더"를 고르면 그 헤더가 자동으로 캐시 키에도 들어갔습니다. 오리진 서버가 로그를 남기려고 <code>User-Agent</code>(브라우저 종류를 알리는 헤더)를 필요로 하면, 캐시가 브라우저 종류와 버전 수만큼 쪼개졌습니다. 오리진이 응답을 바꾸지도 않는데 말입니다.</p>
+    <p>지금의 CloudFront는 이 둘을 별개의 <strong>정책</strong>으로 나눴습니다. <dfn title="cache policy">캐시 정책</dfn>은 캐시 키와 TTL을 정하고, <dfn title="origin request policy">오리진 요청 정책</dfn>은 키와 상관없이 오리진에 넘길 값을 정합니다. 여기에 뷰어(브라우저)에게 돌려줄 응답에 헤더를 덧붙이는 <dfn title="response headers policy">응답 헤더 정책</dfn>이 더해져 세 가지입니다.</p>
+    <p>정책은 따로 만들어 두고 캐시 동작에 붙이는 독립 객체라서, 여러 배포가 같은 정책을 재사용합니다. AWS가 만들어 둔 것을 관리형 정책이라고 부릅니다.</p>
   </div>
 </section>
 
@@ -220,13 +350,13 @@
       </tbody>
     </table>
     <div class="prose">
-      <p>예전에는 "오리진에 넘기는 값은 곧 캐시 키"였습니다. 그래서 오리진이 <code>User-Agent</code>를 필요로 하면 캐시가 브라우저 종류만큼 쪼개졌습니다. 정책이 분리된 뒤에는 <strong>캐시 키는 좁게 두고, 오리진에는 필요한 값을 따로 넘길 수</strong> 있습니다.</p>
+      <p>앞의 <code>User-Agent</code> 문제는 이제 <strong>캐시 키에서는 빼고 오리진 요청 정책으로만 넘기면</strong> 풀립니다. 캐시 키에 넣은 값은 오리진에도 자동으로 전달되므로, 오리진 요청 정책에는 "키에는 없지만 오리진이 필요로 하는 값"만 적습니다. 다음 슬라이드에서 쇼핑몰 정적 파일용 캐시 정책을 직접 만들어 봅니다.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <h2>캐시 정책은 키 구성과 TTL 세 값을 묶는다</h2>
+  <h2>정적 파일용 캐시 정책은 키를 비워 둔다</h2>
   <div class="split split--wide-left">
     <pre class="code" data-file="cache-policy.tf"><code><span class="k">resource</span> <span class="s">"aws_cloudfront_cache_policy"</span> <span class="s">"static"</span> {
   name        = <span class="s">"static-assets"</span>
@@ -242,8 +372,8 @@
   }
 }</code></pre>
     <div class="prose">
-      <p>쿼리, 헤더, 쿠키를 모두 <code>none</code>으로 두어 정적 파일을 경로 하나당 한 벌만 캐시합니다.</p>
-      <p>gzip과 Brotli를 켜면 <code>Accept-Encoding</code>을 정규화한 값이 키에 들어가, 압축본과 원본이 섞이지 않습니다.</p>
+      <p>11장의 Terraform으로 쓴 캐시 정책입니다. 2~4행의 TTL은 초 단위로 최소 0, 기본 하루, 최대 1년이며, 세 값의 뜻은 곧 봅니다.</p>
+      <p>블록 이름 그대로 키에 넣은 값은 오리진에도 전달됩니다. 쿼리, 헤더, 쿠키를 모두 <code>none</code>으로 두어 <code>/static/app.3f9c.js</code>는 경로 하나당 한 벌만 캐시됩니다. 6~7행은 압축 슬라이드에서 설명합니다.</p>
     </div>
   </div>
 </section>
@@ -252,13 +382,23 @@
   <h2>Host 헤더를 넘기면 오리진이 길을 잃는다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>오리진 요청 정책 <code>AllViewer</code>는 뷰어의 모든 헤더를 넘기는데, 여기에는 <code>Host: www.example.com</code>도 포함됩니다.</p>
-      <p>S3는 Host 헤더로 버킷을 찾으므로 엉뚱한 Host가 오면 요청을 처리하지 못합니다. ALB 오리진이라면 오리진 인증서 이름과 Host가 맞지 않아 502가 납니다. 그래서 S3와 대부분의 ALB 앞에는 <strong>AllViewerExceptHostHeader</strong>를 씁니다.</p>
+      <p><code>Host</code>는 "어느 도메인에 보내는 요청인지"를 적는 헤더입니다. IP 하나에 여러 사이트가 살 수 있어서 서버는 이 값으로 사이트를 고릅니다. 관리형 오리진 요청 정책 <code>AllViewer</code>는 뷰어 헤더를 전부 넘기므로 <code>Host: www.shop.example.com</code>도 오리진에 갑니다.</p>
+      <p>S3는 Host로 버킷을 찾으므로 엉뚱한 Host가 오면 요청을 처리하지 못합니다. ALB 오리진이라면 CloudFront가 이 Host로 오리진 인증서를 검증하다 이름이 맞지 않아 502(2장)를 냅니다. 그래서 대부분 <strong>AllViewerExceptHostHeader</strong>를 씁니다.</p>
     </div>
     <aside class="callout callout--key">
       <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>모든 헤더를 키에 넣으면 적중률은 0에 가깝다</p>
       <p>레거시 설정에서 "모든 헤더 전달"을 고르면 사실상 캐시가 꺼집니다. 헤더는 오리진 요청 정책으로 넘기고, 캐시 키에는 꼭 필요한 것만 넣습니다.</p>
     </aside>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>오리진은 Cache-Control로 수명을 알린다</h2>
+  <div class="prose prose--cols">
+    <p>캐시 키가 "무엇을"이라면 TTL은 "얼마나 오래"입니다. 8장에서 본 대로 오리진은 응답 헤더 <code>Cache-Control</code>로 이 응답을 얼마 동안 캐시해도 되는지 알립니다. 여기서 캐시는 두 종류입니다. 한 사용자만 쓰는 <strong>브라우저 캐시</strong>와, 여러 사용자가 함께 쓰는 CDN이나 회사 프록시 같은 <dfn title="shared cache">공유 캐시</dfn>입니다.</p>
+    <p><code>max-age=600</code>은 모든 캐시에게 600초 동안 신선하다고 알립니다. <code>s-maxage</code>는 공유 캐시에만 적용되는 값으로, 있으면 공유 캐시는 max-age 대신 이것을 따릅니다. <code>Expires</code>는 같은 뜻을 초가 아니라 만료 시각으로 적는 옛 헤더입니다.</p>
+    <p>캐시를 막는 지시어도 있습니다. <code>no-store</code>는 아예 저장하지 말라, <code>no-cache</code>는 저장은 하되 쓸 때마다 오리진에 바뀌었는지 물어보라는 뜻입니다. <code>private</code>은 브라우저 캐시만 저장할 수 있고 공유 캐시는 저장하지 말라는 뜻이라, 마이페이지처럼 사용자별 응답에 붙입니다.</p>
+    <p>CloudFront는 이 헤더를 그대로 따르지 않고, 캐시 정책의 최소·기본·최대 TTL이라는 울타리 안에서 해석합니다. 운영자가 오리진의 실수(예: 너무 긴 max-age)를 엣지에서 제한할 수 있게 하려는 것입니다.</p>
   </div>
 </section>
 
@@ -275,7 +415,7 @@
         <tr><th scope="row"><code>no-cache</code>, <code>private</code></th><td class="is-key">최소 TTL(0이 아니면 캐시됨)</td><td>헤더대로</td></tr>
       </tbody>
     </table>
-    <p class="small">정책에서 최소·기본·최대 TTL을 정하고, 오리진은 Cache-Control로 객체마다 값을 줍니다. 캐시 정책 없이 쓰면 기본 TTL은 24시간입니다.</p>
+    <p class="small">"범위로 자른다"는 오리진 값이 최소 TTL보다 작으면 최소 TTL을, 최대 TTL보다 크면 최대 TTL을 쓴다는 뜻입니다. 앞 슬라이드의 정책(최소 0, 최대 1년)에서 <code>max-age=600</code>은 그대로 600초입니다. 캐시 정책 없이 레거시 설정을 쓰면 기본 TTL은 24시간입니다. 마지막 행의 함정은 6부 사고 사례로 다시 만납니다.</p>
   </div>
 </section>
 
@@ -283,12 +423,12 @@
   <h2>s-maxage로 엣지와 브라우저를 따로 조절한다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p><code>Cache-Control: max-age=60, s-maxage=86400</code>을 보내면 브라우저는 1분만, CloudFront는 하루를 캐시합니다. 배포 직후 무효화 한 번으로 엣지는 새 파일을 받고, 브라우저는 1분 안에 따라옵니다.</p>
-      <p><code>stale-while-revalidate</code>와 <code>stale-if-error</code>도 지원합니다. 오리진이 죽어도 오래된 객체를 최대 TTL 범위 안에서 계속 내줄 수 있습니다.</p>
+      <p>쇼핑몰의 상품 목록 페이지가 <code>Cache-Control: max-age=60, s-maxage=86400</code>을 보내면 브라우저는 1분, CloudFront는 하루를 캐시합니다. 상품이 바뀌면 엣지만 무효화하면 되고, 브라우저는 1분 안에 새 값을 따라옵니다. 브라우저 캐시는 우리가 지울 수 없으니 짧게, 엣지는 지울 수 있으니 길게 두는 것입니다.</p>
+      <p><code>stale-while-revalidate</code>는 만료된 객체를 일단 내주고 뒤에서 새로 받아 오라는 지시, <code>stale-if-error</code>는 오리진이 오류를 내면 만료된 객체라도 내주라는 지시입니다. CloudFront는 둘 다 지원합니다.</p>
     </div>
     <aside class="callout callout--key">
       <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>최소 TTL이 0보다 크면 private도 캐시된다</p>
-      <p>관리형 CachingOptimized의 최소 TTL은 1초입니다. 사용자별 응답에 이 정책을 붙이면 <code>no-store</code>를 보내도 다른 사용자에게 섞여 나갈 수 있습니다.</p>
+      <p>관리형 CachingOptimized의 최소 TTL은 1초입니다. 사용자별 응답에 이 정책을 붙이면 <code>private</code>을 보내도 다른 사용자에게 섞여 나갈 수 있습니다.</p>
     </aside>
   </div>
 </section>
@@ -296,9 +436,9 @@
 <section class="slide">
   <h2>압축은 엣지가 대신 해 준다</h2>
   <div class="prose">
-    <p>캐시 동작에서 압축을 켜면, 뷰어가 <code>Accept-Encoding</code>에 <code>gzip</code>이나 <code>br</code>을 보낼 때 CloudFront가 객체를 압축해서 내줍니다. 둘 다 받는 뷰어에게는 Brotli를 고릅니다.</p>
-    <p>압축 대상은 <strong>1,000바이트에서 10,000,000바이트 사이</strong> 객체입니다. 오리진이 이미 압축해서 보냈다면 그대로 캐시합니다. Chrome과 Firefox는 HTTPS에서만 Brotli를 요청합니다.</p>
-    <p>압축 설정은 캐시 정책에 들어 있습니다. 정책에서 Brotli를 켜지 않으면 <code>br</code> 요청도 gzip이나 무압축으로 처리됩니다.</p>
+    <p>JS, CSS, JSON 같은 텍스트 파일은 압축하면 보통 몇 분의 1로 줄어 전송 시간과 전송 요금이 함께 줄어듭니다. 브라우저는 받을 수 있는 압축 형식을 <code>Accept-Encoding</code> 헤더로 알립니다. <code>gzip</code>은 오래된 범용 형식이고, <code>br</code>(Brotli)은 텍스트를 더 작게 줄이는 새 형식입니다.</p>
+    <p>캐시 동작에서 압축을 켜면 CloudFront가 오리진 대신 객체를 압축해 내주고, 둘 다 받는 브라우저에게는 Brotli를 고릅니다. 대상은 1,000바이트에서 10,000,000바이트 사이 객체입니다. 너무 작으면 줄일 게 없고, JPEG처럼 이미 압축된 형식은 다시 압축해도 소용이 없습니다. 오리진이 이미 압축해서 보냈다면 그대로 캐시합니다.</p>
+    <p>앞 코드의 6~7행이 이 설정입니다. 브라우저마다 <code>Accept-Encoding</code> 값이 제각각이라 그대로 키에 넣으면 캐시가 쪼개지므로, CloudFront는 이 값을 gzip, br, 없음 중 하나로 <strong>정규화</strong>해 키에 넣습니다. Brotli를 켜지 않으면 br 요청도 gzip이나 무압축으로 처리됩니다.</p>
   </div>
 </section>
 
@@ -306,13 +446,23 @@
   <h2>무효화보다 파일명에 버전을 넣는다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p><dfn title="invalidation">무효화</dfn>는 TTL이 끝나기 전에 엣지와 리전 엣지 캐시에서 객체를 지웁니다. 매달 경로 1,000개까지 무료이고, <code>/images/*</code> 같은 와일드카드는 파일 수와 상관없이 경로 하나로 셉니다.</p>
-      <p>하지만 무효화는 브라우저와 회사 프록시 캐시까지 지우지 못합니다. 그래서 자주 바뀌는 파일은 <code>app.3f9c2a.js</code>처럼 <mark>내용 해시를 이름에 넣고</mark> 긴 TTL을 겁니다.</p>
+      <p>새 버전을 배포했는데 엣지가 옛 파일을 들고 있다면 <dfn title="invalidation">무효화</dfn>로 TTL이 끝나기 전에 지울 수 있습니다. 매달 경로 1,000개까지 무료이고, <code>/images/*</code> 같은 와일드카드는 파일 수와 상관없이 경로 하나로 셉니다.</p>
+      <p>하지만 무효화는 브라우저와 회사 프록시의 캐시까지 지우지 못합니다. 그래서 8장에서 본 대로 자주 바뀌는 파일은 <code>app.3f9c2a.js</code>처럼 <mark>내용 해시를 이름에 넣고</mark> 긴 TTL을 겁니다. 내용이 바뀌면 이름이 바뀌니 지울 필요 자체가 없습니다.</p>
     </div>
     <aside class="callout callout--note">
       <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>무효화는 진입 파일에만</p>
       <p>새 해시 파일을 가리키는 <code>index.html</code>만 짧은 TTL이나 무효화로 갱신합니다. 처리 속도 할당량은 초당 경로 150개, 와일드카드는 초당 1개입니다.</p>
     </aside>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>보안 헤더는 브라우저에게 주는 지시다</h2>
+  <div class="prose prose--cols">
+    <p>세 번째 정책인 응답 헤더 정책을 이해하려면, 응답 헤더 몇 개가 브라우저의 동작을 바꾼다는 점을 알아야 합니다. 7장에서 본 <code>Content-Security-Policy</code>(CSP, 허용한 출처의 스크립트만 실행)와 <code>Access-Control-Allow-Origin</code>(CORS, 다른 출처의 스크립트에 응답을 허락)이 그런 헤더입니다.</p>
+    <p><code>Strict-Transport-Security</code>(<dfn title="HTTP Strict Transport Security">HSTS</dfn>)는 "앞으로 정해진 기간 동안 이 도메인은 HTTPS로만 접속하라"고 브라우저에 기억시킵니다. 사용자가 주소창에 <code>http://</code>를 쳐도 브라우저가 스스로 HTTPS로 바꾸므로, 첫 평문 요청을 가로채는 공격이 끼어들 틈이 줄어듭니다.</p>
+    <p><code>X-Content-Type-Options: nosniff</code>는 브라우저가 응답 내용을 보고 형식을 추측하지 말라는 지시입니다. 사용자가 올린 텍스트 파일이 스크립트로 해석되는 일을 막습니다. <code>X-Frame-Options: DENY</code>는 다른 사이트가 우리 페이지를 <code>iframe</code>에 넣지 못하게 합니다. 투명한 틀을 씌워 사용자가 모르고 버튼을 누르게 하는 <dfn title="clickjacking">클릭재킹</dfn>을 막는 헤더입니다.</p>
+    <p><code>Referrer-Policy</code>는 사용자가 다른 사이트로 넘어갈 때 지금 URL을 얼마나 알려 줄지 정합니다. 주문 번호가 든 URL이 외부 사이트 로그에 남지 않게 도메인만 보내는 값을 흔히 씁니다.</p>
   </div>
 </section>
 
@@ -324,10 +474,10 @@ x-content-type-options: nosniff
 x-frame-options: DENY
 referrer-policy: strict-origin-when-cross-origin
 content-security-policy: default-src 'self'
-access-control-allow-origin: https://app.example.com</code></pre>
+access-control-allow-origin: https://shop.example.com</code></pre>
     <div class="prose">
-      <p>응답 헤더 정책은 오리진 응답에 HSTS, CSP 같은 보안 헤더와 CORS 헤더(7장)를 덧붙이거나 오리진 값을 덮어씁니다.</p>
-      <p>S3처럼 헤더를 마음대로 붙이기 어려운 오리진도 엣지에서 일관되게 처리됩니다.</p>
+      <p>응답 헤더 정책은 오리진 응답에 이런 헤더를 덧붙이거나 오리진 값을 덮어씁니다. 1행의 63072000초는 2년입니다.</p>
+      <p>S3처럼 응답 헤더를 마음대로 붙이기 어려운 오리진도, 여러 서비스가 섞인 배포도 엣지에서 한 번에 같은 규칙을 얻습니다. 앱 코드마다 헤더를 따로 넣다 빠뜨리는 일이 없어집니다.</p>
     </div>
   </div>
 </section>
@@ -341,9 +491,18 @@ access-control-allow-origin: https://app.example.com</code></pre>
       <li><b>보조 오리진에 재요청</b><p>그 요청만 보조로 보냅니다. 다음 요청은 다시 주 오리진부터.</p></li>
     </ol>
     <div class="prose">
-      <p>장애 조치는 뷰어 요청이 <strong>GET, HEAD, OPTIONS</strong>일 때만 일어납니다. POST 같은 쓰기는 넘기지 않습니다.</p>
+      <p>1부에서 예고한 오리진 그룹의 동작입니다. 예를 들어 서울 버킷이 주, 도쿄 복제 버킷(15장 복제)이 보조입니다. 장애 조치는 뷰어 요청이 <strong>GET, HEAD, OPTIONS</strong>일 때만 일어납니다. 2장에서 본 대로 이 메서드는 서버 상태를 바꾸지 않아 다시 보내도 안전하지만, 주문 생성 POST는 주 오리진에서 이미 처리됐을 수 있어 다시 보내면 주문이 두 번 생길 수 있기 때문입니다.</p>
       <p>기본값으로는 연결 시도 3번 × 10초, 최대 30초를 기다린 뒤 넘어갑니다. 빠른 전환이 필요하면 연결 제한 시간과 시도 횟수를 줄입니다.</p>
     </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>버킷을 공개하면 CloudFront를 건너뛸 수 있다</h2>
+  <div class="prose">
+    <p>이제 "누구에게만 내주는가"로 넘어갑니다. 쇼핑몰 웹 파일 버킷을 공개로 두면 CloudFront 앞에서 아무리 막아도 소용이 없습니다. 누군가 <code>shop-web.s3.ap-northeast-2.amazonaws.com</code>으로 직접 요청하면 3부의 WAF도, 뒤에서 볼 지역 제한과 서명된 URL도 거치지 않습니다. S3에서 직접 나가는 전송 요금도 CloudFront보다 비쌉니다.</p>
+    <p>원하는 것은 "버킷은 닫혀 있고, <mark>내 배포만</mark> 읽을 수 있다"는 상태입니다. 예전에는 <dfn title="Origin Access Identity">OAI</dfn>라는 CloudFront 전용 가상 사용자를 만들어 버킷 정책에서 그 사용자만 허용했습니다. 하지만 OAI는 SSE-KMS로 암호화된 객체(15장)를 읽지 못하고, 2022년 12월 이후 생긴 리전에서는 쓸 수 없어 지금은 레거시입니다.</p>
+    <p>그 자리를 OAC가 이어받았습니다. OAC는 별도 사용자를 만드는 대신, AWS의 표준 요청 서명 방식을 그대로 씁니다.</p>
   </div>
 </section>
 
@@ -372,8 +531,8 @@ access-control-allow-origin: https://app.example.com</code></pre>
       </div>
     </div>
     <div class="prose">
-      <p><dfn title="Origin Access Control">OAC</dfn>는 CloudFront가 S3로 가는 요청에 SigV4 서명을 붙이게 합니다. 버킷 정책은 그 서명 주체 중 <strong>내 배포 ARN</strong>만 허용합니다.</p>
-      <p>예전 방식인 OAI는 레거시입니다. 2022년 12월 이후 리전과 SSE-KMS를 지원하지 않습니다.</p>
+      <p>12장에서 본 대로 AWS API 요청은 자격 증명으로 만든 <strong>SigV4</strong> 서명을 달고, AWS는 그 서명으로 보낸 이를 확인합니다. <dfn title="Origin Access Control">OAC</dfn>를 켜면 CloudFront가 S3로 가는 요청에 이 서명을 붙입니다.</p>
+      <p>버킷 정책은 그 서명 주체 중 <strong>내 배포</strong>만 허용합니다. 서명 없는 직접 요청은 허용 문장이 없으니 403입니다.</p>
     </div>
   </div>
 </section>
@@ -385,13 +544,14 @@ access-control-allow-origin: https://app.example.com</code></pre>
   <span class="s">"Effect"</span>: <span class="s">"Allow"</span>,
   <span class="s">"Principal"</span>: { <span class="s">"Service"</span>: <span class="s">"cloudfront.amazonaws.com"</span> },
   <span class="s">"Action"</span>: <span class="s">"s3:GetObject"</span>,
-  <span class="s">"Resource"</span>: <span class="s">"arn:aws:s3:::my-static-bucket/*"</span>,
+  <span class="s">"Resource"</span>: <span class="s">"arn:aws:s3:::shop-web/*"</span>,
   <span class="s">"Condition"</span>: { <span class="s">"StringEquals"</span>: {
-<span class="hl">    <span class="s">"AWS:SourceArn"</span>: <span class="s">"arn:aws:cloudfront::111122223333:distribution/E1AB2"</span></span>
+<span class="hl">    <span class="s">"AWS:SourceArn"</span>:</span>
+<span class="hl">      <span class="s">"arn:aws:cloudfront::111122223333:distribution/E1AB2"</span></span>
   } }
 }</code></pre>
     <div class="prose">
-      <p>Principal이 CloudFront 서비스 전체라서 Condition이 없으면 <strong>남의 배포</strong>도 이 버킷을 읽을 수 있습니다. SourceArn 조건이 핵심입니다. 객체가 SSE-KMS로 암호화되어 있다면 KMS 키 정책에도 같은 조건으로 <code>kms:Decrypt</code>를 허용해야 합니다.</p>
+      <p>3행의 Principal은 CloudFront <strong>서비스 전체</strong>입니다. 12장의 "서비스도 대리인이 될 수 있다"에서 봤듯이 서비스는 모든 고객이 공유하므로, Condition이 없으면 남이 만든 배포도 이 버킷을 오리진으로 읽을 수 있습니다. 7~8행의 SourceArn 조건이 "내 배포 E1AB2를 위해 온 요청만"으로 좁힙니다. 객체가 SSE-KMS로 암호화되어 있다면 KMS 키 정책(4부)에도 같은 조건으로 <code>kms:Decrypt</code>를 허용해야 합니다.</p>
     </div>
   </div>
 </section>
@@ -400,29 +560,38 @@ access-control-allow-origin: https://app.example.com</code></pre>
   <h2>VPC 오리진이면 ALB를 공개할 필요가 없다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>예전에는 ALB가 퍼블릭 서브넷에 있어야 CloudFront가 닿았습니다. 그러면 누군가 ALB 주소로 CloudFront와 WAF를 우회할 수 있습니다.</p>
-      <p><dfn>VPC 오리진</dfn>을 쓰면 프라이빗 서브넷의 ALB, NLB, EC2를 그대로 오리진으로 씁니다. CloudFront가 서브넷에 관리형 ENI를 만들어 사설 경로로 들어오고, 인터넷 쪽 입구는 아예 없습니다.</p>
+      <p>주문 API 쪽도 같은 문제가 있습니다. 예전에는 ALB가 퍼블릭 서브넷에 있어야 CloudFront가 닿았고, 그러면 누군가 ALB 주소로 CloudFront와 WAF를 우회할 수 있었습니다.</p>
+      <p><dfn>VPC 오리진</dfn>을 쓰면 프라이빗 서브넷의 ALB, NLB, EC2를 그대로 오리진으로 씁니다. CloudFront가 그 서브넷에 AWS 관리형 ENI(13장의 가상 네트워크 카드)를 만들어 사설 경로로 들어오므로, ALB에는 인터넷 쪽 입구가 아예 없습니다.</p>
     </div>
     <aside class="callout callout--note">
       <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>퍼블릭 ALB를 써야 한다면</p>
-      <p>보안 그룹에 관리형 접두사 목록 <code>com.amazonaws.global.cloudfront.origin-facing</code>만 허용하고, CloudFront가 붙인 비밀 헤더를 ALB 규칙에서 검사해 우회를 막습니다.</p>
+      <p>보안 그룹에 CloudFront 주소 대역을 모은 관리형 접두사 목록 <code>com.amazonaws.global.cloudfront.origin-facing</code>만 허용하고, CloudFront가 붙인 비밀 헤더를 ALB 규칙에서 검사해 다른 배포를 통한 우회도 막습니다.</p>
     </aside>
   </div>
 </section>
 
 <section class="slide">
-  <h2>유료 콘텐츠는 서명된 URL이나 쿠키로 연다</h2>
+  <h2>산 사람만 받는 파일은 서명으로 연다</h2>
+  <div class="prose">
+    <p>OAC는 버킷을 지켜 주지만, CloudFront 자체는 URL을 아는 누구에게나 파일을 내줍니다. 쇼핑몰이 전자책 PDF를 판다면 이것으로는 부족합니다. 구매한 사람에게만, 그것도 한동안만 열려야 합니다.</p>
+    <p>15장의 S3 <strong>Presigned URL</strong>이 비슷한 일을 했습니다. 다만 그것은 S3에 직접 가는 URL이라 CDN을 거치지 않고, 버킷도 S3 주소로 접근을 받아야 합니다. CloudFront에서는 같은 발상을 엣지에 적용한 <dfn title="signed URL">서명된 URL</dfn>과 <dfn title="signed cookie">서명된 쿠키</dfn>를 씁니다.</p>
+    <p>원리는 7장의 전자 서명 그대로입니다. 앱 서버가 "이 경로를 이 시각까지 열어 준다"는 정책을 <strong>개인 키로 서명</strong>하고, 엣지는 미리 등록된 <strong>공개 키로 검증</strong>합니다. 서명이 맞지 않거나 시각이 지났으면 엣지가 403으로 거절하므로, 오리진까지 가지도 않습니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>파일 하나는 URL로, 여러 파일은 쿠키로 연다</h2>
   <div class="slide__body">
     <table class="compare">
-      <thead><tr><th scope="col">항목</th><th scope="col">Signed URL</th><th scope="col">Signed Cookie</th></tr></thead>
+      <thead><tr><th scope="col">항목</th><th scope="col">서명된 URL</th><th scope="col">서명된 쿠키</th></tr></thead>
       <tbody>
         <tr><th scope="row">단위</th><td>파일 하나</td><td class="is-flow">여러 파일(예: 영상 조각 전체)</td></tr>
-        <tr><th scope="row">적합한 경우</th><td>다운로드 링크, 이메일 첨부</td><td>HLS 스트리밍, 회원 전용 영역</td></tr>
+        <tr><th scope="row">적합한 경우</th><td>전자책 다운로드 링크, 이메일 첨부</td><td>HLS 스트리밍, 회원 전용 영역</td></tr>
         <tr><th scope="row">URL 변경</th><td>URL에 서명 파라미터가 붙음</td><td>URL은 그대로</td></tr>
       </tbody>
     </table>
     <div class="prose">
-      <p>정책은 두 가지입니다. <strong>미리 정의된 정책</strong>(canned)은 만료 시각만 담아 URL이 짧고, <strong>사용자 지정 정책</strong>(custom)은 시작 시각, 허용 IP 범위, 와일드카드 경로를 담아 한 서명을 여러 파일에 재사용할 수 있습니다.</p>
+      <p>서명하는 정책에는 두 형태가 있습니다. <strong>미리 정의된 정책</strong>(canned)은 만료 시각만 담아 URL이 짧습니다. <strong>사용자 지정 정책</strong>(custom)은 시작 시각, 허용 IP 범위, <code>/ebooks/42/*</code> 같은 와일드카드 경로를 담을 수 있어 한 서명을 여러 파일에 재사용합니다. 영상처럼 수백 조각으로 나뉜 콘텐츠는 사용자 지정 정책을 쿠키에 담는 조합이 흔합니다.</p>
     </div>
   </div>
 </section>
@@ -430,11 +599,11 @@ access-control-allow-origin: https://app.example.com</code></pre>
 <section class="slide">
   <h2>앱이 개인 키로 서명하고 엣지가 공개 키로 검증한다</h2>
   <div class="split split--wide-left">
-    <div class="seq" role="img" aria-label="사용자가 로그인하면 앱이 권한을 확인하고 개인 키로 서명한 URL을 준다. 사용자가 그 URL로 CloudFront에 요청하면 엣지가 공개 키로 서명과 만료를 검증한 뒤 콘텐츠를 준다">
+    <div class="seq" role="img" aria-label="사용자가 다운로드를 요청하면 앱이 구매 내역을 확인하고 개인 키로 서명한 URL을 준다. 사용자가 그 URL로 CloudFront에 요청하면 엣지가 공개 키로 서명과 만료를 검증한 뒤 파일을 준다">
       <div class="seq__head"><span>사용자</span><span></span><span>앱 서버 / CloudFront</span></div>
       <div class="seq__row seq__row--r">
         <span class="seq__state"></span>
-        <span class="seq__msg"><b>강의 3 보기</b> 로그인 세션<small>앱 서버로</small></span>
+        <span class="seq__msg"><b>전자책 받기</b> 로그인 세션<small>앱 서버로</small></span>
         <span class="seq__state">구매 확인</span>
       </div>
       <div class="seq__row seq__row--l is-back">
@@ -444,7 +613,7 @@ access-control-allow-origin: https://app.example.com</code></pre>
       </div>
       <div class="seq__row seq__row--r">
         <span class="seq__state"></span>
-        <span class="seq__msg"><b>GET lecture3.mp4</b> 서명 포함<small>CloudFront로</small></span>
+        <span class="seq__msg"><b>GET book42.pdf</b> 서명 포함<small>CloudFront로</small></span>
         <span class="seq__state is-key">공개 키 검증</span>
       </div>
       <div class="seq__row seq__row--l is-back">
@@ -454,8 +623,8 @@ access-control-allow-origin: https://app.example.com</code></pre>
       </div>
     </div>
     <div class="prose">
-      <p>공개 키는 CloudFront <dfn>키 그룹</dfn>에 올리고 캐시 동작에 신뢰 대상으로 지정합니다. 키는 RSA 2048이나 ECDSA 256입니다.</p>
-      <p>루트 사용자로 만드는 옛 CloudFront 키 페어 대신 키 그룹을 씁니다. API로 키 교체를 자동화할 수 있습니다.</p>
+      <p>공개 키는 CloudFront의 <dfn>키 그룹</dfn>에 올리고, 그 캐시 동작이 이 키 그룹의 서명만 믿도록 지정합니다. 키는 RSA 2048이나 ECDSA 256(7장의 비대칭 키)입니다. <code>Key-Pair-Id</code>는 어느 공개 키로 검증할지 알려 줍니다.</p>
+      <p>예전에는 루트 사용자로만 만드는 CloudFront 키 페어를 썼지만, 지금은 IAM 권한으로 관리하고 API로 교체를 자동화할 수 있는 키 그룹을 씁니다.</p>
     </div>
   </div>
 </section>
@@ -464,8 +633,8 @@ access-control-allow-origin: https://app.example.com</code></pre>
   <h2>지역 제한은 배포 전체에 국가 단위로 건다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p><dfn title="geographic restriction">지역 제한</dfn>은 허용 목록이나 차단 목록으로 국가를 고르고, 막힌 요청에는 403을 돌려줍니다. 위치는 서드파티 IP 데이터베이스로 판단하며 AWS가 밝힌 정확도는 약 99.8%입니다.</p>
-      <p>제한은 <strong>배포 전체</strong>에 적용됩니다. 경로마다 다른 국가 규칙이 필요하면 WAF의 지리 매치 규칙이나 엣지 함수의 지역 정보를 씁니다.</p>
+      <p>판권 계약 때문에 전자책을 한국에서만 팔 수 있다면 <dfn title="geographic restriction">지역 제한</dfn>을 씁니다. 허용 목록이나 차단 목록으로 국가를 고르고, 막힌 요청에는 403을 돌려줍니다. 위치는 요청 IP를 서드파티 위치 데이터베이스와 대조해 판단하며, AWS가 밝힌 정확도는 약 99.8%입니다. VPN을 쓰면 우회될 수 있다는 뜻이기도 합니다.</p>
+      <p>제한은 <strong>배포 전체</strong>에 적용됩니다. 경로마다 다른 국가 규칙이 필요하면 3부 WAF의 지리 일치 규칙이나 엣지 함수가 받는 국가 정보를 씁니다.</p>
     </div>
     <aside class="callout callout--note">
       <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>규정 대응이라면 로그를 남긴다</p>
@@ -475,29 +644,47 @@ access-control-allow-origin: https://app.example.com</code></pre>
 </section>
 
 <section class="slide">
-  <h2>HTTPS는 뷰어 쪽과 오리진 쪽을 따로 정한다</h2>
+  <h2>HTTPS 구간은 둘이고 설정도 둘이다</h2>
+  <div class="prose prose--cols">
+    <p>CloudFront를 끼우면 TLS 연결이 두 개가 됩니다. 브라우저와 엣지 사이의 <strong>뷰어 쪽</strong>, 엣지와 오리진 사이의 <strong>오리진 쪽</strong>입니다. 엣지가 첫 연결의 암호를 풀고 내용을 읽은 뒤(그래야 캐시 키를 만들 수 있습니다) 두 번째 연결로 다시 암호화해 보냅니다.</p>
+    <p>뷰어 쪽은 캐시 동작의 <strong>뷰어 프로토콜 정책</strong>으로 정합니다. HTTP와 HTTPS 모두 받기, HTTP를 HTTPS로 리다이렉트, HTTPS만 받기 중에서 고르며 쇼핑몰은 리다이렉트를 씁니다. 13장의 ALB처럼 허용할 TLS 버전과 암호 묶음을 정하는 <strong>보안 정책</strong>도 고릅니다. 인증서는 13장에서 본 <strong>SNI</strong>, 즉 브라우저가 핸드셰이크에서 도메인 이름을 먼저 알려 주는 방식으로 고르므로 추가 비용이 없습니다.</p>
+    <p>오리진 쪽은 오리진마다 <strong>오리진 프로토콜 정책</strong>으로 정합니다. HTTP만, HTTPS만, 뷰어와 같게 중 하나입니다. 주문 API처럼 개인정보가 오가는 경로는 HTTPS만으로 둡니다.</p>
+    <p>한 가지 특이한 규칙이 있습니다. CloudFront는 특정 리전에 속하지 않는 글로벌 서비스이고 설정은 미국 동부 버지니아 리전(<code>us-east-1</code>)에서 관리됩니다. 그래서 배포에 붙일 인증서는 <mark>반드시 us-east-1의 ACM</mark>에서 발급해야 합니다. ACM은 4부에서 자세히 봅니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>뷰어 쪽과 오리진 쪽의 인증서는 리전이 다르다</h2>
   <div class="slide__body">
     <table class="compare">
       <thead><tr><th scope="col">구간</th><th scope="col">설정</th><th scope="col">인증서</th></tr></thead>
       <tbody>
-        <tr><th scope="row">뷰어 ↔ CloudFront</th><td>뷰어 프로토콜 정책: HTTP를 HTTPS로 리다이렉트, HTTPS만</td><td class="is-key">ACM, 반드시 us-east-1</td></tr>
-        <tr><th scope="row">CloudFront ↔ 오리진</th><td>오리진 프로토콜 정책: HTTPS만, 뷰어와 일치</td><td>ALB 인증서는 ALB 리전</td></tr>
+        <tr><th scope="row">뷰어 ↔ CloudFront</th><td>뷰어 프로토콜 정책: 리다이렉트, HTTPS만</td><td class="is-key">ACM, 반드시 us-east-1</td></tr>
+        <tr><th scope="row">CloudFront ↔ 오리진</th><td>오리진 프로토콜 정책: HTTPS만, 뷰어와 일치</td><td>ALB 인증서는 ALB 리전(서울)</td></tr>
         <tr><th scope="row">TLS 버전</th><td>보안 정책(예: TLSv1.2_2021 권장)</td><td>SNI 방식은 추가 비용 없음</td></tr>
       </tbody>
     </table>
     <div class="prose">
-      <p>인증서는 <strong>us-east-1</strong> ACM에서 가져옵니다. ALB 오리진은 CloudFront가 오리진 도메인 이름으로 TLS를 검증하므로 ALB 인증서가 그 이름을 포함해야 합니다. 뷰어 쪽 HTTP/2와 HTTP/3(QUIC, 2장)는 배포 설정 스위치로 켜며, 오리진은 지원하지 않아도 됩니다.</p>
+      <p>쇼핑몰은 같은 이름의 인증서를 두 번 발급합니다. <code>www.shop.example.com</code>용은 us-east-1에서 CloudFront에, 오리진용은 서울에서 ALB에 붙입니다. CloudFront는 오리진 도메인 이름으로 ALB 인증서를 검증하므로 ALB 인증서가 그 이름을 포함해야 합니다. 뷰어 쪽 HTTP/2와 HTTP/3(2장의 QUIC)은 배포 설정 스위치로 켜며, 오리진은 지원하지 않아도 됩니다.</p>
     </div>
   </div>
 </section>
 
+<section class="slide">
+  <h2>엣지에서 요청을 고치고 싶은 순간들</h2>
+  <div class="prose">
+    <p>쇼핑몰 웹 앱은 <dfn title="Single Page Application">SPA</dfn>입니다. 화면 전체가 <code>index.html</code> 하나이고, 주소가 바뀌면 브라우저의 자바스크립트가 그 주소에 맞는 화면을 그립니다. 그래서 사용자가 <code>/orders/42</code>를 새로고침하면 S3에는 그런 파일이 없어 오류가 납니다. 이 요청을 <code>/index.html</code>로 바꿔 줄 곳이 필요합니다.</p>
+    <p>비슷한 요구가 많습니다. 옛 URL을 새 URL로 리다이렉트하기, 캐시 키를 정규화하기, 응답에 헤더 넣기, 로그인 토큰을 엣지에서 미리 검사하기, 이미지 크기 바꾸기. 모두 오리진까지 가기 전에 엣지에서 처리하면 빠르고 오리진 부담도 줍니다.</p>
+    <p>CloudFront는 엣지에서 코드를 돌리는 방법을 둘 제공합니다. 가벼운 자바스크립트 함수인 <dfn>CloudFront Functions</dfn>와, 요청이 올 때만 코드를 실행하는 AWS의 서버리스 함수 서비스 Lambda(17장)를 엣지로 옮긴 <dfn>Lambda@Edge</dfn>입니다. 둘의 차이는 코드가 끼어들 수 있는 지점에서 시작합니다.</p>
+  </div>
+</section>
 
 <section class="slide">
   <h2>엣지 코드는 네 지점에 끼어든다</h2>
   <div class="slide__body">
     <figure class="figure">
-      <svg class="dg" viewBox="0 0 1400 300" role="img" aria-labelledby="f24t">
-        <title id="f24t">뷰어 요청, 오리진 요청, 오리진 응답, 뷰어 응답의 네 이벤트 지점. 뷰어 쪽 두 지점은 CloudFront Functions와 Lambda@Edge 모두 쓸 수 있고, 오리진 쪽 두 지점은 Lambda@Edge만 쓸 수 있으며 캐시 미스일 때만 실행된다.</title>
+      <svg class="dg" viewBox="0 0 1400 300" role="img" aria-labelledby="f40t">
+        <title id="f40t">뷰어 요청, 오리진 요청, 오리진 응답, 뷰어 응답의 네 이벤트 지점. 뷰어 쪽 두 지점은 CloudFront Functions와 Lambda@Edge 모두 쓸 수 있고, 오리진 쪽 두 지점은 Lambda@Edge만 쓸 수 있으며 캐시 미스일 때만 실행된다.</title>
         <rect class="dg-box" x="30" y="70" width="170" height="140"/>
         <text x="115" y="140" text-anchor="middle">뷰어</text>
         <rect class="dg-box dg-box--flow" x="560" y="70" width="280" height="140"/>
@@ -520,7 +707,7 @@ access-control-allow-origin: https://app.example.com</code></pre>
         <text class="dg-label--key" x="1020" y="262" text-anchor="middle">캐시 미스일 때만, Lambda@Edge만</text>
       </svg>
     </figure>
-    <p class="small">뷰어 쪽 함수는 캐시 적중 여부와 상관없이 매 요청 실행되므로 가벼워야 합니다. 오리진 쪽 함수는 캐시 미스일 때만 돌아 무거운 작업을 맡길 수 있습니다.</p>
+    <p class="small">뷰어 요청은 캐시를 찾기 전, 뷰어 응답은 사용자에게 돌려주기 직전입니다. 이 두 지점은 캐시 적중 여부와 상관없이 매 요청 실행되므로 아주 가벼워야 합니다. 오리진 요청·응답은 캐시 미스로 오리진에 갈 때만 돌기 때문에 무거운 작업을 맡길 수 있습니다.</p>
   </div>
 </section>
 
@@ -537,7 +724,7 @@ access-control-allow-origin: https://app.example.com</code></pre>
         <tr><th scope="row">규모</th><td>초당 수백만 요청</td><td>리전당 초당 1만 요청</td></tr>
       </tbody>
     </table>
-    <p class="small">캐시 키 정규화, 헤더 추가, 리다이렉트, JWT 서명 검증은 Functions로 충분합니다. 외부 API 호출, 요청 본문 처리, 이미지 변환은 Lambda@Edge의 몫입니다. 작은 설정 데이터는 Functions가 읽는 KeyValueStore(값당 1KB, 저장소당 5MB)에 둡니다.</p>
+    <p class="small">Functions는 엣지 로케이션 자체에서 아주 작은 격리 환경으로 돌아 빠르고 싸지만 외부 호출을 못 합니다. Lambda@Edge는 리전 엣지 캐시에서 일반 Lambda처럼 돌아 무겁고 비쌉니다. 캐시 키 정규화, 헤더 추가, 리다이렉트, JWT 서명 검증(7장)은 Functions로 충분하고, 외부 API 호출, 요청 본문 처리, 이미지 변환은 Lambda@Edge의 몫입니다. Functions가 읽는 작은 키-값 저장소인 KeyValueStore(값당 1KB, 저장소당 5MB)에 리다이렉트 목록 같은 설정을 둘 수 있습니다.</p>
   </div>
 </section>
 
@@ -555,8 +742,8 @@ access-control-allow-origin: https://app.example.com</code></pre>
   <span class="k">return</span> req;
 }</code></pre>
     <div class="prose">
-      <p>뷰어 요청 이벤트에 붙이면 <code>/orders/42</code> 같은 앱 라우트가 S3의 <code>index.html</code>로 바뀝니다.</p>
-      <p>S3 오류 응답을 200으로 바꾸는 사용자 지정 오류 페이지보다 깔끔합니다. 진짜 없는 파일은 여전히 404입니다.</p>
+      <p>앞에서 말한 SPA 새로고침 문제를 푸는 CloudFront Functions 코드입니다. 기본 동작의 뷰어 요청 이벤트에 붙입니다. 5~6행이 점 없는 경로(<code>/orders/42</code>)를 <code>/index.html</code>로 바꾸고, 8행은 처리 시각을 헤더로 덧붙이는 예입니다. 9행에서 고친 요청을 돌려주면 그 요청으로 캐시를 찾습니다.</p>
+      <p>S3 오류를 200으로 바꾸는 사용자 지정 오류 페이지보다 깔끔하고, 진짜 없는 파일(<code>/a.png</code>)은 여전히 오류로 남습니다.</p>
     </div>
   </div>
 </section>
@@ -565,16 +752,24 @@ access-control-allow-origin: https://app.example.com</code></pre>
   <h2>캐시하지 않아도 엣지를 거치면 빨라진다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>API처럼 매번 다른 응답도 CloudFront 뒤에 두는 이유가 있습니다. TCP와 TLS 핸드셰이크가 <strong>사용자 가까운 엣지</strong>에서 끝나고, 엣지에서 오리진까지는 미리 열어 둔 연결과 AWS 백본망을 씁니다.</p>
-      <p>이런 경로에는 CachingDisabled 캐시 정책과 AllViewerExceptHostHeader 오리진 요청 정책을 붙입니다. POST 같은 메서드는 리전 엣지 캐시를 건너뛰고 오리진으로 바로 갑니다.</p>
+      <p>주문 API처럼 매번 다른 응답도 CloudFront 뒤에 두는 이유가 있습니다. 1부의 상파울루 사용자를 다시 보면, TCP와 TLS 핸드셰이크 두 번이 <strong>상파울루 엣지</strong>에서 끝나므로 각각 수 ms면 됩니다. 엣지에서 서울까지는 CloudFront가 미리 열어 둔 연결(2장의 keep-alive)을 재사용하고 AWS의 전용 백본망을 탑니다. 왕복 두 번, 약 0.5초가 사라집니다.</p>
+      <p>이런 경로에는 CachingDisabled 캐시 정책과 AllViewerExceptHostHeader 오리진 요청 정책을 붙입니다.</p>
     </div>
     <aside class="callout callout--note">
       <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>오리진 응답 시간 제한</p>
-      <p>오리진 응답 대기 시간은 기본 30초, 1~120초로 바꿀 수 있습니다. 긴 리포트 API가 30초를 넘기면 504가 나므로 비동기로 바꾸거나 값을 늘립니다.</p>
+      <p>오리진 응답 대기 시간은 기본 30초, 1~120초로 바꿀 수 있습니다. 매출 리포트 API가 30초를 넘기면 504가 나므로 비동기로 바꾸거나 값을 늘립니다.</p>
     </aside>
   </div>
 </section>
 
+<section class="slide">
+  <h2>애니캐스트는 같은 IP를 여러 곳에서 알린다</h2>
+  <div class="prose">
+    <p>CloudFront는 HTTP 전용이고, 사용자는 DNS가 알려 준 엣지 IP로 갑니다. 그런데 쇼핑몰의 실시간 경매 앱이 UDP를 쓰거나, 기업 고객이 "방화벽에 등록할 고정 IP를 달라"고 하면 CloudFront로는 답할 수 없습니다. DNS 기반 장애 조치가 TTL과 캐시만큼 늦다는 13장의 한계도 남습니다.</p>
+    <p>이 문제를 푸는 기술이 <dfn title="anycast">애니캐스트</dfn>입니다. 인터넷의 라우터들은 BGP라는 프로토콜로 "이 IP 대역은 나를 거쳐 가면 된다"는 경로 정보를 주고받습니다. 보통은 한 IP를 한 곳만 알리지만(유니캐스트), 애니캐스트는 <mark>같은 IP를 전 세계 여러 위치에서 동시에 알립니다</mark>. 그러면 각 사용자의 패킷은 라우팅상 가장 가까운 위치로 갑니다.</p>
+    <p>AWS <dfn title="GA">Global Accelerator</dfn>는 엣지 로케이션들이 함께 알리는 애니캐스트 고정 IP 두 개를 줍니다. 패킷은 가까운 엣지로 들어와 AWS 백본을 타고 리전의 엔드포인트(ALB, NLB, EC2)까지 갑니다.</p>
+  </div>
+</section>
 
 <section class="slide">
   <h2>GA는 캐시 대신 고정 IP와 백본을 준다</h2>
@@ -589,31 +784,42 @@ access-control-allow-origin: https://app.example.com</code></pre>
         <tr><th scope="row">대표 용도</th><td>웹, API, 정적 파일, 영상</td><td>게임, IoT, IP 허용 목록 필요한 B2B</td></tr>
       </tbody>
     </table>
-    <div class="prose"><p><dfn title="GA">Global Accelerator</dfn>는 전 세계 엣지가 동시에 광고하는 애니캐스트 고정 IP 두 개를 주고, 들어온 패킷을 AWS 백본으로 리전 엔드포인트(ALB, NLB, EC2)까지 보냅니다. 트래픽 다이얼과 가중치로 리전 비율을 조절하고, 헬스 체크가 실패하면 DNS TTL을 기다리지 않고 전환합니다.</p></div>
+    <div class="prose"><p>GA는 리전별 <strong>트래픽 다이얼</strong>(그 리전으로 보낼 비율, 0~100%)과 엔드포인트 가중치로 트래픽을 나눕니다. 헬스 체크가 실패하면 IP는 그대로 둔 채 뒤쪽 경로만 바꾸므로, DNS TTL을 기다리지 않고 전환됩니다. 웹 쇼핑몰 본체는 CloudFront, 고정 IP나 TCP·UDP가 필요한 부분만 GA라고 정리하면 됩니다.</p></div>
   </div>
 </section>
 
 <!-- ===== 3부 WAF와 DDoS ============================================== -->
 <section class="slide slide--divider" data-section="WAF와 DDoS 방어" data-depth="core">
   <p class="divider__no">3부</p>
-  <h2>요청을 읽고 걸러 내는 방화벽</h2>
-  <p class="lede">보안 그룹은 IP와 포트만 봅니다. SQL Injection이나 봇의 폭주는 HTTP 요청의 내용을 읽어야 막을 수 있습니다.</p>
+  <h2>엣지까지 온 요청 중 나쁜 것을 거른다</h2>
+  <p class="lede">2부까지 엣지는 빠르게 내주는 장치였습니다. 그런데 엣지는 모든 요청이 처음 닿는 곳이라 거르기에도 가장 좋은 자리입니다. 13장의 보안 그룹은 IP와 포트만 보니, 양으로 밀어붙이는 공격과 내용으로 속이는 공격을 무엇으로 막는지 봅니다.</p>
+</section>
+
+<section class="slide">
+  <h2>DDoS는 양으로 서비스를 쓰러뜨린다</h2>
+  <div class="prose prose--cols">
+    <p><dfn title="Distributed Denial of Service">DDoS</dfn>는 악성 코드에 감염된 수만 대의 기기(봇넷)가 한꺼번에 트래픽을 보내 서비스가 정상 요청을 받지 못하게 만드는 공격입니다. 무엇을 바닥내느냐에 따라 세 갈래로 나뉩니다.</p>
+    <p>첫째는 <strong>대역폭을 채우는 공격</strong>입니다. 대표가 <dfn title="reflection and amplification">반사·증폭 공격</dfn>으로, 공격자는 출발지 IP를 피해자 주소로 위조해 인터넷의 공개 DNS나 NTP 서버에 작은 질의를 보냅니다. 서버들은 수십 배 큰 응답을 "출발지", 즉 피해자에게 보내고, 피해자의 회선이 가득 찹니다.</p>
+    <p>둘째는 <strong>연결 자원을 바닥내는 공격</strong>입니다. 2장에서 본 SYN 플러딩이 여기 속합니다. SYN만 보내고 마지막 ACK를 보내지 않아 SYN 큐를 채우면, 정상 사용자가 들어올 자리가 사라집니다. 첫째와 둘째는 IP와 TCP 수준, 즉 2장의 계층으로 L3/L4에서 일어나는 공격입니다.</p>
+    <p>셋째는 <strong>L7 공격</strong>, 정상처럼 보이는 HTTP 요청을 대량으로 보내는 HTTP 플러드입니다. 쇼핑몰의 상품 검색처럼 비싼 경로를 노리면 적은 양으로도 DB가 먼저 쓰러집니다. 패킷 하나하나는 멀쩡하므로 <mark>요청 내용을 읽어야만</mark> 가려낼 수 있습니다.</p>
+    <p>L3/L4 공격은 엄청난 용량으로 받아 내는 쪽이 이기고, L7 공격은 규칙으로 걸러야 합니다. AWS에서는 앞의 것을 Shield가, 뒤의 것을 WAF가 맡습니다.</p>
+  </div>
 </section>
 
 <section class="slide">
   <h2>WAF는 L7 요청 내용을 보고 판정한다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p><dfn title="Web Application Firewall">WAF</dfn>는 HTTP 요청의 URI, 쿼리, 헤더, 쿠키, 본문을 규칙과 비교해 통과나 차단을 정합니다. XSS와 SQL Injection의 원리와 코드 수준 방어는 7장에서 봤고, WAF는 그 <strong>앞단에 두는 추가 그물</strong>입니다.</p>
-      <p>WAF는 단독 장비가 아니라 다른 서비스에 붙여 씁니다. 보호 대상과 연결된 규칙 묶음을 <dfn title="Web ACL">웹 ACL</dfn>이라 부르며, 새 콘솔에서는 보호 팩(protection pack)이라고도 표기합니다.</p>
+      <p><dfn title="Web Application Firewall">WAF</dfn>는 HTTP 요청의 URI, 쿼리, 헤더, 쿠키, 본문을 규칙과 비교해 통과나 차단을 정합니다. 쇼핑몰 검색창에 <code>' OR '1'='1</code>을 넣는 SQL Injection 시도가 그 예입니다. 7장의 PreparedStatement가 코드에서 막는다면, WAF는 그 <strong>앞단에 두는 추가 그물</strong>입니다.</p>
+      <p>WAF는 혼자 서는 장비가 아니라 다른 서비스에 붙여 씁니다. 보호 대상에 연결하는 규칙 묶음을 <dfn title="Web ACL">웹 ACL</dfn>이라 부르며, 새 콘솔에서는 보호 팩(protection pack)이라고도 표기합니다.</p>
     </div>
     <table class="compare">
       <thead><tr><th scope="col">연결 대상</th><th scope="col">웹 ACL 리전</th></tr></thead>
       <tbody>
-        <tr><th scope="row">CloudFront, Amplify</th><td class="is-key">us-east-1(글로벌)</td></tr>
-        <tr><th scope="row">ALB, API Gateway REST</th><td>대상과 같은 리전</td></tr>
-        <tr><th scope="row">AppSync, Cognito</th><td>대상과 같은 리전</td></tr>
-        <tr><th scope="row">App Runner, Verified Access</th><td>대상과 같은 리전</td></tr>
+        <tr><th scope="row">CloudFront</th><td class="is-key">us-east-1(글로벌)</td></tr>
+        <tr><th scope="row">ALB</th><td>ALB와 같은 리전</td></tr>
+        <tr><th scope="row">API Gateway(17장)</th><td>대상과 같은 리전</td></tr>
+        <tr><th scope="row">Cognito(4부)</th><td>대상과 같은 리전</td></tr>
       </tbody>
     </table>
   </div>
@@ -625,12 +831,12 @@ access-control-allow-origin: https://app.example.com</code></pre>
     <ol class="steps">
       <li><b>우선순위 0 규칙</b><p>일치하고 Block이면 여기서 403으로 끝납니다.</p></li>
       <li><b>Count 규칙</b><p>일치해도 세기만 하고 다음 규칙으로 넘어갑니다.</p></li>
-      <li><b>규칙 그룹</b><p>관리형 규칙 묶음 안에서도 같은 방식으로 평가합니다.</p></li>
+      <li><b>규칙 그룹</b><p>여러 규칙의 묶음 안에서도 같은 방식으로 평가합니다.</p></li>
       <li class="is-key"><b>기본 동작</b><p>아무 규칙에도 걸리지 않으면 기본 동작(Allow 또는 Block)을 따릅니다.</p></li>
     </ol>
     <div class="prose">
-      <p>Allow와 Block은 <dfn title="terminating">종료 동작</dfn>이라 평가를 멈춥니다. Count는 평가를 이어 가면서 <strong>레이블</strong>을 붙일 수 있어, 뒤 규칙이 그 레이블을 조건으로 쓸 수 있습니다.</p>
-      <p>그래서 순서가 곧 정책입니다. 신뢰하는 IP 허용 규칙을 위에, 무거운 검사를 아래에 둡니다.</p>
+      <p>웹 ACL 안의 규칙은 우선순위 숫자가 작은 것부터 평가됩니다. Allow와 Block은 <dfn title="terminating action">종료 동작</dfn>이라 일치하는 순간 평가를 멈춥니다. Count는 평가를 이어 가면서 요청에 <dfn title="label">레이블</dfn>이라는 꼬리표를 붙일 수 있고, 뒤 규칙이 그 레이블을 조건으로 씁니다.</p>
+      <p>그래서 순서가 곧 정책입니다. 쇼핑몰이라면 결제사 콜백 IP 허용을 맨 위에, 로그인 요청 수 제한을 다음에, 무거운 공격 패턴 검사를 아래에 둡니다.</p>
     </div>
   </div>
 </section>
@@ -644,11 +850,11 @@ access-control-allow-origin: https://app.example.com</code></pre>
         <tr><th scope="row">Allow</th><td>보호 대상에 전달, 헤더 삽입 가능</td><td>멈춤</td></tr>
         <tr><th scope="row">Block</th><td>기본 403, 사용자 지정 응답 가능</td><td>멈춤</td></tr>
         <tr><th scope="row">Count</th><td class="is-flow">세고 레이블만 붙임</td><td>계속</td></tr>
-        <tr><th scope="row">CAPTCHA</th><td>퍼즐을 풀게 함</td><td>유효 토큰이면 계속</td></tr>
+        <tr><th scope="row">CAPTCHA</th><td>사람이 퍼즐을 풀게 함</td><td>유효 토큰이면 계속</td></tr>
         <tr><th scope="row">Challenge</th><td>브라우저에서 조용히 검증</td><td>유효 토큰이면 계속</td></tr>
       </tbody>
     </table>
-    <p class="small">CAPTCHA와 Challenge는 통과한 클라이언트에게 토큰을 주고, 면제 시간 동안 다시 묻지 않습니다. HTTPS 엔드포인트의 브라우저에서만 동작하고 추가 요금이 붙습니다. 모바일 앱이나 서버 간 호출에 걸면 그대로 막힙니다.</p>
+    <p class="small">CAPTCHA와 Challenge는 "사람이 쓰는 진짜 브라우저인가"를 묻습니다. CAPTCHA는 퍼즐을 보여 주고, Challenge는 화면 없이 자바스크립트 계산을 시켜 봅니다. 통과하면 토큰을 쿠키에 주고, 정해 둔 면제 시간 동안 다시 묻지 않습니다. 브라우저에서만 동작하고 추가 요금이 붙으므로, 모바일 앱이나 결제사 콜백 같은 서버 간 호출에 걸면 그대로 막힙니다.</p>
   </div>
 </section>
 
@@ -671,9 +877,18 @@ access-control-allow-origin: https://app.example.com</code></pre>
   <span class="s">"Action"</span>: { <span class="s">"Block"</span>: {} }, <span class="dim">"VisibilityConfig": {…}</span>
 }</code></pre>
     <div class="prose">
-      <p>일치 조건에는 IP 집합, 지리, 문자열·정규식, 크기 제한, SQLi·XSS 탐지, 레이블 일치가 있습니다.</p>
-      <p>And, Or, Not으로 엮고, 비교 전에 소문자화나 URL 디코딩 같은 <strong>텍스트 변환</strong>을 걸어 우회 표기를 정규화합니다.</p>
+      <p>쇼핑몰 관리자 화면을 한국 밖에서 막는 규칙입니다. 5~10행은 "경로가 <code>/admin</code>으로 시작", 11~12행은 "국가가 KR이 아님"이고, 4행의 And로 둘 다 참일 때 Block합니다.</p>
+      <p>9~10행의 <strong>텍스트 변환</strong>은 비교 전에 값을 정규화합니다. 공격자가 <code>/ADMIN</code>으로 우회하려 해도 소문자로 바꾼 뒤 비교하므로 걸립니다. URL 디코딩 같은 변환도 있습니다.</p>
     </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>관리형 규칙 그룹은 남이 갱신해 주는 규칙이다</h2>
+  <div class="prose">
+    <p>공격 패턴을 모두 직접 규칙으로 쓸 수는 없습니다. <dfn title="managed rule group">관리형 규칙 그룹</dfn>은 AWS(또는 보안 업체)가 만들어 계속 갱신하는 규칙 묶음입니다. 새 공격이 알려지면 우리가 아무것도 하지 않아도 규칙이 추가됩니다.</p>
+    <p>AWS 그룹들은 이런 위협을 겨냥합니다. 웹 보안 단체 OWASP가 정리한 흔한 웹 공격 목록. 2021년 Java 로깅 라이브러리 Log4j에서 발견된, 헤더에 특정 문자열만 넣어도 서버가 외부 코드를 내려받아 실행하던 Log4Shell 같은 <strong>알려진 악성 입력</strong>. 12장에서 본, 서버가 공격자 대신 내부 주소(IMDS 등)를 부르게 만드는 SSRF. 그리고 출발지를 숨기는 VPN이나, 여러 중계 서버를 거쳐 정체를 감추는 익명 네트워크 <strong>Tor</strong>에서 온 요청입니다.</p>
+    <p>각 그룹은 다음 슬라이드의 WCU라는 비용 단위를 차지합니다.</p>
   </div>
 </section>
 
@@ -691,7 +906,7 @@ access-control-allow-origin: https://app.example.com</code></pre>
         <tr><th scope="row">Bot Control</th><td>스크래퍼, 자동화 브라우저</td><td class="num">50</td></tr>
       </tbody>
     </table>
-    <p class="small">AWS가 규칙을 계속 갱신하므로 직접 시그니처를 관리하지 않아도 됩니다. 그룹 안의 개별 규칙은 동작을 Count로 재정의(override)해서 끌 수 있습니다. 버전을 고정하면 갱신으로 생기는 예기치 않은 차단을 피할 수 있습니다.</p>
+    <p class="small">그룹 안의 개별 규칙은 동작을 Count로 재정의(override)해서 사실상 끌 수 있습니다. 그룹의 버전을 고정해 두면 AWS의 갱신이 예고 없이 정상 요청을 막는 일을 피할 수 있고, 새 버전은 검증한 뒤 올립니다.</p>
   </div>
 </section>
 
@@ -699,12 +914,12 @@ access-control-allow-origin: https://app.example.com</code></pre>
   <h2>WCU는 규칙이 쓰는 연산 예산이다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p><dfn title="Web ACL Capacity Unit">WCU</dfn>는 규칙 평가에 드는 처리량을 수치로 나타낸 것입니다. 단순한 IP 일치는 적게, 정규식이나 JSON 본문 검사는 많이 듭니다.</p>
-      <p>웹 ACL 기본 요금에는 <strong>1,500 WCU</strong>까지 포함되고, 넘으면 단계별 추가 요금이 붙으며 최대 5,000입니다. 규칙 그룹의 용량은 만들 때 정하고 바꿀 수 없으므로 여유 있게 잡습니다.</p>
+      <p>규칙마다 검사에 드는 연산량이 다릅니다. IP 하나 비교는 가볍고, 정규식이나 JSON 본문 검사는 무겁습니다. 이것을 수치로 나타낸 것이 <dfn title="Web ACL Capacity Unit">WCU</dfn>입니다. 웹 ACL에 붙인 모든 규칙의 WCU 합이 그 웹 ACL의 크기가 됩니다.</p>
+      <p>웹 ACL 기본 요금에는 <strong>1,500 WCU</strong>까지 포함되고, 넘으면 단계별 추가 요금이 붙으며 최대 5,000입니다. 직접 만드는 규칙 그룹의 용량은 만들 때 정하고 바꿀 수 없으므로 여유 있게 잡습니다.</p>
     </div>
     <aside class="callout callout--note">
-      <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>예산 계산 예</p>
-      <p>Core 700 + Known bad 200 + SQL 200 + IP reputation 25 + Anonymous IP 50 = 1,175 WCU. 남은 325로 rate-based 규칙과 직접 만든 규칙 몇 개를 더할 수 있습니다.</p>
+      <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>쇼핑몰의 예산 계산</p>
+      <p>Core 700 + Known bad 200 + SQL 200 + IP reputation 25 + Anonymous IP 50 = 1,175 WCU. 남은 325로 요청 수 제한 규칙과 직접 만든 규칙 몇 개를 더할 수 있습니다.</p>
     </aside>
   </div>
 </section>
@@ -727,8 +942,8 @@ access-control-allow-origin: https://app.example.com</code></pre>
   <span class="s">"Action"</span>: { <span class="s">"Block"</span>: {} }
 }</code></pre>
     <div class="prose">
-      <p>최근 300초 동안 같은 IP에서 <code>/login</code> 요청이 100번을 넘으면 그 IP의 추가 요청을 막습니다.</p>
-      <p>창은 60, 120, 300, 600초 중 고르고, 한도는 최소 10입니다. 한도는 근사치로 적용되며 동작으로 Allow는 쓸 수 없습니다.</p>
+      <p>8장의 처리율 제한을 WAF로 구현한 규칙입니다. 다른 곳에서 유출된 아이디·비밀번호 조합을 쇼핑몰 로그인에 대량으로 넣어 보는 공격을 막습니다.</p>
+      <p>10~11행의 <dfn title="scope-down statement">scope-down 문</dfn>은 셀 요청을 <code>/login</code>으로 좁힙니다. 그 안에서 같은 IP가 300초에 100번을 넘으면(5행) 추가 요청을 막습니다. 창은 60, 120, 300, 600초 중 고르고, 한도는 최소 10이며 근사치로 적용됩니다.</p>
     </div>
   </div>
 </section>
@@ -736,8 +951,8 @@ access-control-allow-origin: https://app.example.com</code></pre>
 <section class="slide">
   <h2>무엇을 기준으로 셀지가 rate 규칙의 성패다</h2>
   <div class="prose">
-    <p>집계 키로 IP, 전달된 IP 헤더, 그리고 헤더·쿠키·쿼리·레이블·URI 경로를 조합한 <strong>사용자 지정 키</strong>를 쓸 수 있습니다. 예를 들어 <code>Authorization</code> 헤더를 키로 삼으면 사용자 계정 단위 제한이 됩니다.</p>
-    <p>WAF가 ALB에 붙어 있고 앞에 CloudFront가 있다면, ALB가 보는 출발지 IP는 사용자 IP가 아니라 <mark>CloudFront 엣지 서버의 IP</mark>입니다. 이때 IP 기준으로 세면 수많은 사용자가 한 엣지 IP로 묶여 한꺼번에 차단됩니다. WAF를 CloudFront에 붙이거나, 위 예처럼 <code>X-Forwarded-For</code>를 키로 씁니다.</p>
+    <p>요청을 묶어 세는 기준을 <strong>집계 키</strong>라고 합니다. 출발지 IP, 앞 코드처럼 전달된 IP 헤더, 그리고 헤더·쿠키·쿼리·레이블·URI 경로를 조합한 사용자 지정 키를 쓸 수 있습니다. 예를 들어 <code>Authorization</code> 헤더를 키로 삼으면 사용자 계정 단위 제한이 됩니다.</p>
+    <p>WAF가 ALB에 붙어 있고 앞에 CloudFront가 있다면, ALB가 보는 출발지 IP는 사용자 IP가 아니라 <mark>CloudFront 엣지 서버의 IP</mark>입니다. 13장에서 본 것처럼 프록시는 연결을 새로 맺기 때문입니다. 이때 IP로 세면 같은 엣지를 거친 수많은 사용자가 한 IP로 묶여 한꺼번에 차단됩니다. WAF를 CloudFront에 붙이거나, 원래 IP가 담긴 <code>X-Forwarded-For</code>를 키로 씁니다.</p>
     <p>토큰 버킷 같은 알고리즘의 원리는 8장, API Gateway의 스로틀링은 17장에서 다룹니다.</p>
   </div>
 </section>
@@ -746,8 +961,8 @@ access-control-allow-origin: https://app.example.com</code></pre>
   <h2>Bot Control은 밝힌 봇과 숨은 봇을 나눈다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p><strong>Common</strong> 수준은 검색 엔진, 스크래핑 프레임워크처럼 스스로 정체를 밝히는 봇을 요청 정보로 식별하고 레이블을 붙입니다. 검증된 검색 엔진 봇은 막지 않습니다.</p>
-      <p><strong>Targeted</strong> 수준은 정체를 숨기는 봇을 브라우저 검사, 지문, 행동 휴리스틱, 머신러닝으로 잡고 Challenge와 CAPTCHA로 대응합니다. 수준이 높을수록 요금도 올라갑니다.</p>
+      <p>봇이 모두 나쁘지는 않습니다. 검색 엔진 수집기는 쇼핑몰이 검색에 노출되려면 꼭 필요합니다. 문제는 가격을 긁어 가는 경쟁사 스크래퍼나 한정판 상품을 쓸어 가는 구매 봇입니다.</p>
+      <p><strong>Common</strong> 수준은 요청 정보로 정체를 밝힌 봇을 식별해 레이블을 붙이고, 검증된 검색 엔진은 막지 않습니다. <strong>Targeted</strong> 수준은 사람인 척하는 봇을 브라우저 <dfn title="fingerprint">지문</dfn>(TLS 핸드셰이크 형태나 자바스크립트 실행 결과 같은 클라이언트 고유 특징)과 행동 분석, 머신러닝으로 잡고 Challenge와 CAPTCHA로 대응합니다. 수준이 높을수록 요금도 올라갑니다.</p>
     </div>
     <aside class="callout callout--note">
       <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>범위를 좁혀 비용을 줄인다</p>
@@ -760,12 +975,12 @@ access-control-allow-origin: https://app.example.com</code></pre>
   <h2>WAF는 본문을 앞부분까지만 읽는다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>본문 검사 한도는 연결 대상마다 다릅니다. <strong>ALB와 AppSync는 8KB 고정</strong>이고, CloudFront, API Gateway, Cognito, App Runner, Verified Access는 기본 16KB에서 64KB까지 16KB 단위로 늘릴 수 있습니다(16KB 초과분은 추가 요금).</p>
+      <p>요청 본문을 끝까지 읽어 검사하면 큰 업로드마다 지연과 연산이 늘어납니다. 그래서 검사 한도가 있고 연결 대상마다 다릅니다. <strong>ALB와 AppSync(관리형 GraphQL 서비스)는 8KB 고정</strong>이고, CloudFront, API Gateway, Cognito 등은 기본 16KB에서 64KB까지 16KB 단위로 늘릴 수 있습니다(16KB 초과분은 추가 요금).</p>
       <p>한도를 넘는 부분은 검사하지 않습니다. 넘친 요청을 어떻게 다룰지(계속, 일치로 간주, 불일치로 간주)는 규칙마다 정합니다.</p>
     </div>
     <aside class="callout callout--key">
       <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>Core rule set은 8KB 넘는 본문을 막는다</p>
-      <p>규칙 <code>SizeRestrictions_BODY</code>가 8,192바이트를 넘는 본문을 차단합니다. 파일 업로드나 큰 JSON을 받는 API는 이 규칙만 Count로 돌리고 경로를 좁혀 다시 막습니다.</p>
+      <p>규칙 <code>SizeRestrictions_BODY</code>가 8,192바이트를 넘는 본문을 차단합니다. 리뷰 사진 업로드나 큰 JSON을 받는 API는 이 규칙만 Count로 돌리고 경로를 좁혀 다시 막습니다.</p>
     </aside>
   </div>
 </section>
@@ -773,8 +988,18 @@ access-control-allow-origin: https://app.example.com</code></pre>
 <section class="slide">
   <h2>로그와 레이블이 있어야 규칙을 고칠 수 있다</h2>
   <div class="prose">
-    <p>WAF 로그는 CloudWatch Logs, S3, Data Firehose로 보냅니다. 대상 이름은 <code>aws-waf-logs-</code>로 시작해야 합니다. 로그에는 어느 규칙이 최종 판정을 냈는지(<code>terminatingRuleId</code>), 어떤 레이블이 붙었는지, Count로 일치한 규칙 목록이 남습니다.</p>
-    <p>로그를 켜지 않아도 콘솔에서 최근 3시간 동안의 <strong>샘플 요청</strong>과 규칙별 CloudWatch 지표(AllowedRequests, BlockedRequests, CountedRequests)를 볼 수 있습니다. <code>Authorization</code>이나 쿠키처럼 민감한 필드는 로그에서 가리도록(redaction) 설정합니다.</p>
+    <p>규칙이 정상 요청을 막는 <strong>오탐</strong>은 반드시 생깁니다. 무엇이 왜 막혔는지 보려면 로그가 필요합니다. WAF 로그는 CloudWatch Logs, S3, 그리고 스트림을 받아 S3 등에 모아 적재해 주는 Data Firehose(17장)로 보내며, 대상 이름은 <code>aws-waf-logs-</code>로 시작해야 합니다.</p>
+    <p>로그 한 줄에는 어느 규칙이 최종 판정을 냈는지(<code>terminatingRuleId</code>), 어떤 레이블이 붙었는지, Count로 일치한 규칙 목록이 남습니다. 로그를 켜지 않아도 콘솔에서 최근 3시간의 <strong>샘플 요청</strong>과 규칙별 CloudWatch 지표(AllowedRequests, BlockedRequests, CountedRequests)를 볼 수 있습니다.</p>
+    <p>로그에 <code>Authorization</code> 헤더나 쿠키가 그대로 남으면 로그가 새로운 유출 경로가 됩니다. 이런 필드는 가리기(redaction) 설정을 켭니다. 이 로그로 오탐을 고치는 절차는 6부 사례에서 봅니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Shield Standard는 이미 켜져 있다</h2>
+  <div class="prose">
+    <p>이제 양으로 미는 공격 쪽입니다. <dfn>Shield Standard</dfn>는 모든 AWS 계정에 추가 비용 없이 자동으로 적용되는 DDoS 방어입니다. SYN 플러딩이나 UDP 반사 공격처럼 흔한 L3/L4 공격을 AWS 네트워크가 탐지해 걸러 냅니다. 별도 설정이 없으니 대부분의 사용자는 존재조차 모르고 지나갑니다.</p>
+    <p><dfn>Shield Advanced</dfn>는 유료 구독입니다. 지정한 자원에 대해 더 정교한 탐지를 하고, L7 공격이 오면 WAF 규칙을 자동으로 만들어 완화합니다. 공격 중에는 AWS의 DDoS 전문가 조직인 <dfn title="Shield Response Team">SRT</dfn>에게 도움을 받을 수 있고, 공격 때문에 늘어난 CloudFront나 오토스케일링 요금을 돌려받는 <strong>비용 보호</strong>도 포함됩니다.</p>
+    <p>쇼핑몰 규모라면 Standard에 CloudFront와 WAF를 더한 구성으로 시작합니다. 공격이 실제 매출 손실로 이어지는 규모가 되면 Advanced를 검토합니다.</p>
   </div>
 </section>
 
@@ -791,7 +1016,7 @@ access-control-allow-origin: https://app.example.com</code></pre>
         <tr><th scope="row">비용 보호</th><td>없음</td><td>공격으로 늘어난 요금 크레딧</td></tr>
       </tbody>
     </table>
-    <p class="small">Advanced 구독에는 보호 대상에 대한 WAF 요금이 포함되고, SRT 지원을 받으려면 Business 이상의 지원 플랜이 필요합니다. L7 자동 완화를 켜면 웹 ACL에 150 WCU짜리 규칙 그룹이 추가됩니다.</p>
+    <p class="small">Advanced 구독에는 보호 대상에 대한 WAF 요금이 포함되고, SRT 지원을 받으려면 Business 이상의 지원 플랜이 필요합니다. L7 자동 완화를 켜면 웹 ACL에 150 WCU짜리 규칙 그룹이 추가되므로 WCU 예산에 넣어 둡니다.</p>
   </div>
 </section>
 
@@ -799,8 +1024,8 @@ access-control-allow-origin: https://app.example.com</code></pre>
   <h2>공격은 엣지에서 흡수하고 오리진은 숨긴다</h2>
   <div class="slide__body">
     <figure class="figure">
-      <svg class="dg" viewBox="0 0 1400 320" role="img" aria-labelledby="f39t">
-        <title id="f39t">사용자와 공격 트래픽은 Route 53과 CloudFront로 들어오고, 엣지에서 Shield가 L3/L4 공격을, WAF가 L7 공격을 걸러 낸다. 남은 요청만 VPC 오리진을 통해 프라이빗 서브넷의 ALB와 앱에 닿는다.</title>
+      <svg class="dg" viewBox="0 0 1400 320" role="img" aria-labelledby="f58t">
+        <title id="f58t">사용자와 공격 트래픽은 Route 53과 CloudFront로 들어오고, 엣지에서 Shield가 L3/L4 공격을, WAF가 L7 공격을 걸러 낸다. 남은 요청만 VPC 오리진을 통해 프라이빗 서브넷의 ALB와 앱에 닿는다.</title>
         <rect class="dg-box dg-box--key" x="20" y="120" width="190" height="72"/>
         <text x="115" y="156" text-anchor="middle">사용자 + 공격</text>
         <rect class="dg-zone" x="260" y="40" width="560" height="232"/>
@@ -816,7 +1041,7 @@ access-control-allow-origin: https://app.example.com</code></pre>
         <rect class="dg-box" x="930" y="120" width="190" height="72"/>
         <text x="1025" y="156" text-anchor="middle">ALB</text>
         <rect class="dg-box dg-box--muted" x="1180" y="120" width="170" height="72"/>
-        <text x="1265" y="156" text-anchor="middle">앱</text>
+        <text x="1265" y="156" text-anchor="middle">주문 API</text>
         <line class="dg-arrow dg-arrow--flow" x1="218" y1="156" x2="282" y2="156"/>
         <line class="dg-arrow dg-arrow--flow" x1="498" y1="156" x2="552" y2="156"/>
         <line class="dg-arrow dg-arrow--flow" x1="798" y1="156" x2="922" y2="156"/>
@@ -825,31 +1050,50 @@ access-control-allow-origin: https://app.example.com</code></pre>
         <text class="dg-label--sm" x="860" y="300" text-anchor="middle">VPC 오리진</text>
       </svg>
     </figure>
-    <p class="small">공격 트래픽이 수백 개 엣지로 분산되어 각 위치에서 흡수되고, 오리진에는 공개 주소가 없어 우회 경로가 없습니다. CloudFront 정액 요금제(flat-rate plan)는 차단된 공격 요청을 사용량에 넣지 않습니다.</p>
+    <p class="small">1부의 쇼핑몰 그림이 이렇게 바뀝니다. 공격 트래픽은 수백 개 엣지로 흩어져 각 위치에서 흡수되고, L7 공격은 엣지의 WAF가 거르며, 오리진에는 공개 주소가 없어 우회 경로가 없습니다. 월 고정 요금에 CloudFront, WAF, DDoS 보호를 묶은 CloudFront 정액 요금제(flat-rate plan)는 차단된 공격 요청을 사용량에 넣지 않습니다.</p>
   </div>
 </section>
 
 <section class="slide">
   <h2>VPC 안쪽 방화벽과 조직 단위 관리는 따로 있다</h2>
   <div class="prose">
-    <p><dfn>AWS Network Firewall</dfn>은 VPC에 두는 관리형 방화벽입니다. 서브넷 사이나 인터넷 출구에 끼워, 도메인 이름 기반 아웃바운드 허용 목록, Suricata 호환 IPS 규칙처럼 보안 그룹이 못 하는 L3~L7 검사를 합니다. 탈취된 서버가 외부 C&amp;C 서버로 나가는 것을 막을 때 씁니다.</p>
-    <p><dfn>AWS Firewall Manager</dfn>는 Organizations(12장)의 여러 계정에 WAF 규칙, Shield Advanced 보호, 보안 그룹 정책, Network Firewall 정책을 <strong>중앙에서 일괄 적용</strong>합니다. 새 계정이나 새 ALB가 생기면 정책이 자동으로 붙어, 보호 누락을 막습니다.</p>
+    <p>WAF는 들어오는 HTTP만 봅니다. 반대 방향, 즉 서버가 <strong>밖으로 나가는</strong> 트래픽도 지켜야 할 때가 있습니다. 서버가 탈취되면 공격자의 명령 서버(C&amp;C 서버)에 접속해 지시를 받거나 데이터를 빼내기 때문입니다.</p>
+    <p><dfn>AWS Network Firewall</dfn>은 VPC에 두는 관리형 방화벽입니다. 서브넷 사이나 인터넷 출구 경로에 끼워, "<code>*.amazonaws.com</code>과 결제사 도메인으로만 나갈 수 있다" 같은 도메인 이름 기반 허용 목록이나, 오픈소스 침입 방지 도구 Suricata 형식의 <dfn title="Intrusion Prevention System">IPS</dfn>(알려진 공격 패턴을 찾아 끊는 장치) 규칙처럼 보안 그룹이 못 하는 검사를 합니다.</p>
+    <p><dfn>AWS Firewall Manager</dfn>는 Organizations(12장)의 여러 계정에 WAF 규칙, Shield Advanced 보호, 보안 그룹 정책, Network Firewall 정책을 <strong>중앙에서 일괄 적용</strong>합니다. 새 계정이나 새 ALB가 생기면 정책이 자동으로 붙어 보호 누락을 막습니다.</p>
   </div>
 </section>
 
 <!-- ===== 4부 인증서, 키, 비밀 ========================================= -->
 <section class="slide slide--divider" data-section="인증서, 키, 비밀" data-depth="core">
   <p class="divider__no">4부</p>
+  <h2>안쪽의 데이터와 비밀은 키로 잠근다</h2>
+  <p class="lede">3부까지는 바깥 경계였습니다. 이제 경계 안쪽으로 들어와, 쇼핑몰이 쓰는 인증서와 암호화 키와 비밀번호를 누가 만들고, 어디에 두고, 어떻게 바꾸는지 봅니다. 대칭키, 서명, 해시의 원리는 7장에 있고, 여기서는 AWS의 구현을 다룹니다.</p>
+</section>
+
+<section class="slide">
   <h2>암호는 쉽고, 키 관리가 어렵다</h2>
-  <p class="lede">대칭키, 서명, 해시의 원리는 7장에서 봤습니다. 여기서는 인증서를 누가 갱신하고, 키를 어디에 두고, 비밀번호를 어떻게 바꾸는지 AWS의 구현을 봅니다.</p>
+  <div class="prose">
+    <p>7장에서 본 AES나 RSA는 라이브러리 함수 하나로 씁니다. 어려운 것은 그 주변입니다. 키를 어디에 두어야 서버가 털려도 안전한지, 누가 그 키를 쓸 수 있는지, 키와 인증서를 언제 어떻게 바꾸는지, 누가 언제 썼는지를 어떻게 남기는지입니다. 이것을 <strong>키 관리</strong>라고 합니다.</p>
+    <p>쇼핑몰에는 키 관리 대상이 네 가지 있습니다. <code>www.shop.example.com</code>의 <strong>TLS 인증서</strong>, RDS와 S3 데이터를 잠그는 <strong>암호화 키</strong>(15장의 SSE-KMS), 주문 API가 DB에 접속할 때 쓰는 <strong>비밀번호</strong>, 그리고 회원의 <strong>로그인 자격</strong>입니다.</p>
+    <p>AWS는 이 넷을 각각 ACM, KMS, Secrets Manager, Cognito에 맡깁니다. 이 순서대로 봅니다.</p>
+  </div>
 </section>
 
 <section class="slide">
   <h2>ACM은 인증서 발급과 갱신을 떠맡는다</h2>
+  <div class="prose">
+    <p>2장에서 인증서를 "이 공개 키가 이 도메인의 것"이라고 CA(인증 기관)가 서명한 보증서로 설명했습니다. 직접 운영하려면 개인 키를 만들어 서버에 안전하게 두고, CA에 발급을 요청하고, 만료 전에 갱신해서 모든 서버에 다시 깔아야 합니다. 갱신을 잊어 사이트가 멈추는 사고가 흔합니다.</p>
+    <p><dfn title="AWS Certificate Manager">ACM</dfn>은 이 일을 통째로 맡습니다. 인증서를 발급하고, ALB, CloudFront, API Gateway 같은 통합 서비스에 붙이고, 만료 전에 알아서 갱신해 다시 붙입니다. 통합 서비스에 붙이는 퍼블릭 인증서는 무료이고, 개인 키는 ACM 밖으로 나오지 않습니다.</p>
+    <p>퍼블릭 인증서의 유효 기간은 현재 <strong>198일</strong>입니다. CA와 브라우저 회사들의 협의체인 CA/Browser Forum이 인증서 수명을 단계적으로 줄이기로 정한 데 맞춘 값입니다. 수명이 짧아질수록 수동 갱신은 감당하기 어렵고 <mark>자동 갱신이 전제</mark>가 됩니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>인증서는 출처에 따라 네 종류다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p><dfn title="AWS Certificate Manager">ACM</dfn>은 TLS 인증서를 발급하고 ALB, CloudFront, API Gateway에 배포합니다. 통합 서비스에 붙이는 퍼블릭 인증서는 무료이고, 개인 키는 ACM 밖으로 나오지 않습니다.</p>
-      <p>퍼블릭 인증서의 유효 기간은 현재 <strong>198일</strong>입니다. CA/Browser Forum의 인증서 수명 단축에 맞춘 값이라, 수동 갱신으로는 감당하기 어렵고 자동 갱신이 전제가 됩니다.</p>
+      <p>브라우저가 믿는 공개 CA가 서명한 것이 <strong>퍼블릭 인증서</strong>입니다. 사내 서비스끼리만 쓰면 AWS Private CA로 우리 조직만의 CA를 만들어 <strong>프라이빗 인증서</strong>를 발급합니다. 서버뿐 아니라 클라이언트도 인증서를 내밀어 서로 확인하는 <dfn title="mutual TLS">mTLS</dfn>에 쓰입니다.</p>
+      <p>다른 곳에서 산 인증서를 <strong>가져올</strong> 수도 있지만 ACM이 갱신하지 못합니다. EC2나 온프레미스 서버에 직접 깔려면 개인 키를 꺼낼 수 있는 <strong>내보내기 가능</strong> 인증서(유료)를 씁니다.</p>
     </div>
     <table class="compare">
       <thead><tr><th scope="col">종류</th><th scope="col">용도</th></tr></thead>
@@ -867,8 +1111,8 @@ access-control-allow-origin: https://app.example.com</code></pre>
   <h2>DNS 검증 레코드가 남아 있으면 갱신은 자동이다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>ACM은 도메인 소유를 확인하려고 <code>_a79865eb….example.com</code> 같은 CNAME 레코드를 줍니다. 이 레코드를 DNS에 넣으면 검증이 끝나고, <mark>레코드가 남아 있는 한</mark> ACM이 만료 전에 알아서 재검증하고 갱신합니다. 갱신해도 인증서 ARN은 그대로입니다.</p>
-      <p>이메일 검증은 갱신 때마다 사람이 메일을 눌러야 하므로 피합니다. 72시간 안에 검증하지 못하면 요청은 시간 초과로 끝납니다.</p>
+      <p>CA는 발급 전에 요청자가 그 도메인의 주인인지 확인해야 합니다. ACM은 <code>_a79865eb….shop.example.com</code> 같은 무작위 이름의 CNAME 레코드를 주고, 이것을 DNS에 넣으라고 합니다. 도메인의 DNS를 고칠 수 있는 사람만 이 레코드를 만들 수 있으니 <strong>소유 증명</strong>이 됩니다.</p>
+      <p>레코드를 넣으면 검증이 끝나고, <mark>레코드가 남아 있는 한</mark> ACM이 만료 전에 알아서 재검증하고 갱신합니다. 갱신해도 인증서 ARN은 그대로라 붙은 서비스 설정을 고칠 필요가 없습니다. 이메일 검증은 갱신 때마다 사람이 메일을 눌러야 하므로 피하고, 72시간 안에 검증하지 못하면 요청은 시간 초과로 끝납니다.</p>
     </div>
     <aside class="callout callout--key">
       <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>갱신이 멈추는 흔한 원인</p>
@@ -880,18 +1124,17 @@ access-control-allow-origin: https://app.example.com</code></pre>
 <section class="slide">
   <h2>인증서는 쓰는 서비스의 리전에 있어야 한다</h2>
   <div class="slide__body">
+    <p class="lede">ACM 인증서는 리전 자원이고, 다른 리전의 서비스에 붙일 수 없습니다. 2부에서 본 CloudFront의 us-east-1 규칙도 이 원칙의 한 경우입니다.</p>
     <table class="compare">
       <thead><tr><th scope="col">붙일 곳</th><th scope="col">인증서 리전</th><th scope="col">메모</th></tr></thead>
       <tbody>
-        <tr><th scope="row">CloudFront</th><td class="is-key">us-east-1</td><td>배포가 어느 리전이든 동일</td></tr>
+        <tr><th scope="row">CloudFront</th><td class="is-key">us-east-1</td><td>사용자가 어느 나라든 동일</td></tr>
         <tr><th scope="row">API Gateway 엣지 최적화</th><td>us-east-1</td><td>내부적으로 CloudFront 사용</td></tr>
         <tr><th scope="row">ALB, NLB, API Gateway 리전</th><td>그 자원의 리전</td><td>리전마다 따로 발급, 따로 갱신</td></tr>
-        <tr><th scope="row">EC2 인스턴스 직접</th><td>불가</td><td>Nitro Enclaves, 내보내기, ACME</td></tr>
+        <tr><th scope="row">EC2 인스턴스 직접</th><td>일반 인증서 불가</td><td>내보내기 가능 인증서나 다른 CA</td></tr>
       </tbody>
     </table>
-    <div class="prose">
-      <p>와일드카드 <code>*.example.com</code>은 한 단계 하위 도메인만 덮고 <code>example.com</code> 자체는 덮지 않으므로 두 이름을 함께 넣습니다. ACM이 발급하는 RSA 키는 최대 2048비트이며, ECDSA P-256과 P-384도 고를 수 있습니다.</p>
-    </div>
+    <p class="small">와일드카드 <code>*.shop.example.com</code>은 한 단계 하위 도메인만 덮고 <code>shop.example.com</code> 자체는 덮지 않으므로 두 이름을 함께 넣습니다. ACM이 발급하는 RSA 키는 최대 2048비트이며, ECDSA P-256과 P-384도 고를 수 있습니다.</p>
   </div>
 </section>
 
@@ -899,18 +1142,27 @@ access-control-allow-origin: https://app.example.com</code></pre>
   <h2>KMS는 키를 꺼내 주지 않고 대신 써 준다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>암호화의 약점은 키를 어디 두느냐입니다. 설정 파일에 키를 두면 서버 하나만 털려도 데이터가 다 열립니다.</p>
-      <p><dfn title="Key Management Service">KMS</dfn>의 키는 FIPS 검증 HSM 안에 있고 <strong>평문으로 밖에 나오지 않습니다</strong>. 앱은 키를 받는 대신 "이것을 암호화해 줘", "이것을 풀어 줘"라는 API를 호출합니다. 그래서 IAM과 키 정책으로 호출을 통제할 수 있고, 모든 호출이 CloudTrail에 남습니다.</p>
+      <p>다음은 데이터를 잠그는 키입니다. 암호화 키를 설정 파일이나 환경 변수에 두면 서버 하나만 털려도 데이터가 다 열립니다. 키가 데이터 옆에 있는 셈입니다.</p>
+      <p><dfn title="Key Management Service">KMS</dfn>의 키는 <dfn title="Hardware Security Module">HSM</dfn>, 즉 키를 안에 가둔 채 연산만 해 주는 변조 방지 하드웨어 안에 있고 <strong>평문으로 밖에 나오지 않습니다</strong>. 이 HSM은 미국 정부의 암호 모듈 검증 표준 FIPS 140 인증을 받았습니다. 앱은 키를 받는 대신 "이것을 암호화해 줘", "풀어 줘"라는 API를 부르므로, IAM과 키 정책으로 호출을 통제하고 모든 호출을 CloudTrail(5부)에 남길 수 있습니다.</p>
     </div>
     <aside class="callout callout--note">
       <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>키를 쓸 권한 = 데이터를 읽을 권한</p>
-      <p>S3 객체 읽기 권한이 있어도 그 객체를 암호화한 KMS 키의 Decrypt 권한이 없으면 읽지 못합니다. 권한 경계가 하나 더 생기는 셈입니다.</p>
+      <p>15장에서 봤듯이 S3 읽기 권한이 있어도 그 객체를 암호화한 KMS 키의 Decrypt 권한이 없으면 읽지 못합니다. 권한 경계가 하나 더 생기는 셈입니다.</p>
     </aside>
   </div>
 </section>
 
 <section class="slide">
   <h2>키는 누가 만들고 관리하느냐로 세 종류다</h2>
+  <div class="prose">
+    <p>KMS 키(예전 이름은 CMK)는 누가 만들고 관리하느냐로 나뉩니다. <dfn title="customer managed key">고객 관리형 키</dfn>는 우리가 직접 만들고, 누가 쓸 수 있는지 정하는 <strong>키 정책</strong>도 우리가 씁니다. 키 정책은 키마다 붙는 리소스 기반 정책(12장)이며, 동작은 뒤에서 자세히 봅니다.</p>
+    <p><dfn title="AWS managed key">AWS 관리형 키</dfn>는 S3나 RDS 같은 서비스가 우리 계정 안에 대신 만들어 둔 키로, <code>aws/s3</code>처럼 서비스 이름이 붙습니다. 보이기는 하지만 정책을 고칠 수 없습니다. <dfn title="AWS owned key">AWS 소유 키</dfn>는 서비스가 자기 계정에 두고 여러 고객에게 쓰는 키로, 우리 계정에서는 보이지도 않습니다.</p>
+    <p>쇼핑몰이 S3 기본 암호화(15장의 SSE-S3)만 쓴다면 AWS 소유 키로 잠기는 것이고, 주문 DB를 우리가 정한 키로 잠그고 사용 기록을 보고 싶다면 고객 관리형 키가 필요합니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>통제와 감사가 필요하면 고객 관리형 키를 쓴다</h2>
   <div class="slide__body">
     <table class="compare">
       <thead><tr><th scope="col">항목</th><th scope="col">고객 관리형 키</th><th scope="col">AWS 관리형 키</th><th scope="col">AWS 소유 키</th></tr></thead>
@@ -922,16 +1174,16 @@ access-control-allow-origin: https://app.example.com</code></pre>
         <tr><th scope="row">월 요금</th><td>키당 과금</td><td>없음</td><td>없음</td></tr>
       </tbody>
     </table>
-    <p class="small">AWS 관리형 키는 2021년 이후 새 서비스에서 더 만들지 않는 레거시 유형입니다. 교차 계정 공유, 세밀한 접근 통제, 감사가 필요하면 고객 관리형 키를 씁니다. 그 외에는 서비스 기본값(AWS 소유 키)으로도 저장 시 암호화는 됩니다.</p>
+    <p class="small">AWS 관리형 키는 2021년 이후 새 서비스에서 더 만들지 않는 레거시 유형입니다. 다른 계정과 공유, 세밀한 접근 통제, 사용 감사가 필요하면 고객 관리형 키를 씁니다. 그런 요구가 없다면 서비스 기본값(AWS 소유 키)으로도 저장 시 암호화는 됩니다.</p>
   </div>
 </section>
 
 <section class="slide">
   <h2>KMS가 직접 암호화하는 데이터는 4KB까지다</h2>
   <div class="prose">
-    <p>KMS 키에는 용도가 있습니다. 가장 흔한 <strong>대칭 키</strong>(AES-256-GCM)는 Encrypt, Decrypt, 데이터 키 생성에 씁니다. <strong>비대칭 키</strong>(RSA, ECC)는 공개 키를 밖으로 내보내 서명 검증이나 암호화를 KMS 없이도 하게 할 때, <strong>HMAC 키</strong>는 토큰 무결성 검사에 씁니다.</p>
-    <p>그런데 Encrypt API로 보낼 수 있는 평문은 <mark>최대 4,096바이트</mark>입니다. 모든 데이터를 네트워크로 KMS에 보내 암호화하는 것은 느리고 비싸며, 애초에 크기 제한으로 불가능합니다.</p>
-    <p>그렇다면 수 GB짜리 EBS 볼륨이나 S3 객체는 어떻게 KMS로 암호화할까요? 답이 봉투 암호화입니다.</p>
+    <p>KMS 키에는 용도가 있습니다. 가장 흔한 <strong>대칭 키</strong>는 AES-256-GCM(암호화와 변조 검사를 함께 하는 AES 사용 방식)으로 Encrypt, Decrypt, 데이터 키 생성에 씁니다. <strong>비대칭 키</strong>(RSA, ECC)는 공개 키를 밖으로 내보내 서명 검증이나 암호화를 KMS 없이도 하게 할 때, <strong>HMAC 키</strong>는 7장의 MAC처럼 토큰 무결성 검사에 씁니다.</p>
+    <p>그런데 Encrypt API로 보낼 수 있는 평문은 <mark>최대 4,096바이트</mark>입니다. 모든 데이터를 네트워크로 KMS에 보내 암호화하면 느리고 비싸며, 애초에 크기 제한으로 불가능합니다. KMS는 데이터를 잠그는 곳이 아니라 <strong>작은 키를 잠그는 곳</strong>으로 설계되었습니다.</p>
+    <p>그렇다면 수백 GB짜리 주문 DB 볼륨이나 S3 객체는 어떻게 KMS로 암호화할까요? 답이 봉투 암호화입니다.</p>
   </div>
 </section>
 
@@ -939,12 +1191,12 @@ access-control-allow-origin: https://app.example.com</code></pre>
   <h2>봉투 암호화: 데이터 키로 잠그고 그 키를 잠근다</h2>
   <div class="split split--center">
     <div class="prose">
-      <p><code>GenerateDataKey</code>를 호출하면 KMS가 데이터 키를 만들어 <strong>평문</strong>과 <strong>KMS 키로 암호화한 사본</strong>을 함께 줍니다.</p>
-      <p>앱은 평문 키로 데이터를 로컬에서 암호화하고, 평문 키는 바로 메모리에서 지웁니다. 암호화된 데이터 키는 데이터 옆에 같이 저장합니다.</p>
+      <p>발상은 두 단계로 잠그는 것입니다. 데이터는 그때그때 만든 <dfn title="data key">데이터 키</dfn>로 잠그고, 그 데이터 키를 KMS 키로 잠급니다. 잠근 키를 봉투에 넣어 데이터에 붙여 두는 모양이라 <dfn title="envelope encryption">봉투 암호화</dfn>라고 합니다.</p>
+      <p><code>GenerateDataKey</code>를 호출하면 KMS가 데이터 키를 만들어 <strong>평문</strong>과 <strong>KMS 키로 암호화한 사본</strong>을 함께 줍니다. 앱은 평문 키로 데이터를 로컬에서 암호화하고 평문 키는 바로 메모리에서 지운 뒤, 암호화된 데이터 키를 데이터 옆에 저장합니다.</p>
     </div>
     <figure class="figure">
-      <svg class="dg" viewBox="0 0 760 470" role="img" aria-labelledby="f48t">
-        <title id="f48t">KMS가 평문 데이터 키와 암호화된 데이터 키를 준다. 평문 키로 데이터를 암호화하고, 암호화된 데이터와 암호화된 데이터 키를 함께 저장한다.</title>
+      <svg class="dg" viewBox="0 0 760 470" role="img" aria-labelledby="f70t">
+        <title id="f70t">KMS가 평문 데이터 키와 암호화된 데이터 키를 준다. 평문 키로 데이터를 암호화하고, 암호화된 데이터와 암호화된 데이터 키를 함께 저장한다.</title>
         <rect class="dg-zone" x="230" y="10" width="300" height="140"/>
         <text class="dg-label--sm" x="380" y="36" text-anchor="middle">AWS KMS (HSM)</text>
         <rect class="dg-box dg-box--solid" x="260" y="60" width="240" height="64"/>
@@ -979,8 +1231,8 @@ access-control-allow-origin: https://app.example.com</code></pre>
       <li><b>로컬 복호화</b><p>데이터 본체는 네트워크를 타지 않고 앱에서 풉니다.</p></li>
     </ol>
     <div class="prose">
-      <p>데이터가 1GB든 1TB든 KMS가 다루는 것은 수십 바이트 키뿐입니다. 키 정책이 데이터 전체의 열쇠 구멍 역할을 합니다.</p>
-      <p>EBS, RDS, S3 SSE-KMS가 모두 이 구조입니다. S3 버킷 키(15장)는 데이터 키를 버킷 단위로 재사용해 KMS 호출 수를 줄입니다.</p>
+      <p>데이터가 1GB든 1TB든 KMS가 다루는 것은 수십 바이트 키뿐입니다. 그러면서도 2단계를 거치지 않고는 데이터를 풀 수 없으니, 키 정책이 데이터 전체의 열쇠 구멍 역할을 합니다.</p>
+      <p>EBS, RDS, S3 SSE-KMS가 모두 이 구조이고, 서비스가 우리 대신 1~4단계를 수행합니다. 15장의 S3 버킷 키는 데이터 키를 버킷 단위로 재사용해 2단계의 KMS 호출 수를 줄이는 장치입니다.</p>
     </div>
   </div>
 </section>
@@ -1003,18 +1255,27 @@ access-control-allow-origin: https://app.example.com</code></pre>
     <span class="s">"kms:ViaService"</span>:
       <span class="s">"s3.ap-northeast-2.amazonaws.com"</span> } } }</code></pre>
     <div class="prose">
-      <p>모든 KMS 키에는 키 정책이 정확히 하나 있고, 이것이 1차 관문입니다(12장의 리소스 기반 정책).</p>
-      <p>첫 문장은 계정에게 "IAM 정책으로 위임해도 된다"고 허락합니다. 이 문장이 없으면 <strong>IAM의 Allow는 무시</strong>됩니다.</p>
+      <p>12장에서는 같은 계정이면 IAM 정책과 리소스 정책 중 한쪽만 허용해도 됐습니다. KMS는 다릅니다. 모든 키에 키 정책이 정확히 하나 있고, 이것이 <strong>먼저 통과해야 할 관문</strong>입니다.</p>
+      <p>1~5행은 계정(<code>:root</code>는 루트 사용자가 아니라 계정 전체)에게 "IAM 정책으로 권한을 나눠 줘도 된다"고 허락합니다. 이 문장이 없으면 <strong>IAM의 Allow는 무시</strong>됩니다. 6행부터는 앱 역할에 Decrypt를 직접 줍니다.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <h2>그랜트와 암호화 컨텍스트로 범위를 더 좁힌다</h2>
+  <h2>그랜트는 키 정책을 고치지 않고 잠깐 빌려준다</h2>
   <div class="prose">
-    <p><dfn title="grant">그랜트</dfn>는 키 정책을 고치지 않고 특정 주체에게 특정 작업을 임시로 위임하는 장치입니다. EBS가 암호화된 볼륨을 인스턴스에 붙일 때, 서비스가 내부적으로 그랜트를 만들어 그 볼륨에 필요한 Decrypt만 허용하고 작업이 끝나면 회수합니다.</p>
-    <p><dfn title="encryption context">암호화 컨텍스트</dfn>는 암호화할 때 함께 넘기는 키-값 쌍입니다. 복호화할 때 같은 값을 넘기지 않으면 실패하고, 값은 CloudTrail에 평문으로 남습니다. <code>{"tenant": "a-corp"}</code>를 붙여 두면 다른 테넌트 데이터의 암호문을 바꿔치기해도 풀리지 않고, 키 정책 조건으로 테넌트별 권한을 줄 수도 있습니다.</p>
-    <p>앞 슬라이드의 <code>kms:ViaService</code> 조건은 "S3를 거칠 때만" 쓰게 해서, 역할이 키를 직접 호출해 다른 용도로 쓰는 것을 막습니다.</p>
+    <p>키 정책은 키마다 하나뿐이라, 자원이 생길 때마다 정책을 고치는 방식으로는 감당이 안 됩니다. 주문 DB용 EBS 볼륨이 인스턴스에 붙을 때마다 키 정책에 그 인스턴스를 추가할 수는 없습니다.</p>
+    <p><dfn title="grant">그랜트</dfn>는 키 정책을 고치지 않고 특정 주체에게 특정 작업을 위임하는 장치입니다. EBS는 암호화된 볼륨을 붙일 때 내부적으로 그랜트를 만들어 그 볼륨에 필요한 Decrypt만 허용하고, 볼륨을 떼면 회수합니다. 그랜트는 위임 범위가 좁고 만들고 지우기가 쉬워서, 서비스가 우리 대신 키를 쓸 때 주로 쓰입니다.</p>
+    <p>우리가 직접 그랜트를 만들 일은 많지 않습니다. 다만 키 사용 기록에 낯선 그랜트가 보일 때, 그리고 키 정책에 <code>kms:CreateGrant</code> 권한이 왜 필요한지 이해하려면 알아 두어야 합니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>암호화 컨텍스트는 암호문에 꼬리표를 묶는다</h2>
+  <div class="prose">
+    <p><dfn title="encryption context">암호화 컨텍스트</dfn>는 암호화할 때 함께 넘기는 키-값 쌍입니다. KMS는 이 값을 암호문에 수학적으로 묶어, 복호화할 때 <mark>같은 값을 넘기지 않으면 실패</mark>하게 합니다. 값 자체는 비밀이 아니라 CloudTrail에 평문으로 남습니다.</p>
+    <p>쇼핑몰이 입점 업체별로 정산 파일을 암호화한다고 합시다. <code>{"tenant": "a-corp"}</code>를 붙여 두면, 누군가 b-corp의 암호문을 a-corp 자리에 바꿔치기해도 컨텍스트가 맞지 않아 풀리지 않습니다. 키 정책 조건으로 "a-corp 역할은 tenant=a-corp 컨텍스트로만 풀 수 있다"처럼 업체별 권한을 줄 수도 있습니다.</p>
+    <p>앞 키 정책의 <code>kms:ViaService</code> 조건도 같은 계열입니다. "S3를 거쳐서 올 때만" 쓰게 해서, 앱 역할이 키를 직접 불러 다른 용도로 쓰는 것을 막습니다.</p>
   </div>
 </section>
 
@@ -1022,8 +1283,8 @@ access-control-allow-origin: https://app.example.com</code></pre>
   <h2>키 회전은 옛 데이터를 다시 잠그지 않는다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>자동 회전을 켜면 KMS가 기본 365일(90~2,560일로 조정 가능)마다 새 키 재료를 만듭니다. 키 ID와 ARN은 그대로이고, <strong>옛 재료도 보관</strong>해 예전 암호문을 계속 풀 수 있습니다. 그래서 회전해도 기존 데이터를 다시 암호화할 필요가 없습니다.</p>
-      <p>자동 회전은 KMS가 만든 대칭 키에서만 됩니다. 고객 관리형 키는 자동 회전과 별개로 즉시 회전(on-demand)도 할 수 있고, AWS 관리형 키는 매년 자동 회전되며 설정을 바꿀 수 없습니다.</p>
+      <p>KMS 키는 이름과 ID 같은 껍데기와, 실제 암호 연산에 쓰는 비밀 값인 <dfn title="key material">키 재료</dfn>로 이뤄집니다. 자동 회전을 켜면 KMS가 기본 365일(90~2,560일로 조정 가능)마다 새 키 재료를 만듭니다. 키 ID와 ARN은 그대로이고, <strong>옛 재료도 보관</strong>해 암호문에 맞는 재료로 풀어 줍니다. 그래서 회전해도 기존 데이터를 다시 암호화할 필요가 없습니다.</p>
+      <p>자동 회전은 KMS가 만든 대칭 키에서만 됩니다. 고객 관리형 키는 즉시 회전(on-demand)도 할 수 있고, AWS 관리형 키는 매년 자동 회전되며 설정을 바꿀 수 없습니다.</p>
     </div>
     <aside class="callout callout--key">
       <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>키 삭제는 데이터 삭제다</p>
@@ -1035,14 +1296,23 @@ access-control-allow-origin: https://app.example.com</code></pre>
 <section class="slide">
   <h2>리전 간 복제와 호출량 한도도 설계 대상이다</h2>
   <div class="prose">
-    <p>KMS 키는 리전 자원입니다. <dfn>다중 리전 키</dfn>는 같은 키 ID와 키 재료를 가진 복제본을 다른 리전에 만들어, 서울에서 암호화한 데이터를 도쿄에서 KMS 호출 없이 리전을 건너지 않고 풀게 합니다. DR(18장)이나 글로벌 테이블에서 씁니다.</p>
-    <p>대칭 키 암호 연산은 계정·리전별로 <strong>초당 1만~10만 건</strong>(리전에 따라 다름)을 공유합니다. S3 SSE-KMS 객체를 초당 수만 건 읽으면 S3가 대신 부르는 Decrypt가 이 한도를 먹어 <code>ThrottlingException</code>이 납니다. 버킷 키와 데이터 키 캐싱이 해법입니다.</p>
-    <p>규정상 HSM을 단독으로 써야 하면 전용 HSM 클러스터인 <dfn>CloudHSM</dfn>을 쓰거나, KMS 사용자 지정 키 저장소로 연결합니다.</p>
+    <p>KMS 키는 리전 자원입니다. 서울에서 암호화한 백업을 도쿄에서 풀려면 서울 KMS를 불러야 하고, 서울 리전 장애 때는 풀 수 없습니다. <dfn>다중 리전 키</dfn>는 같은 키 ID와 키 재료를 가진 복제본을 다른 리전에 만들어, 도쿄에서 리전을 건너지 않고 풀게 합니다. 재해 복구(18장)나 리전 간 복제 테이블에서 씁니다.</p>
+    <p>호출량에도 한도가 있습니다. 대칭 키 암호 연산은 계정·리전별로 <strong>초당 1만~10만 건</strong>(리전에 따라 다름)을 모든 키가 나눠 씁니다. S3 SSE-KMS 객체를 초당 수만 건 읽으면 S3가 대신 부르는 Decrypt가 이 한도를 먹어 <code>ThrottlingException</code>이 납니다. 해법은 둘입니다. 15장의 버킷 키로 S3가 부르는 횟수를 줄이고, 직접 암호화하는 앱이라면 받은 데이터 키를 잠시 메모리에 두고 여러 건에 재사용하는 데이터 키 캐싱(AWS Encryption SDK가 제공)을 씁니다.</p>
+    <p>규정상 다른 고객과 공유하지 않는 전용 HSM이 필요하면 <dfn>CloudHSM</dfn> 클러스터를 쓰거나, KMS 사용자 지정 키 저장소로 연결합니다.</p>
   </div>
 </section>
 
 <section class="slide">
-  <h2>비밀은 코드가 아니라 비밀 저장소에 둔다</h2>
+  <h2>DB 비밀번호를 어디에 둘 것인가</h2>
+  <div class="prose">
+    <p>KMS는 암호화 키를 맡았습니다. 그런데 주문 API가 RDS에 접속할 때 쓰는 비밀번호는 암호화 키가 아니라 <strong>앱이 평문으로 알아야 하는 값</strong>입니다. 이런 값을 비밀(secret)이라고 부릅니다. 외부 결제사 API 키도 같습니다.</p>
+    <p>흔한 실수는 셋입니다. 코드에 넣으면 Git 이력에 영원히 남습니다. 컨테이너 이미지에 넣으면 이미지를 받는 누구나 꺼냅니다. ECS 태스크 정의(14장)의 환경 변수에 평문으로 넣으면 태스크 정의를 조회할 수 있는 모든 사람에게 보입니다.</p>
+    <p>필요한 것은 암호화해서 보관하고, IAM으로 읽을 사람을 정하고, 읽을 때마다 기록하고, 주기적으로 바꿀 수 있는 저장소입니다. AWS에는 두 가지가 있습니다. 비밀 전용인 <dfn>Secrets Manager</dfn>와, 서버 운영 도구 모음인 Systems Manager(14장 Session Manager도 그 일부)의 설정 저장소 <dfn>Parameter Store</dfn>입니다. Parameter Store는 KMS로 암호화한 <code>SecureString</code> 유형으로 비밀도 담습니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>교체가 필요하면 Secrets Manager를 쓴다</h2>
   <div class="slide__body">
     <table class="compare">
       <thead><tr><th scope="col">항목</th><th scope="col">Secrets Manager</th><th scope="col">Parameter Store</th></tr></thead>
@@ -1055,7 +1325,7 @@ access-control-allow-origin: https://app.example.com</code></pre>
         <tr><th scope="row">기타</th><td>리전 간 복제, 리소스 정책</td><td>계층 경로, 만료 정책(Advanced)</td></tr>
       </tbody>
     </table>
-    <p class="small">교체가 필요한 DB 자격 증명은 Secrets Manager, 나머지 설정과 정적 비밀은 Parameter Store가 흔한 분담입니다. Standard 파라미터는 계정·리전당 1만 개, Advanced는 10만 개까지입니다.</p>
+    <p class="small">둘을 가르는 것은 자동 교체입니다. 쇼핑몰은 주기적으로 바꿔야 하는 주문 DB 자격 증명(<code>prod/orders/db</code>)을 Secrets Manager에, 기능 플래그나 외부 URL 같은 설정과 정적 비밀은 Parameter Store에 둡니다. Standard 파라미터는 계정·리전당 1만 개, Advanced는 10만 개까지입니다.</p>
   </div>
 </section>
 
@@ -1069,8 +1339,8 @@ access-control-allow-origin: https://app.example.com</code></pre>
       <li class="is-key"><b>finishSecret</b><p>AWSCURRENT를 새 버전으로 옮기고, 옛 버전은 AWSPREVIOUS가 됩니다.</p></li>
     </ol>
     <div class="prose">
-      <p>앱은 언제나 <code>AWSCURRENT</code> 버전을 읽습니다. 레이블 이동은 원자적이라 읽는 쪽에서 반쯤 바뀐 상태는 보이지 않습니다.</p>
-      <p>RDS, Aurora, Redshift 같은 관리형 비밀은 Lambda 없이 <strong>관리형 교체</strong>로 처리되고, 교체 주기는 최소 4시간까지 줄일 수 있습니다.</p>
+      <p>비밀 하나에는 여러 <strong>버전</strong>이 있고, 각 버전에 <dfn title="staging label">스테이징 레이블</dfn>이라는 이름표가 붙습니다. 앱은 언제나 <code>AWSCURRENT</code> 이름표가 붙은 버전을 읽습니다. 교체는 새 버전을 만들어 확인한 뒤 이름표만 옮기는 일이고, 이름표 이동은 원자적이라 반쯤 바뀐 상태는 보이지 않습니다.</p>
+      <p>네 단계는 교체용 Lambda 함수가 차례로 실행합니다. RDS, Aurora, Redshift 비밀은 함수 없이 <strong>관리형 교체</strong>로 처리되고, 주기는 최소 4시간까지 줄일 수 있습니다.</p>
     </div>
   </div>
 </section>
@@ -1079,8 +1349,8 @@ access-control-allow-origin: https://app.example.com</code></pre>
   <h2>두 사용자를 번갈아 바꾸면 끊기지 않는다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p><strong>단일 사용자</strong> 전략은 한 계정의 비밀번호를 그대로 바꿉니다. 단순하지만 setSecret과 앱이 새 값을 읽는 사이에, 옛 비밀번호로 새 연결을 여는 인스턴스는 로그인에 실패합니다.</p>
-      <p><strong>교대 사용자</strong> 전략은 <code>app_user</code>와 복제한 <code>app_user_clone</code> 두 계정을 두고, 교체할 때마다 쓰지 않는 쪽만 바꿉니다. 옛 자격 증명도 다음 교체까지 유효하므로 <mark>교체 중 로그인 실패가 없습니다</mark>.</p>
+      <p>교체에는 틈이 있습니다. <strong>단일 사용자</strong> 전략은 DB 계정 하나의 비밀번호를 그대로 바꿉니다. 단순하지만 setSecret이 비밀번호를 바꾼 순간부터 앱이 새 값을 읽기까지, 옛 비밀번호로 새 연결을 여는 주문 API 인스턴스는 로그인에 실패합니다.</p>
+      <p><strong>교대 사용자</strong> 전략은 <code>app_user</code>와 복제한 <code>app_user_clone</code> 두 계정을 두고, 교체할 때마다 지금 쓰지 않는 쪽만 바꾼 뒤 AWSCURRENT를 그쪽으로 옮깁니다. 옛 자격 증명도 다음 교체까지 유효하므로 <mark>교체 중 로그인 실패가 없습니다</mark>.</p>
     </div>
     <aside class="callout callout--note">
       <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>교대 전략의 준비물</p>
@@ -1105,15 +1375,23 @@ DbCredential current() {
   pool.softEvictConnections();
 }</code></pre>
     <div class="prose">
-      <p>요청마다 API를 부르면 비용과 지연이 쌓입니다. Java 캐싱 라이브러리는 기본 1시간마다 새로 읽습니다.</p>
-      <p>교체 직후 캐시에 옛 값이 남을 수 있으므로, 인증 실패를 신호로 즉시 다시 읽는 경로를 둡니다.</p>
+      <p>요청마다 Secrets Manager API를 부르면 호출 요금과 지연이 쌓입니다. 1행의 <code>SecretCache</code>는 AWS의 Java 캐싱 라이브러리로, 값을 메모리에 두고 기본 1시간마다 새로 읽습니다.</p>
+      <p>교체 직후에는 캐시에 옛 값이 남을 수 있습니다. 그래서 인증 실패를 신호로 즉시 다시 읽고(10행), 4장의 커넥션 풀(HikariCP)이 옛 연결을 반납되는 대로 닫게 합니다(11행).</p>
     </div>
   </div>
 </section>
 
+<section class="slide">
+  <h2>회원이 누구인지는 Cognito가 확인한다</h2>
+  <div class="prose">
+    <p>마지막은 쇼핑몰 회원입니다. 로그인을 직접 만들면 가입과 이메일 인증, 7장의 bcrypt 비밀번호 해시, 비밀번호 재설정, MFA(12장에서 본 두 번째 인증 수단), "구글로 로그인"까지 모두 우리 몫입니다. <dfn>Cognito</dfn>는 이것을 맡는 AWS의 사용자 인증 서비스이며, 서로 독립인 두 부품으로 되어 있습니다.</p>
+    <p><dfn title="User Pool">사용자 풀</dfn>은 회원 디렉터리이자 7장의 OAuth 2.0·OIDC를 말하는 로그인 서버입니다. 로그인한 사용자에게 JWT 토큰을 발급하고, 우리 API는 그 토큰을 검증해 사용자를 알아봅니다.</p>
+    <p><dfn title="Identity Pool">자격 증명 풀</dfn>은 로그인 결과를 12장의 STS 임시 자격 증명, 즉 AWS API를 직접 부를 수 있는 열쇠로 바꿔 주는 중개자입니다. 모바일 앱이 서버를 거치지 않고 S3에 사진을 올려야 할 때처럼, 사용자 기기가 AWS를 직접 호출해야 할 때만 필요합니다. 대부분의 웹 서비스는 사용자 풀만으로 충분합니다.</p>
+  </div>
+</section>
 
 <section class="slide">
-  <h2>User Pool은 토큰을, Identity Pool은 자격을</h2>
+  <h2>사용자 풀은 토큰을, 자격 증명 풀은 열쇠를</h2>
   <div class="slide__body">
     <table class="compare">
       <thead><tr><th scope="col">항목</th><th scope="col">User Pool</th><th scope="col">Identity Pool</th></tr></thead>
@@ -1124,9 +1402,7 @@ DbCredential current() {
         <tr><th scope="row">기능</th><td>가입, 로그인, MFA, 소셜·SAML 연동</td><td>역할 매핑, 비로그인 게스트 자격</td></tr>
       </tbody>
     </table>
-    <div class="prose">
-      <p><dfn>Cognito</dfn>의 두 부품은 서로 독립입니다. 대부분의 웹 서비스는 User Pool만으로 충분하고, 모바일 앱이 S3에 직접 업로드해야 할 때 Identity Pool을 더합니다. OAuth 2.0과 OIDC의 원리는 7장에서 봤습니다.</p>
-    </div>
+    <p class="small">ID·Access·Refresh 토큰의 차이(누구인지, 무엇을 해도 되는지, 새 토큰을 받는 열쇠)는 7장에서 봤습니다. Identity Pool은 User Pool 토큰 말고도 구글, 애플 같은 외부 로그인 결과를 받을 수 있고, 로그인하지 않은 방문자에게 제한된 게스트 역할을 줄 수도 있습니다.</p>
   </div>
 </section>
 
@@ -1157,13 +1433,13 @@ DbCredential current() {
       </div>
       <div class="seq__row seq__row--r is-key">
         <span class="seq__state"></span>
-        <span class="seq__msg"><b>GET /orders</b> Bearer access<small>API Gateway, ALB, 내 서버</small></span>
+        <span class="seq__msg"><b>GET /api/orders</b> Bearer access<small>API Gateway, ALB, 주문 API</small></span>
         <span class="seq__state is-key">JWKS로 검증</span>
       </div>
     </div>
     <div class="prose">
-      <p>호스티드 UI는 현재 <strong>관리형 로그인</strong>(managed login)이라는 이름으로 제공됩니다.</p>
-      <p>ID·Access 토큰은 기본 1시간, Refresh 토큰은 기본 30일이며 앱 클라이언트마다 바꿉니다. API Gateway의 Cognito 권한 부여자(17장)와 ALB 인증 연동(13장)이 이 검증을 대신해 줍니다.</p>
+      <p>7장의 Authorization Code + PKCE 흐름 그대로입니다. Cognito가 로그인 화면까지 제공하며, 예전 이름은 호스티드 UI이고 지금은 <strong>관리형 로그인</strong>(managed login)입니다.</p>
+      <p>주문 API는 User Pool이 공개한 JWKS(7장)의 공개 키로 토큰 서명을 검증하므로 Cognito를 매번 부르지 않습니다. 토큰 수명은 ID·Access 기본 1시간, Refresh 기본 30일이며 앱 클라이언트마다 바꿉니다.</p>
     </div>
   </div>
 </section>
@@ -1171,23 +1447,23 @@ DbCredential current() {
 <!-- ===== 5부 감사와 탐지 ============================================== -->
 <section class="slide slide--divider" data-section="감사와 탐지" data-depth="core">
   <p class="divider__no">5부</p>
-  <h2>막지 못한 것은 기록하고 찾아낸다</h2>
-  <p class="lede">예방은 언젠가 뚫립니다. 누가 무엇을 했는지 남기는 감사 기록과, 그 기록에서 이상을 찾아내는 탐지 서비스가 마지막 방어선입니다.</p>
+  <h2>막지 못한 일은 기록하고 찾아낸다</h2>
+  <p class="lede">엣지의 방어도, 키와 권한도 언젠가는 뚫리거나 잘못 설정됩니다. 그때 "누가 언제 무엇을 했나"를 답해 주는 기록과, 그 기록에서 이상한 일을 먼저 찾아 알려 주는 탐지가 마지막 방어선입니다.</p>
 </section>
 
 <section class="slide">
   <h2>AWS의 모든 조작은 API 호출로 남는다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>콘솔 클릭도, CLI도, Terraform도 결국 AWS API 호출입니다. <dfn>CloudTrail</dfn>은 그 호출을 누가, 언제, 어디서, 무엇을 대상으로, 성공했는지까지 기록합니다.</p>
-      <p>계정을 만들면 CloudTrail은 이미 켜져 있고, <strong>관리 이벤트 90일</strong>을 리전별 이벤트 기록(Event history)에서 무료로 조회할 수 있습니다. 그 이상 보관하거나 데이터 이벤트를 남기려면 트레일을 만듭니다.</p>
+      <p>12장에서 봤듯이 콘솔 클릭도, CLI도, Terraform도 결국 AWS API 호출입니다. <dfn>CloudTrail</dfn>은 그 호출을 누가, 언제, 어디서, 무엇을 대상으로 했고 성공했는지까지 기록하는 서비스입니다.</p>
+      <p>계정을 만들면 CloudTrail은 이미 켜져 있고, 최근 <strong>관리 이벤트 90일</strong>을 리전별 이벤트 기록(Event history)에서 무료로 조회할 수 있습니다. 더 오래 보관하거나 다른 종류의 이벤트를 남기려면 뒤에서 볼 트레일을 만듭니다.</p>
     </div>
     <table class="compare">
-      <thead><tr><th scope="col">이벤트</th><th scope="col">예</th></tr></thead>
+      <thead><tr><th scope="col">이벤트</th><th scope="col">무엇을 남기나</th></tr></thead>
       <tbody>
-        <tr><th scope="row">관리 이벤트</th><td>CreateUser, RunInstances, 콘솔 로그인</td></tr>
-        <tr><th scope="row">데이터 이벤트</th><td class="is-key">S3 GetObject, Lambda Invoke(별도 요금)</td></tr>
-        <tr><th scope="row">네트워크 활동</th><td>VPC 엔드포인트를 거친 API 호출</td></tr>
+        <tr><th scope="row">관리 이벤트</th><td>자원을 만들고 바꾸는 호출(CreateUser, RunInstances, 콘솔 로그인)</td></tr>
+        <tr><th scope="row">데이터 이벤트</th><td class="is-key">자원 안의 데이터 접근(S3 GetObject, Lambda Invoke), 별도 요금</td></tr>
+        <tr><th scope="row">네트워크 활동</th><td>VPC 엔드포인트(13장)를 거친 API 호출</td></tr>
         <tr><th scope="row">Insights</th><td>평소와 다른 호출량, 오류율</td></tr>
       </tbody>
     </table>
@@ -1206,12 +1482,12 @@ DbCredential current() {
 <span class="hl">    <span class="s">"arn"</span>: <span class="s">"arn:aws:sts::1111:assumed-role/dev/kim"</span>,</span>
     <span class="s">"accessKeyId"</span>: <span class="s">"ASIA…"</span> },
   <span class="s">"sourceIPAddress"</span>: <span class="s">"203.0.113.7"</span>,
-  <span class="s">"requestParameters"</span>: { <span class="s">"bucketName"</span>: <span class="s">"orders"</span> },
+  <span class="s">"requestParameters"</span>: { <span class="s">"bucketName"</span>: <span class="s">"shop-web"</span> },
   <span class="s">"errorCode"</span>: <span class="dim">null</span>
 }</code></pre>
     <div class="prose">
-      <p><code>assumed-role/dev/kim</code>은 kim이 dev 역할을 맡은 세션이라는 뜻입니다. 역할을 써도 세션 이름으로 사람이 드러납니다.</p>
-      <p>AccessDenied 디버깅(12장)에서는 <code>errorCode</code>와 <code>errorMessage</code>를 봅니다.</p>
+      <p>누군가 쇼핑몰 웹 버킷의 정책을 바꾼 기록입니다. 3~4행이 무슨 API였는지, 5~8행이 누가 했는지, 9행이 어디서, 10행이 무엇을 대상으로 했는지입니다.</p>
+      <p>7행의 <code>assumed-role/dev/kim</code>은 kim이 dev 역할을 맡은 세션(12장의 AssumeRole)이라는 뜻이라, 역할을 써도 사람이 드러납니다. <code>ASIA</code>로 시작하는 키는 임시 자격 증명입니다. 실패한 호출이면 11행에 <code>AccessDenied</code> 같은 오류가 남아 12장의 거부 원인 찾기에 쓰입니다.</p>
     </div>
   </div>
 </section>
@@ -1219,9 +1495,9 @@ DbCredential current() {
 <section class="slide">
   <h2>트레일은 조직 전체를 한 버킷에 모은다</h2>
   <div class="prose">
-    <p><strong>멀티 리전 트레일</strong>은 켜져 있는 모든 리전의 이벤트를 S3 버킷 하나로 보냅니다. 쓰지 않는 리전에서 몰래 만든 채굴 인스턴스도 잡히므로 기본으로 씁니다. 로그 파일은 평균 5분 안팎으로 전달되고, CloudWatch Logs와 EventBridge로도 흘려 실시간 알람을 겁니다.</p>
-    <p><strong>조직 트레일</strong>은 Organizations 관리 계정에서 만들어 모든 멤버 계정의 이벤트를 로그 아카이브 계정 버킷(12장 계정 분리)에 모읍니다. 멤버 계정 관리자는 이 트레일을 끄거나 지울 수 없습니다.</p>
-    <p>관리 이벤트의 첫 번째 사본은 트레일로 받아도 요금이 없고, 데이터 이벤트와 추가 사본은 과금됩니다. 데이터 이벤트는 민감한 버킷처럼 필요한 곳만 고급 이벤트 선택기로 좁혀 켭니다.</p>
+    <p><dfn title="trail">트레일</dfn>은 CloudTrail 이벤트를 S3 버킷으로 계속 내보내는 설정입니다. 90일 제한이 없어지고, 데이터 이벤트도 담을 수 있습니다. <strong>멀티 리전 트레일</strong>은 켜져 있는 모든 리전의 이벤트를 버킷 하나로 보냅니다. 쓰지 않는 리전에서 몰래 만든 채굴 인스턴스(12장)도 잡히므로 기본으로 씁니다. 로그 파일은 평균 5분 안팎으로 전달되고, CloudWatch Logs와 EventBridge(17장)로도 흘려 실시간 알람을 겁니다.</p>
+    <p><strong>조직 트레일</strong>은 Organizations 관리 계정에서 만들어 모든 멤버 계정의 이벤트를 12장의 Log Archive 계정 버킷에 모읍니다. 멤버 계정 관리자는 이 트레일을 끄거나 지울 수 없으니, 침입자가 흔적을 지우려 트레일을 꺼도 소용이 없습니다.</p>
+    <p>관리 이벤트의 첫 사본은 요금이 없고, 데이터 이벤트와 추가 사본은 과금됩니다. 데이터 이벤트는 양이 많으므로 <strong>고급 이벤트 선택기</strong>(어떤 자원, 어떤 API만 남길지 고르는 필터)로 주문 데이터 버킷처럼 민감한 곳만 켭니다.</p>
   </div>
 </section>
 
@@ -1229,38 +1505,87 @@ DbCredential current() {
   <h2>로그가 지워지거나 고쳐졌는지 증명할 수 있다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>공격자는 들어온 뒤 흔적부터 지웁니다. <dfn>로그 파일 무결성 검증</dfn>을 켜면 CloudTrail이 로그 파일마다 SHA-256 해시를 만들고, <strong>매시간</strong> 그 해시들을 담은 다이제스트 파일을 RSA 서명과 함께 남깁니다. 다이제스트는 이전 다이제스트의 서명도 담아 사슬을 이룹니다.</p>
-      <p><code>aws cloudtrail validate-logs</code>로 어느 파일이 수정·삭제됐는지 확인합니다. 버킷에는 S3 Object Lock(15장)이나 MFA Delete를 겁니다.</p>
+      <p>공격자는 들어온 뒤 흔적부터 지웁니다. <dfn>로그 파일 무결성 검증</dfn>을 켜면 CloudTrail이 로그 파일마다 SHA-256 해시를 만들고, <strong>매시간</strong> 그 해시들을 모은 다이제스트 파일에 RSA 서명(7장의 해시와 서명)을 붙여 남깁니다. 각 다이제스트는 직전 다이제스트의 서명도 담아 사슬을 이루므로, 중간 파일 하나를 지우거나 고치면 사슬이 끊깁니다.</p>
+      <p><code>aws cloudtrail validate-logs</code>로 어느 파일이 수정·삭제됐는지 확인합니다. 버킷 자체에는 15장의 Object Lock이나 MFA Delete를 걸어 지우기 어렵게 만듭니다.</p>
     </div>
     <aside class="callout callout--note">
       <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>SQL로 조회하려면</p>
-      <p>CloudTrail Lake는 2026년 5월 31일부터 신규 고객을 받지 않습니다. 새로 시작한다면 S3의 트레일 로그를 Athena로 조회하는 구성이 일반적입니다.</p>
+      <p>CloudTrail Lake는 2026년 5월 31일부터 신규 고객을 받지 않습니다. 새로 시작한다면 S3의 트레일 로그를 15장의 Athena로 조회하는 구성이 일반적입니다.</p>
     </aside>
   </div>
 </section>
 
 <section class="slide">
-  <h2>CloudTrail은 행위를, Config는 상태를</h2>
+  <h2>CloudTrail은 행위를, Config는 상태를 남긴다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>CloudTrail이 "누가 보안 그룹 규칙을 바꿨나"에 답한다면, <dfn>AWS Config</dfn>는 "지난 화요일 오후 3시에 이 보안 그룹은 어떤 모양이었나"에 답합니다. 리소스가 바뀔 때마다 <dfn title="configuration item">구성 항목</dfn>을 남겨 시점별 상태와 관계를 보여 줍니다.</p>
-      <p><strong>Config 규칙</strong>은 그 상태를 기준과 비교해 위반을 표시합니다. 변경이 생길 때나 주기적으로 평가합니다.</p>
+      <p>CloudTrail이 "누가 보안 그룹 규칙을 바꿨나"에 답한다면, <dfn>AWS Config</dfn>는 "지난 화요일 오후 3시에 이 보안 그룹은 어떤 모양이었나"에 답합니다. 리소스가 바뀔 때마다 그 시점의 설정 전체를 <dfn title="configuration item">구성 항목</dfn>으로 남겨, 시점별 상태와 다른 리소스와의 관계를 보여 줍니다.</p>
+      <p><strong>Config 규칙</strong>은 그 상태를 기준과 비교해 위반을 표시합니다. 변경이 생길 때나 주기적으로 평가하며, AWS가 만들어 둔 관리형 규칙이 수백 개 있습니다.</p>
     </div>
     <ol class="steps">
       <li><b>기록</b><p>구성 기록기가 지정한 리소스 유형의 변경을 남깁니다.</p></li>
-      <li><b>평가</b><p>예: <code>s3-bucket-public-read-prohibited</code> 규칙이 위반을 표시합니다.</p></li>
-      <li class="is-key"><b>교정</b><p>SSM Automation 문서로 수동 또는 자동 교정을 실행합니다.</p></li>
-      <li><b>집계</b><p>애그리게이터와 적합성 팩으로 여러 계정·리전을 한 화면에 모읍니다.</p></li>
+      <li><b>평가</b><p>예: <code>s3-bucket-public-read-prohibited</code> 규칙이 공개 버킷을 위반으로 표시합니다.</p></li>
+      <li class="is-key"><b>교정</b><p>Systems Manager의 자동화 문서(Automation)로 정해진 조치를 수동 또는 자동 실행합니다.</p></li>
+      <li><b>집계</b><p>애그리게이터로 여러 계정·리전을 모으고, 규칙 묶음인 적합성 팩으로 배포합니다.</p></li>
     </ol>
   </div>
 </section>
 
 <section class="slide">
-  <h2>탐지 서비스는 각자 다른 원천을 본다</h2>
+  <h2>GuardDuty는 켜기만 하면 로그를 읽는다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>기록이 있어도 사람이 매일 읽을 수는 없습니다. <dfn>GuardDuty</dfn>는 위협 탐지 서비스입니다. 켜면 CloudTrail 관리 이벤트, 13장의 VPC 흐름 로그, DNS 질의 로그를 <strong>우리가 따로 켜지 않아도</strong> AWS 내부 경로로 받아 분석합니다. 악성 IP·도메인 목록 같은 위협 정보와 머신러닝으로 이상 행동을 찾고, 결과(finding)를 심각도와 함께 냅니다.</p>
+      <p>탐지 예: 탈취된 자격 증명을 다른 나라에서 사용, EC2가 암호화폐 채굴 서버와 통신, 루트 사용자의 이례적 API 호출. 오른쪽의 보호 플랜을 켜면 보는 범위가 넓어집니다.</p>
+    </div>
+    <table class="compare">
+      <thead><tr><th scope="col">보호 플랜</th><th scope="col">추가로 보는 것</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">S3 Protection</th><td>S3 데이터 이벤트</td></tr>
+        <tr><th scope="row">EKS Protection</th><td>Kubernetes 감사 로그</td></tr>
+        <tr><th scope="row">Runtime Monitoring</th><td>EC2·ECS·EKS OS 수준 이벤트</td></tr>
+        <tr><th scope="row">Malware Protection</th><td>EBS 볼륨, 새 S3 객체</td></tr>
+        <tr><th scope="row">RDS, Lambda</th><td>DB 로그인, 함수 네트워크</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>나머지 탐지 서비스는 질문이 하나씩 다르다</h2>
+  <div class="prose prose--cols">
+    <p>GuardDuty가 "지금 누가 이상한 짓을 하나"를 본다면, 다른 서비스들은 각자 다른 질문에 답합니다.</p>
+    <p><dfn>Inspector</dfn>는 "알려진 취약점이 있나"를 묻습니다. 공개된 보안 취약점에는 CVE라는 번호가 붙는데, Inspector는 EC2에 깔린 패키지, ECR의 컨테이너 이미지(14장), Lambda 코드를 계속 훑어 CVE에 해당하는 버전을 찾습니다.</p>
+    <p><dfn>Macie</dfn>는 "S3에 개인정보가 있나"를 묻습니다. 객체 내용을 표본으로 읽어 주민번호, 카드 번호 같은 민감 데이터를 찾아 분류합니다. 쇼핑몰이 주문 내역을 내보낸 CSV를 엉뚱한 버킷에 두었다면 Macie가 찾아냅니다.</p>
+    <p><dfn>Security Hub</dfn>는 이 모든 결과를 한곳에 모아 "무엇부터 고치나"를 정해 줍니다. 그 안의 CSPM 기능은 Config를 바탕으로 설정이 AWS 기초 보안 모범 사례(FSBP)나 업계 표준 점검표인 CIS 벤치마크에 맞는지 점검합니다. <dfn>Detective</dfn>는 사건이 터진 뒤 로그를 그래프로 엮어 "어디까지 번졌나"를 조사하게 돕습니다.</p>
+    <p>이 서비스들은 조직의 계정 하나를 <dfn title="delegated administrator">위임 관리자</dfn>로 지정해, 12장의 Audit(보안 도구) 계정에서 모든 계정의 결과를 한꺼번에 봅니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>탐지 서비스를 질문으로 정리한다</h2>
+  <div class="slide__body">
+    <table class="compare">
+      <thead><tr><th scope="col">서비스</th><th scope="col">답하는 질문</th><th scope="col">작동 방식</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">GuardDuty</th><td>지금 이상한 행동이 있나?</td><td>CloudTrail, 흐름·DNS 로그 분석</td></tr>
+        <tr><th scope="row">Inspector</th><td>알려진 취약점(CVE)이 있나?</td><td>EC2 패키지, ECR 이미지, Lambda 코드 상시 스캔</td></tr>
+        <tr><th scope="row">Macie</th><td>S3에 개인정보가 있나?</td><td>객체 내용을 표본으로 읽어 분류</td></tr>
+        <tr><th scope="row">Security Hub CSPM</th><td>설정이 모범 사례에 맞나?</td><td>FSBP, CIS 기준 점검(Config 기반)</td></tr>
+        <tr><th scope="row">Security Hub</th><td class="is-flow">무엇부터 고치나?</td><td>여러 결과를 엮어 우선순위화</td></tr>
+        <tr><th scope="row">Detective</th><td>이 사건은 어디까지 번졌나?</td><td>로그를 그래프로 엮어 조사</td></tr>
+      </tbody>
+    </table>
+    <p class="small">예방(IAM, SCP), 기록(CloudTrail, Config), 탐지(GuardDuty, Inspector, Macie), 집계와 대응(Security Hub, EventBridge)이 층을 이룹니다. 다음 그림이 이 흐름을 한 장으로 보여 줍니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>결과는 Security Hub로 모여 자동 대응으로 간다</h2>
   <div class="slide__body">
     <figure class="figure">
-      <svg class="dg" viewBox="0 0 1400 350" role="img" aria-labelledby="f66t">
-        <title id="f66t">CloudTrail과 VPC 흐름, DNS 로그는 GuardDuty가, EC2와 컨테이너 이미지와 Lambda 코드는 Inspector가, S3 객체 내용은 Macie가, 리소스 구성은 Config 규칙과 Security Hub CSPM이 본다. 모든 결과는 Security Hub로 모이고 EventBridge로 자동 대응이 이어진다.</title>
+      <svg class="dg" viewBox="0 0 1400 350" role="img" aria-labelledby="f88t">
+        <title id="f88t">CloudTrail과 VPC 흐름, DNS 로그는 GuardDuty가, EC2와 컨테이너 이미지와 Lambda 코드는 Inspector가, S3 객체 내용은 Macie가, 리소스 구성은 Config 규칙과 Security Hub CSPM이 본다. 모든 결과는 Security Hub로 모이고 EventBridge로 자동 대응이 이어진다.</title>
         <text class="dg-label--sm" x="195" y="20" text-anchor="middle">무엇을 보나</text>
         <text class="dg-label--sm" x="580" y="20" text-anchor="middle">탐지 서비스</text>
         <rect class="dg-box dg-box--muted" x="30" y="36" width="330" height="60"/>
@@ -1292,47 +1617,10 @@ DbCredential current() {
         <rect class="dg-box" x="1130" y="156" width="240" height="60"/>
         <text x="1250" y="186" text-anchor="middle">EventBridge</text>
         <line class="dg-arrow dg-arrow--flow" x1="1048" y1="186" x2="1122" y2="186"/>
-        <text class="dg-label--sm" x="1250" y="246" text-anchor="middle">Lambda, SSM으로 자동 대응</text>
+        <text class="dg-label--sm" x="1250" y="246" text-anchor="middle">Lambda, Systems Manager로 대응</text>
       </svg>
     </figure>
-    <p class="small">탐지 서비스는 각자 결과(finding)를 만들고, Security Hub가 한곳에 모아 우선순위를 매깁니다. 결과 이벤트를 EventBridge로 받아 격리 같은 대응을 자동화합니다.</p>
-  </div>
-</section>
-
-<section class="slide">
-  <h2>GuardDuty는 켜기만 하면 로그를 읽는다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p><dfn>GuardDuty</dfn>는 위협 탐지 서비스입니다. 활성화하면 CloudTrail 관리 이벤트, VPC 흐름 로그, DNS 로그를 <strong>내가 따로 켜지 않아도</strong> AWS 내부 경로로 받아 분석합니다. 위협 정보(악성 IP·도메인)와 머신러닝으로 이상 행동을 찾습니다.</p>
-      <p>탐지 예: 탈취된 자격 증명을 다른 나라에서 사용, EC2가 암호화폐 채굴 풀과 통신, 루트 사용자의 이례적 API 호출.</p>
-    </div>
-    <table class="compare">
-      <thead><tr><th scope="col">보호 플랜</th><th scope="col">추가로 보는 것</th></tr></thead>
-      <tbody>
-        <tr><th scope="row">S3 Protection</th><td>S3 데이터 이벤트</td></tr>
-        <tr><th scope="row">EKS Protection</th><td>Kubernetes 감사 로그</td></tr>
-        <tr><th scope="row">Runtime Monitoring</th><td>EC2·ECS·EKS OS 수준 이벤트</td></tr>
-        <tr><th scope="row">Malware Protection</th><td>EBS 볼륨, 새 S3 객체</td></tr>
-        <tr><th scope="row">RDS, Lambda</th><td>DB 로그인, 함수 네트워크</td></tr>
-      </tbody>
-    </table>
-  </div>
-</section>
-
-<section class="slide">
-  <h2>나머지 탐지 서비스는 질문이 하나씩 다르다</h2>
-  <div class="slide__body">
-    <table class="compare">
-      <thead><tr><th scope="col">서비스</th><th scope="col">답하는 질문</th><th scope="col">작동 방식</th></tr></thead>
-      <tbody>
-        <tr><th scope="row">Inspector</th><td>알려진 취약점(CVE)이 있나?</td><td>EC2 패키지, ECR 이미지, Lambda 코드 상시 스캔</td></tr>
-        <tr><th scope="row">Macie</th><td>S3에 개인정보가 있나?</td><td>객체 내용을 샘플링해 민감 데이터 분류</td></tr>
-        <tr><th scope="row">Security Hub CSPM</th><td>설정이 모범 사례에 맞나?</td><td>FSBP, CIS 기준 점검(Config 기반)</td></tr>
-        <tr><th scope="row">Security Hub</th><td class="is-flow">무엇부터 고치나?</td><td>여러 결과를 엮어 노출 우선순위화</td></tr>
-        <tr><th scope="row">Detective</th><td>이 사건은 어디까지 번졌나?</td><td>로그를 그래프로 엮어 조사</td></tr>
-      </tbody>
-    </table>
-    <p class="small">예방(IAM, SCP), 기록(CloudTrail, Config), 탐지(GuardDuty, Inspector, Macie), 집계와 대응(Security Hub, EventBridge)이 층을 이룹니다. 모두 조직 단위로 위임 관리자 계정을 두어 한곳에서 운영합니다.</p>
+    <p class="small">결과 이벤트는 EventBridge(서비스 사이에 이벤트를 전달하는 버스, 17장)로 흘러갑니다. "높음 등급 GuardDuty 결과가 나오면 해당 인스턴스의 보안 그룹을 격리용으로 바꾼다" 같은 대응을 Lambda나 Systems Manager 자동화로 걸어 둘 수 있습니다.</p>
   </div>
 </section>
 
@@ -1340,7 +1628,7 @@ DbCredential current() {
 <section class="slide slide--divider" data-section="운영에서 마주치는 사고" data-depth="practice">
   <p class="divider__no">6부</p>
   <h2>설정은 맞는데 운영에서 터지는 지점들</h2>
-  <p class="lede">기본선 체크리스트, 암호화 지점 정리, 노출과 유출 대응, WAF 오탐과 캐시 사고를 차례로 봅니다.</p>
+  <p class="lede">1~5부에서 쇼핑몰 앞에 엣지를 세우고 안쪽을 잠갔습니다. 이제 같은 쇼핑몰을 운영하며 만나는 일을 봅니다. 첫날 깔아 둘 기본선, 암호화 지점 정리, 노출과 유출 대응, WAF 오탐과 캐시 사고 순서입니다.</p>
   <div class="depth-shift" aria-label="깊이 전환: 원리에서 실무로">
     <span class="depth-shift__step"><span class="depth" data-depth="core"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>원리</span>
     <span class="depth-shift__line" aria-hidden="true"></span>
@@ -1352,11 +1640,12 @@ DbCredential current() {
 <section class="slide">
   <h2>계정을 열면 첫날 깔아 둘 보안 기본선</h2>
   <div class="prose">
+    <p>사고가 난 뒤에는 켜 둔 것만 쓸 수 있습니다. 기록이 없으면 조사가 불가능하고, 탐지가 없으면 사고를 청구서로 알게 됩니다. 그래서 순서는 기록, 탐지, 차단입니다.</p>
     <ul>
-      <li><strong>기록부터 켭니다.</strong> 조직 트레일(멀티 리전, 무결성 검증)과 Config 기록기를 로그 아카이브 계정으로 보냅니다.</li>
+      <li><strong>기록부터 켭니다.</strong> 조직 트레일(멀티 리전, 무결성 검증)과 Config 기록기를 Log Archive 계정으로 보냅니다.</li>
       <li><strong>탐지를 켭니다.</strong> 모든 계정·리전에 GuardDuty와 Security Hub를 위임 관리자로 켜고, 높음 등급 결과를 알림 채널로 보냅니다.</li>
-      <li><strong>공개를 막습니다.</strong> 계정 수준 S3 퍼블릭 액세스 차단, EBS 기본 암호화, IMDSv2 필수(14장)를 기본값으로 겁니다.</li>
-      <li><strong>엣지를 세웁니다.</strong> 공개 엔드포인트는 CloudFront + WAF 관리형 규칙 뒤에 두고, 오리진은 VPC 오리진이나 헤더 검증으로 잠급니다.</li>
+      <li><strong>공개를 막습니다.</strong> 계정 수준 S3 퍼블릭 액세스 차단(15장), EBS 기본 암호화, IMDSv2 필수(14장)를 기본값으로 겁니다.</li>
+      <li><strong>엣지를 세웁니다.</strong> 공개 엔드포인트는 CloudFront + WAF 관리형 규칙 뒤에 두고, 오리진은 OAC와 VPC 오리진으로 잠급니다.</li>
       <li><strong>비밀을 뺍니다.</strong> 코드와 이미지의 비밀을 Secrets Manager로 옮기고, 장기 Access Key는 역할로 대체합니다(12장).</li>
     </ul>
   </div>
@@ -1365,6 +1654,7 @@ DbCredential current() {
 <section class="slide">
   <h2>암호화는 구간마다 켜는 곳이 다르다</h2>
   <div class="slide__body">
+    <p class="lede">"암호화했나요?"라는 질문은 구간마다 따로 답해야 합니다. 쇼핑몰 요청과 데이터가 지나는 곳을 차례로 짚으면 이렇습니다.</p>
     <table class="compare">
       <thead><tr><th scope="col">구간 또는 저장소</th><th scope="col">켜는 곳</th><th scope="col">주의</th></tr></thead>
       <tbody>
@@ -1376,7 +1666,7 @@ DbCredential current() {
         <tr><th scope="row">비밀, 백업, 로그</th><td>Secrets Manager, Backup, Logs에 KMS 키</td><td>교차 계정은 키 정책</td></tr>
       </tbody>
     </table>
-    <p class="small">전송 중 암호화는 TLS(2장), 저장 시 암호화는 KMS 봉투 암호화입니다. 기존 RDS를 암호화하려면 스냅샷을 암호화 복사해 새 인스턴스로 복원합니다(15장).</p>
+    <p class="small">위 세 줄은 전송 중 암호화(2장의 TLS), 아래 세 줄은 저장 시 암호화(KMS 봉투 암호화)입니다. 기존 RDS를 암호화하려면 스냅샷을 암호화 복사해 새 인스턴스로 복원합니다(15장).</p>
   </div>
 </section>
 
@@ -1387,12 +1677,12 @@ DbCredential current() {
       <li class="is-key"><b>즉시 차단</b><p>버킷 퍼블릭 액세스 차단을 켜고 공개 정책과 ACL을 제거합니다.</p></li>
       <li><b>노출 범위 확인</b><p>Config 이력으로 언제부터 공개였는지, Macie로 무엇이 들어 있었는지 봅니다.</p></li>
       <li><b>접근 기록 확인</b><p>S3 데이터 이벤트나 서버 액세스 로그로 외부 GetObject를 찾습니다.</p></li>
-      <li><b>원인 제거</b><p>누가 바꿨는지 CloudTrail <code>PutBucketPolicy</code>를 찾고 SCP로 재발을 막습니다.</p></li>
+      <li><b>원인 제거</b><p>CloudTrail에서 <code>PutBucketPolicy</code>를 찾아 누가 바꿨는지 보고 12장의 SCP로 재발을 막습니다.</p></li>
       <li><b>통지와 기록</b><p>개인정보가 있었다면 법적 통지 절차와 사후 분석을 진행합니다.</p></li>
     </ol>
     <div class="prose">
-      <p>데이터 이벤트를 꺼 두었다면 3단계에서 <strong>누가 읽어 갔는지 알 수 없습니다</strong>. 그래서 민감 버킷은 평소에 데이터 이벤트를 켭니다.</p>
-      <p>정적 웹 호스팅을 위해 버킷을 공개하는 일 자체를 없애는 것이 근본 대책입니다. CloudFront와 OAC를 쓰면 공개할 필요가 없습니다.</p>
+      <p>5부의 서비스가 각 단계에 하나씩 쓰입니다. 차단이 먼저인 이유는 조사하는 동안에도 유출이 계속되기 때문입니다.</p>
+      <p>데이터 이벤트를 꺼 두었다면 3단계에서 <strong>누가 읽어 갔는지 알 수 없습니다</strong>. 민감 버킷은 평소에 켜 둡니다. 정적 파일을 내주려고 버킷을 공개하는 일 자체를 없애는 것이 근본 대책이고, 2부의 OAC가 그 방법입니다.</p>
     </div>
   </div>
 </section>
@@ -1401,8 +1691,8 @@ DbCredential current() {
   <h2>키 유출은 대개 GuardDuty 알림으로 시작된다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>GitHub에 올라간 Access Key는 몇 분 안에 자동화된 공격자가 가져갑니다. 흔한 첫 신호는 GuardDuty의 <code>UnauthorizedAccess:IAMUser/InstanceCredentialExfiltration</code>이나 처음 보는 리전의 대량 <code>RunInstances</code>, 그리고 요금 알림입니다.</p>
-      <p>탐지 다음은 12장의 대응 절차입니다. 키를 비활성화하고, CloudTrail에서 그 <code>accessKeyId</code>로 필터해 공격자가 만든 사용자·역할·인스턴스·Lambda를 찾아 지웁니다.</p>
+      <p>12장에서 봤듯이 GitHub에 올라간 Access Key는 몇 분 안에 자동화된 공격자가 가져갑니다. 흔한 첫 신호는 GuardDuty의 <code>UnauthorizedAccess:IAMUser/InstanceCredentialExfiltration</code> 같은 결과, 처음 보는 리전의 대량 <code>RunInstances</code>, 그리고 요금 알림입니다.</p>
+      <p>탐지 다음은 12장의 대응 절차입니다. 키를 비활성화하고, CloudTrail에서 그 <code>accessKeyId</code>로 필터해 공격자가 만든 사용자·역할·인스턴스·Lambda를 찾아 지웁니다. 5부에서 본 조직 트레일이 없었다면 이 조사부터 막힙니다.</p>
     </div>
     <aside class="callout callout--key">
       <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>공격자가 남긴 뒷문을 찾는다</p>
@@ -1415,8 +1705,8 @@ DbCredential current() {
   <h2>사례: WAF를 켠 날 업로드와 결제가 막혔다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>ALB 앞 웹 ACL에 Core rule set을 Block으로 바로 붙였습니다. 30분 뒤 이미지 업로드와 결제 콜백이 403으로 실패하기 시작했습니다.</p>
-      <p>WAF 로그의 <code>terminatingRuleId</code>는 <code>SizeRestrictions_BODY</code>였습니다. 8KB가 넘는 multipart 본문이 모두 막혔고, 결제사 콜백의 긴 서명 문자열은 다른 규칙에 걸렸습니다.</p>
+      <p>쇼핑몰 ALB 앞 웹 ACL에 Core rule set을 Block으로 바로 붙였습니다. 30분 뒤 리뷰 사진 업로드와 결제사 콜백이 403으로 실패하기 시작했습니다.</p>
+      <p>WAF 로그의 <code>terminatingRuleId</code>는 <code>SizeRestrictions_BODY</code>였습니다. 3부에서 본 대로 이 규칙은 8KB가 넘는 본문을 막으므로 multipart 업로드가 모두 걸렸고, 결제사 콜백의 긴 서명 문자열은 다른 규칙에 걸렸습니다.</p>
     </div>
     <aside class="callout callout--key">
       <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>교훈: 새 규칙은 Count로 들어간다</p>
@@ -1430,12 +1720,12 @@ DbCredential current() {
   <div class="split split--even">
     <ol class="steps">
       <li><b>Count로 배포</b><p>규칙 그룹 전체를 Count로 재정의해 붙입니다.</p></li>
-      <li><b>1~2주 관찰</b><p>로그에서 규칙별 Count 일치를 경로, IP, UA로 집계합니다.</p></li>
+      <li><b>1~2주 관찰</b><p>로그에서 규칙별 Count 일치를 경로, IP, User-Agent로 집계합니다.</p></li>
       <li class="is-key"><b>예외 설계</b><p>오탐 규칙만 Count로 남기고 레이블 + scope-down 규칙으로 다시 막습니다.</p></li>
       <li><b>Block 전환</b><p>나머지는 Block으로 바꾸고 BlockedRequests 알람을 겁니다.</p></li>
     </ol>
     <div class="prose">
-      <p>예: <code>SizeRestrictions_BODY</code>는 Count로 두고, "이 레이블이 붙었고 경로가 <code>/upload</code>가 아니면 Block"인 규칙을 뒤에 추가합니다.</p>
+      <p>앞 사례의 해법입니다. <code>SizeRestrictions_BODY</code>는 Count로 두어 레이블만 붙게 하고, 그 뒤에 "이 레이블이 붙었고 경로가 <code>/api/reviews/upload</code>가 아니면 Block"인 규칙을 추가합니다. 3부의 레이블이 여기서 쓰입니다.</p>
       <p>결제사 콜백처럼 신뢰하는 출발지는 IP 집합 Allow 규칙을 맨 위에 둡니다. 관리형 그룹 버전은 고정해 두고, 새 버전은 Count로 먼저 검증합니다.</p>
     </div>
   </div>
@@ -1445,8 +1735,8 @@ DbCredential current() {
   <h2>사례: 로그인 사용자 페이지가 남에게 보였다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>마이페이지 HTML을 기본 동작(<code>*</code>)으로 서빙했고, 기본 동작에는 CachingOptimized가 붙어 있었습니다. 오리진은 <code>Cache-Control: private</code>를 보냈지만 최소 TTL이 1초라 캐시되었고, 그 1초 사이 같은 URL을 요청한 다른 사용자에게 앞사람의 페이지가 나갔습니다.</p>
-      <p>쿠키를 캐시 키에 넣지 않았으니 엣지에게 두 요청은 같은 객체였습니다.</p>
+      <p>쇼핑몰 마이페이지 HTML을 기본 동작(<code>*</code>)으로 서빙했고, 기본 동작에는 CachingOptimized가 붙어 있었습니다. 오리진은 <code>Cache-Control: private</code>를 보냈지만 최소 TTL이 1초라 엣지에 캐시되었고, 그 1초 사이 같은 URL을 요청한 다른 사용자에게 앞사람의 주문 내역이 나갔습니다.</p>
+      <p>로그인 쿠키를 캐시 키에 넣지 않았으니 엣지에게 두 요청은 같은 객체였습니다. 2부의 캐시 키와 TTL 규칙이 그대로 겹친 사고입니다.</p>
     </div>
     <aside class="callout callout--key">
       <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>개인화 응답은 CachingDisabled</p>
@@ -1458,6 +1748,7 @@ DbCredential current() {
 <section class="slide">
   <h2>적중률이 낮거나 403이 날 때 먼저 볼 것</h2>
   <div class="slide__body">
+    <p class="lede">증상별로 흔한 원인을 모았습니다. 3행의 403은 S3가 읽기 목록 권한(<code>s3:ListBucket</code>)이 없는 호출자에게는 "없음" 대신 "거부"로 답해, 어떤 키가 있는지 알려 주지 않기 때문에 생깁니다.</p>
     <table class="compare">
       <thead><tr><th scope="col">증상</th><th scope="col">흔한 원인</th><th scope="col">조치</th></tr></thead>
       <tbody>
@@ -1475,20 +1766,21 @@ DbCredential current() {
 <section class="slide">
   <h2>적중률은 지표로 보고, 원인은 로그로 찾는다</h2>
   <div class="prose">
-    <p>기본 CloudWatch 지표(요청 수, 전송 바이트, 4xx·5xx 오류율)는 무료입니다. <strong>캐시 적중률, 오리진 지연, 상태 코드별 오류율</strong>은 배포마다 추가 지표를 켜야 하고 지표당 월 요금이 붙습니다. 지표는 us-east-1 CloudWatch에 있습니다.</p>
-    <p>왜 미스가 났는지는 표준 로그에서 <code>x-edge-result-type</code>(Hit, Miss, RefreshHit, Error)과 <code>x-edge-detailed-result-type</code>으로 봅니다. 표준 로그 v2는 S3, CloudWatch Logs, Firehose로 보내고, 초 단위로 봐야 하면 유료 실시간 로그를 씁니다.</p>
-    <p>정적 자산 배포라면 적중률 90% 이상이 흔한 목표입니다. 낮다면 미스 요청의 URL을 모아 캐시 키에 들어간 쿼리나 헤더를 의심합니다.</p>
+    <p>기본 CloudWatch 지표(요청 수, 전송 바이트, 4xx·5xx 오류율)는 무료입니다. <strong>캐시 적중률, 오리진 지연, 상태 코드별 오류율</strong>은 배포마다 추가 지표를 켜야 하고 지표당 월 요금이 붙습니다. CloudFront는 글로벌 서비스라 지표는 us-east-1 CloudWatch에 있습니다.</p>
+    <p>왜 미스가 났는지는 표준 로그의 <code>x-edge-result-type</code> 필드로 봅니다. 값은 <code>Hit</code>(캐시에서 응답), <code>Miss</code>(오리진에서 가져옴), <code>RefreshHit</code>(만료된 객체를 오리진에 확인한 뒤 그대로 씀), <code>Error</code>이고, <code>x-edge-detailed-result-type</code>이 더 자세한 이유를 줍니다. 표준 로그는 S3, CloudWatch Logs, Firehose로 보내고, 초 단위로 봐야 하면 유료 실시간 로그를 씁니다.</p>
+    <p>정적 파일 배포라면 적중률 90% 이상이 흔한 목표입니다. 낮다면 미스 요청의 URL을 모아 캐시 키에 들어간 쿼리나 헤더를 의심합니다.</p>
   </div>
 </section>
 
 <section class="slide">
   <h2>KMS와 비밀이 장애 원인이 되는 순간들</h2>
   <div class="prose">
+    <p>4부의 장치는 데이터를 지키는 만큼, 잘못 다루면 서비스를 멈춥니다.</p>
     <ul>
-      <li><strong>KMS 스로틀링</strong>: 트래픽이 몰린 날 S3 SSE-KMS 읽기가 503과 지연으로 번집니다. 버킷 키를 켜고, 할당량 사용률 지표에 알람을 겁니다.</li>
+      <li><strong>KMS 스로틀링</strong>: 세일 날 S3 SSE-KMS 읽기가 몰리면 KMS 호출 한도에 걸려 S3 요청이 503과 지연으로 번집니다. 버킷 키를 켜고, 할당량 사용률 지표에 알람을 겁니다.</li>
       <li><strong>교차 계정 복호화 실패</strong>: 다른 계정 역할에 IAM으로 허용해도 키 정책이 그 계정을 허용하지 않으면 AccessDenied입니다. 양쪽 모두 열어야 합니다.</li>
-      <li><strong>키 비활성화 사고</strong>: 정리 중 끈 키가 RDS 키였다면 DB가 접근 불가 상태가 됩니다. 키에 태그와 설명을 달고 삭제는 대기 기간 동안 사용 시도를 지켜봅니다.</li>
-      <li><strong>교체 직후 로그인 실패</strong>: ECS <code>secrets</code>나 External Secrets(10장)로 넣은 환경 변수는 시작 때 한 번만 읽힙니다. 단일 사용자 교체와 만나면 다음 배포까지 새 연결이 실패하므로, 교대 사용자 전략이나 SDK 재조회, 교체 이벤트 기반 재배포로 바꿉니다.</li>
+      <li><strong>키 비활성화 사고</strong>: 정리 중 끈 키가 RDS 키였다면 DB가 접근 불가 상태가 됩니다. 키에 태그와 설명을 달고, 삭제는 대기 기간 동안 사용 시도를 지켜봅니다.</li>
+      <li><strong>교체 직후 로그인 실패</strong>: ECS 태스크 정의의 <code>secrets</code>나 10장의 External Secrets로 넣은 환경 변수는 시작할 때 한 번만 읽힙니다. 단일 사용자 교체와 만나면 다음 배포까지 새 연결이 실패하므로, 교대 사용자 전략, SDK 재조회, 교체 이벤트 기반 재배포 중 하나로 바꿉니다.</li>
     </ul>
   </div>
 </section>
@@ -1497,15 +1789,16 @@ DbCredential current() {
 <section class="slide slide--summary" data-section="정리" data-depth="none">
   <h2>정리</h2>
   <ul class="summary">
-    <li><b>CloudFront의 성능은 캐시 키가 정합니다.</b> 키는 좁게 두고 오리진에 필요한 값은 요청 정책으로 따로 넘기며, 파일명 버전으로 무효화를 줄입니다.</li>
-    <li><b>오리진은 엣지 뒤에 숨깁니다.</b> S3는 OAC, ALB는 VPC 오리진으로 직접 접근을 없애야 WAF와 Shield가 의미를 가집니다.</li>
-    <li><b>WAF는 Count로 들어가 Block으로 바꿉니다.</b> 규칙은 우선순위대로 평가되고, 관리형 규칙도 내 트래픽에서는 오탐이 납니다.</li>
-    <li><b>KMS는 키를 내주지 않고 대신 씁니다.</b> 봉투 암호화로 큰 데이터를 다루고, 키 정책이 IAM보다 먼저 열려 있어야 합니다.</li>
-    <li><b>막지 못한 것은 기록과 탐지로 잡습니다.</b> CloudTrail은 행위, Config는 상태, GuardDuty 등은 이상을 보고 Security Hub가 모읍니다.</li>
+    <li><b>엣지는 거리와 노출을 한 층에서 풉니다.</b> 사용자 곁에서 답하고 TLS를 끝내며 나쁜 요청을 거릅니다.</li>
+    <li><b>CloudFront의 성능은 캐시 키가 정합니다.</b> 응답을 바꾸는 값만 키에 넣고, 오리진에 필요한 값은 요청 정책으로 따로 넘깁니다.</li>
+    <li><b>오리진은 엣지 뒤에 숨깁니다.</b> S3는 OAC, ALB는 VPC 오리진으로 잠가야 WAF와 Shield가 우회되지 않습니다.</li>
+    <li><b>WAF는 Count로 들어가 Block으로 바꿉니다.</b> 관리형 규칙도 내 트래픽에서는 오탐이 납니다.</li>
+    <li><b>KMS는 키를 내주지 않고 대신 씁니다.</b> 봉투 암호화로 큰 데이터를 다루고, 키 정책이 먼저 열려 있어야 합니다.</li>
+    <li><b>막지 못한 것은 기록과 탐지로 잡습니다.</b> CloudTrail은 행위, Config는 상태, GuardDuty는 이상을 보고 Security Hub가 모읍니다.</li>
   </ul>
 </section>
 
-<!-- ===== 부록: 스스로 점검 ============================================ -->
+<!-- ===== Self-check 1 ===== -->
 <section class="slide" data-section="부록: 스스로 점검" data-depth="none">
   <h2>스스로 점검 (1)</h2>
   <ol class="selfcheck">
@@ -1515,20 +1808,28 @@ DbCredential current() {
       <div class="answer"><p>Principal이 CloudFront 서비스 전체이므로 다른 사람이 만든 배포도 내 버킷을 오리진으로 읽을 수 있습니다. 조건으로 내 배포 ARN만 허용해야 합니다.</p></div></details></li>
     <li><details><summary>ALB에 붙은 WAF의 IP 기준 rate 규칙이 CloudFront 뒤에서 정상 사용자를 대량 차단했습니다. 왜일까요?</summary>
       <div class="answer"><p>ALB가 보는 출발지 IP가 CloudFront 엣지 서버라 많은 사용자가 한 IP로 집계되었기 때문입니다. WAF를 CloudFront에 붙이거나 X-Forwarded-For를 집계 키로 씁니다.</p></div></details></li>
-    <li><details><summary>CloudFront에 붙일 인증서를 서울 리전 ACM에서 발급하면 왜 목록에 보이지 않나요?</summary>
-      <div class="answer"><p>CloudFront는 us-east-1의 ACM 인증서만 쓸 수 있기 때문입니다. 같은 도메인으로 us-east-1에서 따로 발급해야 합니다.</p></div></details></li>
-    <li><details><summary>오리진 그룹을 설정했는데 주문 생성 POST가 주 오리진 장애 때 실패했습니다. 왜일까요?</summary>
-      <div class="answer"><p>오리진 장애 조치는 GET, HEAD, OPTIONS 요청에만 일어납니다. 쓰기 요청의 리전 장애 조치는 Route 53이나 Global Accelerator 수준에서 설계합니다.</p></div></details></li>
   </ol>
 </section>
 
+<!-- ===== Self-check 2 ===== -->
 <section class="slide" data-section="부록: 스스로 점검" data-depth="none">
   <h2>스스로 점검 (2)</h2>
   <ol class="selfcheck">
+    <li><details><summary>CloudFront에 붙일 인증서를 서울 리전 ACM에서 발급하면 왜 목록에 보이지 않나요?</summary>
+      <div class="answer"><p>CloudFront는 us-east-1에서 관리되는 글로벌 서비스라 us-east-1의 ACM 인증서만 쓸 수 있기 때문입니다. 같은 도메인으로 us-east-1에서 따로 발급해야 합니다.</p></div></details></li>
+    <li><details><summary>오리진 그룹을 설정했는데 주문 생성 POST가 주 오리진 장애 때 실패했습니다. 왜일까요?</summary>
+      <div class="answer"><p>오리진 장애 조치는 다시 보내도 안전한 GET, HEAD, OPTIONS 요청에만 일어납니다. 쓰기 요청의 리전 장애 조치는 Route 53이나 Global Accelerator 수준에서 설계합니다.</p></div></details></li>
     <li><details><summary>KMS 자동 회전을 켜면 1년 전에 암호화한 데이터는 다시 암호화해야 하나요?</summary>
       <div class="answer"><p>아닙니다. KMS가 옛 키 재료를 보관하고 암호문에 맞는 재료로 자동 복호화합니다. 새로 암호화하는 데이터만 새 재료를 씁니다.</p></div></details></li>
     <li><details><summary>IAM 정책에 kms:Decrypt를 허용했는데 AccessDenied가 납니다. 무엇을 먼저 보나요?</summary>
       <div class="answer"><p>키 정책입니다. 키 정책이 계정의 IAM 위임(계정 루트 주체 문장)이나 그 역할을 허용하지 않으면 IAM의 Allow는 효력이 없습니다.</p></div></details></li>
+  </ol>
+</section>
+
+<!-- ===== Self-check 3 ===== -->
+<section class="slide" data-section="부록: 스스로 점검" data-depth="none">
+  <h2>스스로 점검 (3)</h2>
+  <ol class="selfcheck">
     <li><details><summary>Secrets Manager로 DB 비밀번호를 단일 사용자 방식으로 교체한 직후 ECS 서비스가 DB 연결에 실패했습니다. 이유와 대책은?</summary>
       <div class="answer"><p>태스크 정의의 secrets로 시작 시 주입한 옛 비밀번호가 무효가 되었기 때문입니다. 교대 사용자 전략을 쓰거나, 앱이 SDK로 읽고 인증 실패 시 다시 읽게 하거나, 교체 후 재배포합니다.</p></div></details></li>
     <li><details><summary>누가 보안 그룹을 열었는지와, 지난주 그 보안 그룹의 규칙 모양은 각각 어디서 보나요?</summary>
@@ -1542,7 +1843,7 @@ DbCredential current() {
 <section class="slide" data-section="다음 단계" data-depth="none">
   <h2>다음으로 올라갈 층</h2>
   <div class="slide__body">
-    <p class="lede">지금까지는 서버와 데이터베이스를 앞에서 지키고 안에서 잠갔습니다. 다음 장에서는 서버 자체를 없애는 Lambda와, 서비스 사이를 느슨하게 잇는 큐와 이벤트로 넘어갑니다.</p>
+    <p class="lede">지금까지는 쇼핑몰의 서버와 데이터베이스를 앞에서 지키고 안에서 잠갔습니다. 다음 장에서는 서버 자체를 없애는 Lambda와, 주문·결제·알림처럼 서비스 사이를 느슨하게 잇는 큐와 이벤트로 넘어갑니다.</p>
     <div class="nav-pair">
       <a class="next" href="17-aws-serverless-messaging.html">
         <span class="next__text">

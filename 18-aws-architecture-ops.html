@@ -18,11 +18,11 @@
     <div class="cover__main">
       <p class="cover__chapter"><b>18장</b> AWS 아키텍처와 운영</p>
       <h1>부품을 조립하고, 장애에도 버티게 운영하기</h1>
-      <p class="cover__lede">12~17장의 AWS 부품으로 서비스를 조립하고, 배포하고, 들여다보고, 장애에 대응하고, 비용을 관리하는 운영의 전 과정을 따라갑니다.</p>
+      <p class="cover__lede">앞 장들에서 익힌 AWS 부품으로 쇼핑몰 주문 서비스 하나를 세우고, 배포하고, 들여다보고, 장애에 대응하고, 비용을 관리하는 운영의 한 바퀴를 따라갑니다.</p>
       <dl class="cover__meta">
         <div><dt>선수 지식</dt><dd>11장 CI/CD, 12~17장 AWS 서비스</dd></div>
-        <div><dt>슬라이드</dt><dd>90장</dd></div>
-        <div><dt>예상 학습 시간</dt><dd>180분</dd></div>
+        <div><dt>슬라이드</dt><dd>118장</dd></div>
+        <div><dt>예상 학습 시간</dt><dd>240분</dd></div>
       </dl>
     </div>
     <div class="cover__map">
@@ -36,46 +36,96 @@
 <section class="slide slide--divider" data-section="설계의 기준" data-depth="basic">
   <p class="divider__no">1부</p>
   <h2>무엇을 기준으로 조립하는가</h2>
-  <p class="lede">17장까지 Lambda, SQS, EventBridge를 포함한 AWS 부품을 하나씩 보았습니다. 이 장은 그 부품으로 서비스를 설계하고, 배포하고, 관측하고, 장애에 대응하고, 비용을 관리하는 운영의 한 바퀴를 돕니다. 먼저 좋은 설계의 기준부터 정합니다.</p>
+  <p class="lede">12장부터 17장까지 권한, 네트워크, 컴퓨팅, 데이터, 엣지, 메시징 부품을 하나씩 따로 보았습니다. 이제 부품을 고르는 일보다 조합하는 일이 어렵습니다. 이 부는 두 질문에 답합니다. 좋은 설계인지 무엇으로 판단하는가, 그리고 코드를 어디서 돌릴지 어떻게 고르는가.</p>
+</section>
+
+<!-- ===== Running example ============================================= -->
+<section class="slide">
+  <h2>이 장은 주문 서비스 하나를 끝까지 따라간다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>운영은 추상적으로 배우기 어렵습니다. 그래서 이 장은 가상의 쇼핑몰 <strong>주문 서비스</strong> 하나를 정해 두고, 설계부터 장애 대응과 비용까지 모두 이 서비스 위에서 설명합니다.</p>
+      <p>사용자는 상품을 장바구니에 담고 주문합니다. 주문 API가 주문을 DB에 저장하면, 결제 확인과 알림 발송과 정산은 뒤에서 따로 처리됩니다. 숫자도 정해 둡니다. 서울 리전에서 운영하고, 저녁 피크에 초당 2,000건의 요청이 들어오며, 요청 하나는 평균 0.1초 걸립니다.</p>
+      <p>오른쪽의 부품은 모두 앞 장에서 한 번씩 본 것입니다. 이 장은 이것들이 함께 움직일 때 생기는 문제를 다룹니다.</p>
+    </div>
+    <table class="compare">
+      <thead><tr><th scope="col">역할</th><th scope="col">쓰는 부품</th><th scope="col">본 곳</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">주문 API</th><td>Spring Boot 컨테이너, ALB</td><td>13·14장</td></tr>
+        <tr><th scope="row">주문 저장</th><td>RDS MySQL</td><td>15장</td></tr>
+        <tr><th scope="row">장바구니·세션</th><td>ElastiCache</td><td>15장</td></tr>
+        <tr><th scope="row">상품 이미지</th><td>S3, CloudFront</td><td>15·16장</td></tr>
+        <tr><th scope="row">후처리</th><td>EventBridge, SQS, Lambda</td><td>17장</td></tr>
+        <tr><th scope="row">권한</th><td>IAM 역할</td><td>12장</td></tr>
+      </tbody>
+    </table>
+  </div>
 </section>
 
 <!-- ===== Well-Architected intro ====================================== -->
 <section class="slide">
-  <h2>Well-Architected는 설계 점검표다</h2>
+  <h2>Well-Architected는 빠진 관점을 찾는 점검표다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p><dfn>Well-Architected Framework</dfn>는 AWS가 수많은 고객 아키텍처를 검토하며 정리한 설계 점검 틀입니다. 아키텍처를 여섯 개의 <dfn title="pillar">기둥</dfn>으로 나누고, 기둥마다 "이것을 어떻게 하고 있습니까?"라는 질문과 모범 사례를 제공합니다.</p>
-      <p>정답을 주는 문서가 아니라 <strong>빠뜨린 관점을 찾아 주는 문서</strong>입니다. 콘솔의 Well-Architected Tool에 워크로드를 등록하고 질문에 답하면 위험 항목이 표시됩니다.</p>
+      <p>부품을 다 알아도 설계에는 구멍이 생깁니다. 주문 API를 빠르게 만드는 데 집중하다 보면 "DB가 있는 데이터센터가 꺼지면?"이나 "이 로그는 몇 년 쌓이면 얼마일까?" 같은 질문을 놓칩니다. 사람마다 익숙한 관점만 보기 때문입니다.</p>
+      <p><dfn>Well-Architected Framework</dfn>는 AWS가 수많은 고객 아키텍처를 검토하며 쌓은 점검 틀입니다. 설계를 여섯 개의 <dfn title="pillar">기둥</dfn>으로 나누고, 기둥마다 "이것을 어떻게 하고 있습니까?"라는 질문과 모범 사례를 제공합니다.</p>
     </div>
-    <div class="slide__body">
-      <div class="prose">
-        <p>분야별 <dfn title="Lens">렌즈</dfn>(서버리스, 컨테이너, SaaS 등)가 추가 질문을 붙입니다. 서버리스 API라면 Serverless Lens의 질문까지 함께 봅니다.</p>
-      </div>
-      <aside class="callout callout--note">
-        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>리뷰는 한 번이 아니라 주기적으로</p>
-        <p>아키텍처는 기능이 붙으며 바뀝니다. 큰 변경 전후나 분기마다 다시 답해 보는 것이 권장 방식입니다.</p>
-      </aside>
+    <div class="prose">
+      <p>이 틀은 정답을 주지 않습니다. 대신 <strong>답하지 못한 질문</strong>을 보여 줍니다. 콘솔의 Well-Architected Tool에 <dfn title="workload">워크로드</dfn>(주문 서비스처럼 하나의 사업 가치를 내는 자원과 코드의 묶음)를 등록하고 질문에 답하면, 답하지 못한 항목이 위험으로 표시됩니다.</p>
+      <p>분야별 <dfn title="Lens">렌즈</dfn>는 서버리스, 컨테이너, SaaS 같은 분야에만 있는 질문을 덧붙입니다. 아키텍처는 기능이 붙으며 계속 바뀌므로, 큰 변경 전후나 분기마다 다시 답해 보는 것이 권장 방식입니다.</p>
     </div>
   </div>
 </section>
 
-<!-- ===== Six pillars ================================================= -->
+<!-- ===== Six pillars prose =========================================== -->
 <section class="slide">
   <h2>여섯 기둥은 각자 다른 질문을 던진다</h2>
+  <div class="prose prose--cols">
+    <p><strong>운영 우수성</strong>은 "안전하게 바꾸고, 장애에서 배우는가"를 묻습니다. 주문 서비스라면 인프라를 손으로 만들지 않고 코드(IaC, 11장)로 관리하는지, 배포를 작게 나눠 넣는지, 장애가 나면 무엇을 할지 적어 둔 대응 절차서, 즉 <dfn title="runbook">런북</dfn>이 있는지입니다.</p>
+    <p><strong>보안</strong>은 "권한과 데이터를 지키는가"입니다. 주문 API가 필요한 권한만 가진 IAM 역할로 도는지(12장), 카드 정보와 주소가 암호화되어 있는지, 누가 무엇을 했는지 기록이 남는지(16장)를 봅니다.</p>
+    <p><strong>안정성</strong>은 "장애를 견디고 회복하는가"입니다. 서버 한 대, 데이터센터 하나가 사라져도 주문을 계속 받는지, 데이터가 손상되면 되돌릴 시점이 있는지를 묻습니다. 이 장의 2부가 이 기둥입니다.</p>
+    <p><strong>성능 효율성</strong>은 "요구에 맞는 자원을 쓰는가"입니다. 컴퓨팅 종류, 캐시, DB 엔진을 측정에 근거해 골랐는지를 봅니다.</p>
+    <p><strong>비용 최적화</strong>는 "낭비 없이 가치를 내는가"입니다. 밤새 노는 서버, 무기한 쌓이는 로그, 쓰지 않는 디스크를 찾아냅니다. 6부에서 다룹니다.</p>
+    <p><strong>지속 가능성</strong>은 "같은 일을 더 적은 자원으로 하는가"입니다. 유휴 자원을 없애고 전력 효율이 좋은 칩을 쓰는 결정이 여기에 속하며, 대개 비용 최적화와 같은 방향을 가리킵니다.</p>
+  </div>
+</section>
+
+<!-- ===== Pillar trade-off ============================================ -->
+<section class="slide">
+  <h2>기둥은 서로 당기므로 고르고 기록한다</h2>
   <div class="slide__body">
     <table class="compare">
-      <thead><tr><th scope="col">기둥</th><th scope="col">핵심 질문</th><th scope="col">대표 설계 결정</th></tr></thead>
+      <thead><tr><th scope="col">기둥</th><th scope="col">핵심 질문</th><th scope="col">주문 서비스의 대표 결정</th></tr></thead>
       <tbody>
-        <tr><th scope="row">운영 우수성</th><td>안전하게 바꾸고 장애에서 배우나</td><td>IaC, 작은 단위 배포, 런북</td></tr>
+        <tr><th scope="row">운영 우수성</th><td>안전하게 바꾸고 배우나</td><td>IaC, 작은 배포, 런북</td></tr>
         <tr><th scope="row">보안</th><td>권한과 데이터를 지키나</td><td>최소 권한, 암호화, 감사 로그</td></tr>
-        <tr><th scope="row">안정성</th><td>장애를 견디고 회복하나</td><td class="is-flow">Multi-AZ, 자동 복구, DR</td></tr>
-        <tr><th scope="row">성능 효율성</th><td>요구에 맞는 자원을 쓰나</td><td>컴퓨팅 선택, 캐시, 측정</td></tr>
-        <tr><th scope="row">비용 최적화</th><td>낭비 없이 가치를 내나</td><td>적정 크기, 약정 할인, 태그</td></tr>
-        <tr><th scope="row">지속 가능성</th><td>같은 일을 더 적은 자원으로 하나</td><td>유휴 제거, 효율 높은 칩</td></tr>
+        <tr><th scope="row">안정성</th><td>장애를 견디고 회복하나</td><td class="is-flow">여러 AZ에 배치, 백업</td></tr>
+        <tr><th scope="row">성능 효율성</th><td>맞는 자원을 쓰나</td><td>컴퓨팅 선택, 캐시</td></tr>
+        <tr><th scope="row">비용 최적화</th><td>낭비 없이 가치를 내나</td><td>적정 크기, 태그로 비용 추적</td></tr>
+        <tr><th scope="row">지속 가능성</th><td>더 적은 자원으로 하나</td><td>유휴 제거, 효율 높은 칩</td></tr>
       </tbody>
     </table>
     <div class="prose">
-      <p>기둥은 서로 당깁니다. 리전 두 곳에서 동시에 서비스하면 안정성은 오르지만 비용이 거의 두 배가 됩니다. 그래서 프레임워크는 <mark>트레이드오프를 의식적으로 고르고 기록하라</mark>고 요구합니다.</p>
+      <p>표의 결정들은 서로 부딪힙니다. 주문 서비스를 서울과 도쿄 두 리전에서 동시에 돌리면 안정성은 오르지만 비용은 거의 두 배가 됩니다. 그래서 프레임워크는 모든 기둥을 최대로 올리라고 하지 않고, <mark>어떤 기둥을 얼마나 양보했는지 의식적으로 고르고 기록하라</mark>고 요구합니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Compute recap =============================================== -->
+<section class="slide">
+  <h2>첫 결정은 코드를 어디서 돌릴지다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>기둥 중 성능 효율성과 비용 최적화에 가장 크게 영향을 주는 결정은 컴퓨팅 선택입니다. 주문 API와 웹훅 처리기를 어디에 올리느냐에 따라 운영할 대상과 청구서 모양이 함께 바뀝니다.</p>
+      <p>선택지는 14장과 17장에서 하나씩 보았습니다. 오른쪽에 한 줄씩 다시 적었습니다. 이 장에서는 각각을 다시 설명하지 않고, 워크로드 하나를 놓고 <strong>무엇을 기준으로 고르는지</strong>만 봅니다.</p>
+    </div>
+    <div class="prose">
+      <ul>
+        <li><strong>EC2</strong>: 가상 서버를 통째로 빌립니다. OS부터 내가 관리합니다(14장).</li>
+        <li><strong>ECS, EKS</strong>: 컨테이너를 서버들에 배치해 주는 오케스트레이터입니다. EKS는 Kubernetes(10장)를 관리형으로 제공합니다(14장).</li>
+        <li><strong>Fargate</strong>: ECS나 EKS의 컨테이너를, 서버 없이 태스크 크기만 정해 돌립니다(14장).</li>
+        <li><strong>Lambda</strong>: 이벤트가 올 때만 함수를 실행하고, 실행한 시간만큼 냅니다(17장).</li>
+      </ul>
     </div>
   </div>
 </section>
@@ -85,7 +135,7 @@
   <h2>오른쪽으로 갈수록 AWS가 더 많이 맡는다</h2>
   <div class="slide__body">
     <div class="prose">
-      <p>첫 번째 설계 결정은 코드를 어디서 돌릴지입니다. 오른쪽으로 갈수록 OS 패치와 서버 수 관리를 AWS가 대신하지만, 실행 시간과 환경에 대한 제어권은 줄어듭니다.</p>
+      <p>네 선택지는 한 줄 위에 놓입니다. 오른쪽으로 갈수록 OS 패치와 서버 대수 관리를 AWS가 대신하지만, 실행 시간과 환경에 대한 제어권은 줄어듭니다. 맨 아래 줄의 과금 단위도 함께 보세요. 단위가 잘게 쪼개질수록 놀고 있는 시간에는 돈을 내지 않습니다.</p>
     </div>
     <figure class="figure">
       <svg class="dg" viewBox="0 0 1400 300" role="img" aria-labelledby="f-spec-t">
@@ -117,7 +167,7 @@
         <text class="dg-label--muted" x="870" y="278" text-anchor="middle">vCPU·메모리 × 초</text>
         <text class="dg-label--muted" x="1210" y="278" text-anchor="middle">요청 수 + 실행 ms</text>
       </svg>
-      <figcaption>위는 선택지, 가운데는 사용자가 여전히 관리하는 것, 아래는 과금 단위입니다. 과금 단위가 잘게 쪼개질수록 유휴 비용이 사라집니다.</figcaption>
+      <figcaption>위는 선택지, 가운데는 사용자가 여전히 관리하는 것, 아래는 과금 단위입니다.</figcaption>
     </figure>
   </div>
 </section>
@@ -126,6 +176,9 @@
 <section class="slide">
   <h2>실행 시간, 상태, 운영 부담이 선택을 가른다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>그림을 세 가지 기준으로 펼치면 아래 표가 됩니다. <strong>실행 시간과 상태</strong>는 한 번의 실행이 얼마나 오래 갈 수 있는지, 서버 디스크나 메모리에 상태를 둘 수 있는지입니다. <strong>운영 부담</strong>은 장애가 나지 않아도 사람이 꾸준히 해야 하는 일이고, <strong>비용 모델</strong>은 무엇에 돈을 내느냐입니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">선택지</th><th scope="col">실행 시간과 상태</th><th scope="col">내가 지는 운영 부담</th><th scope="col">비용 모델</th></tr></thead>
       <tbody>
@@ -136,24 +189,25 @@
         <tr><th scope="row">Lambda</th><td>호출당 최대 15분, 무상태</td><td class="is-flow">코드와 동시성 설정만</td><td>요청 수 + GB-초</td></tr>
       </tbody>
     </table>
-    <p class="small">ECS와 EKS의 세부 비교는 14장, Lambda의 한도와 동시성은 17장에서 다뤘습니다. 여기서는 워크로드 전체를 놓고 어디에 올릴지 고르는 기준만 봅니다.</p>
+    <p class="small">AMI는 EC2를 띄우는 서버 이미지(14장), GB-초는 함수에 준 메모리(GB)와 실행 시간(초)을 곱한 Lambda의 과금 단위입니다(17장). ECS와 EKS의 세부 비교는 14장에 있습니다.</p>
   </div>
 </section>
 
 <!-- ===== Compute decision ============================================ -->
 <section class="slide">
-  <h2>트래픽 모양이 바뀌면 답도 바뀐다</h2>
+  <h2>질문 다섯 개로 후보를 좁힌다</h2>
   <div class="split split--even">
     <ol class="steps">
-      <li><b>OS나 하드웨어 제어가 필요한가</b><p>커널 설정, GPU 드라이버, 라이선스가 걸리면 EC2입니다.</p></li>
-      <li><b>한 번의 실행이 15분 안에 끝나나</b><p>넘거나 장기 연결을 붙잡는 서버라면 컨테이너입니다.</p></li>
-      <li><b>트래픽이 들쭉날쭉한가</b><p>유휴 시간이 길면 Lambda가 쌉니다.</p></li>
-      <li class="is-key"><b>상시 고부하인가</b><p>꾸준히 바쁘면 Fargate나 EC2가 단가에서 유리합니다.</p></li>
-      <li><b>K8s 생태계가 꼭 필요한가</b><p>아니라면 ECS가 운영 부담이 적습니다.</p></li>
+      <li><b>OS나 하드웨어 제어가 필요한가</b><p>커널 설정, GPU 드라이버, 서버 단위 라이선스가 걸리면 EC2입니다.</p></li>
+      <li><b>한 번의 실행이 15분 안에 끝나나</b><p>넘거나 연결을 오래 붙잡는 서버라면 컨테이너입니다.</p></li>
+      <li><b>트래픽이 들쭉날쭉한가</b><p>요청이 없는 시간이 길면 Lambda가 쌉니다.</p></li>
+      <li class="is-key"><b>꾸준히 바쁜가</b><p>늘 바쁘면 Fargate나 EC2가 단가에서 유리합니다.</p></li>
+      <li><b>Kubernetes 생태계가 꼭 필요한가</b><p>아니라면 ECS가 운영 부담이 적습니다.</p></li>
     </ol>
     <div class="prose">
-      <p>17장의 손익분기 계산(1GB·100ms 함수 대 Fargate 두 대)으로는 평균 초당 15건 남짓을 넘는 꾸준한 트래픽부터 컨테이너가 Lambda보다 쌉니다. 숫자와 계산 과정은 <a href="17-aws-serverless-messaging.html#83">17장 "꾸준한 트래픽이면 컨테이너가 싸진다"</a>에 있습니다.</p>
-      <p>반대로 하루 몇천 건의 웹훅을 위해 컨테이너를 24시간 켜 두는 것은 낭비입니다. <strong>한 서비스 안에서도</strong> 상시 API는 Fargate, 비동기 후처리는 Lambda처럼 섞습니다.</p>
+      <p>위에서부터 차례로 답하면 대부분 후보가 하나나 둘로 줄어듭니다. 앞의 두 질문은 기술 제약이라 답이 분명합니다. 어려운 것은 세 번째와 네 번째, 즉 <strong>트래픽 모양</strong>에 따라 비용이 뒤집히는 지점입니다.</p>
+      <p>그 지점은 <a href="17-aws-serverless-messaging.html">17장</a>에서 계산했습니다. 같은 일을 하는 Lambda와 늘 켜 둔 Fargate 태스크 두 대의 손익분기는 <mark>평균 초당 약 15건</mark>입니다. 이보다 꾸준히 많으면 컨테이너가, 적거나 밤에 0이 되면 Lambda가 쌉니다.</p>
+      <p>주문 API는 저녁 피크가 초당 2,000건이고 새벽에도 요청이 끊기지 않으니 <strong>Fargate</strong>에, 결제 대행사의 웹훅은 하루 몇천 건이 띄엄띄엄 오니 <strong>Lambda</strong>에 둡니다. 한 서비스 안에서도 부분마다 다른 컴퓨팅을 섞는 것이 보통입니다.</p>
     </div>
   </div>
 </section>
@@ -162,7 +216,7 @@
 <section class="slide slide--divider" data-section="고가용성과 DR" data-depth="core">
   <p class="divider__no">2부</p>
   <h2>장애를 흡수하는 구조와 복구 전략</h2>
-  <p class="lede">레퍼런스 아키텍처 네 가지를 보고, 각 부품이 어떤 장애를 어떻게 흡수하는지, 그리고 리전 전체가 사라질 때를 위한 DR까지 따라갑니다.</p>
+  <p class="lede">1부에서 주문 서비스의 부품과 컴퓨팅을 골랐습니다. 이제 그중 무엇이든 사라질 수 있다고 가정합니다. 서버 한 대, 데이터센터 하나, 리전 전체가 사라질 때 각 부품 안에서 무슨 일이 일어나는지, 그리고 구조로 막지 못하는 장애는 무엇으로 되돌리는지를 봅니다.</p>
   <div class="depth-shift" aria-label="깊이 전환: 기초에서 원리로">
     <span class="depth-shift__step"><span class="depth" data-depth="basic"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>기초</span>
     <span class="depth-shift__line" aria-hidden="true"></span>
@@ -171,32 +225,83 @@
   </div>
 </section>
 
-<!-- ===== HA principles =============================================== -->
+<!-- ===== Availability & SPOF ========================================= -->
 <section class="slide">
-  <h2>고가용성은 계층마다 SPOF를 없애는 일이다</h2>
+  <h2>가용성은 부품 하나가 멈춰도 응답하는 비율이다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p><dfn title="Single Point of Failure">단일 장애점(SPOF)</dfn>은 그것 하나가 멈추면 서비스 전체가 멈추는 부품입니다. 고가용성 설계는 요청이 지나는 경로를 따라가며 모든 계층에 SPOF가 없는지 확인하는 작업입니다.</p>
-      <p>AWS에서 기본 단위는 <strong>가용 영역(AZ)</strong>입니다. AZ는 전력과 네트워크가 독립된 데이터센터 묶음이라(12장), 같은 계층을 두 개 이상의 AZ에 나눠 두면 한 곳의 정전이 전체 장애로 번지지 않습니다.</p>
+      <p><dfn title="availability">가용성</dfn>은 전체 시간 중 서비스가 정상적으로 응답한 시간의 비율입니다. 한 달 중 43분을 멈췄다면 가용성은 약 99.9%입니다. <dfn title="High Availability">고가용성</dfn>은 이 비율을 높게 유지하도록, 부품이 고장 나도 서비스가 멈추지 않게 만드는 설계를 말합니다.</p>
+      <p>출발점은 <dfn title="Single Point of Failure">단일 장애점(SPOF)</dfn>을 찾는 일입니다. SPOF는 그것 하나가 멈추면 서비스 전체가 멈추는 부품입니다. 주문 API 서버가 한 대뿐이면 그 서버가 SPOF이고, 서버를 열 대로 늘려도 DB가 한 대뿐이면 DB가 SPOF입니다.</p>
+    </div>
+    <div class="prose">
+      <p>그래서 고가용성 설계는 <strong>요청이 지나는 경로를 처음부터 끝까지 따라가며</strong> 계층마다 SPOF가 남아 있는지 확인하는 작업입니다. 사용자의 DNS 조회에서 시작해 CDN, 로드 밸런서, 앱 서버, 캐시, DB까지 하나도 빼놓지 않습니다.</p>
+      <p>무엇을 몇 개 둘지는 어떤 크기의 장애를 견딜지에 달려 있습니다. 다음 슬라이드에서 장애를 크기별로 나눠 봅니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Failure taxonomy =========================================== -->
+<section class="slide">
+  <h2>장애는 크기와 종류에 따라 막는 수단이 다르다</h2>
+  <div class="slide__body">
+    <div class="prose">
+      <p>"장애에 강하다"는 말은 어떤 장애를 가정하느냐에 따라 뜻이 달라집니다. 아래 표는 주문 서비스가 겪을 수 있는 장애를 작은 것부터 나열하고, 이 장의 어느 부분이 그것을 다루는지 적은 것입니다. 위의 세 줄은 <strong>물리적으로 무언가가 사라지는</strong> 장애이고, 아래 세 줄은 모든 서버가 멀쩡한데도 일어나는 장애입니다.</p>
+    </div>
+    <table class="compare">
+      <thead><tr><th scope="col">장애</th><th scope="col">예</th><th scope="col">막는 수단</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">서버 한 대</th><td>태스크 하나가 죽음</td><td>여러 대 + 헬스 체크(2부)</td></tr>
+        <tr><th scope="row">가용 영역 하나</th><td>데이터센터 정전</td><td class="is-flow">여러 AZ에 배치(2부)</td></tr>
+        <tr><th scope="row">리전 전체</th><td>서울 리전 대규모 장애</td><td>재해 복구, DR(2부 후반)</td></tr>
+        <tr><th scope="row">잘못된 변경</th><td>버그 있는 버전 배포</td><td>안전한 배포와 롤백(3부)</td></tr>
+        <tr><th scope="row">데이터 손상</th><td>실수로 실행한 DELETE</td><td class="is-key">백업에서 시점 복원(2부 후반)</td></tr>
+        <tr><th scope="row">과부하</th><td>이벤트 날 트래픽 폭증</td><td>용량 계획, 스케일링(6부)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ===== HA principles =============================================== -->
+<section class="slide">
+  <h2>중복, 감지, 우회, 무상태가 고가용성의 네 손이다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>물리적 장애를 견디는 방법은 어느 계층에서나 같은 네 가지 동작의 조합입니다. AWS에서 중복의 기본 단위는 <strong>가용 영역(AZ)</strong>입니다. 12장에서 보았듯 AZ는 전력과 네트워크가 독립된 데이터센터 묶음이라, 같은 계층을 두 개 이상의 AZ에 나눠 두면 한 곳의 정전이 전체 장애로 번지지 않습니다.</p>
+      <p>네 번째 항목이 특히 중요합니다. 서버가 사용자 세션이나 업로드 파일을 자기 디스크에 갖고 있으면, 그 서버가 죽는 순간 그 상태도 사라집니다.</p>
     </div>
     <div class="prose">
       <ul>
-        <li><strong>중복</strong>: 모든 계층을 두 개 이상의 AZ에 둡니다.</li>
-        <li><strong>감지</strong>: 헬스 체크가 죽은 부품을 자동으로 찾아냅니다.</li>
-        <li><strong>우회와 교체</strong>: 트래픽을 건강한 쪽으로 돌리고 죽은 부품을 새로 띄웁니다.</li>
-        <li><strong>무상태</strong>: 앱 서버가 상태를 갖지 않아야 아무 서버나 죽고 떠도 됩니다(8장).</li>
+        <li><strong>중복</strong>: 모든 계층을 두 개 이상의 AZ에 둡니다. 하나가 사라져도 남은 쪽이 일합니다.</li>
+        <li><strong>감지</strong>: 헬스 체크(13장), 즉 주기적으로 보내는 확인 요청이 죽은 부품을 자동으로 찾아냅니다.</li>
+        <li><strong>우회와 교체</strong>: 트래픽을 건강한 쪽으로 돌리고, 죽은 부품은 새로 띄웁니다.</li>
+        <li><strong>무상태</strong>: 앱 서버가 상태를 갖지 않아야 아무 서버나 죽고 새로 떠도 됩니다(8장).</li>
       </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 3-tier intro ================================================ -->
+<section class="slide">
+  <h2>레퍼런스 1: 3-티어를 여러 AZ에 펼친다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>네 원칙을 실제 구성으로 옮긴 표준 예가 AWS의 <dfn title="reference architecture">레퍼런스 아키텍처</dfn>입니다. 자주 쓰이는 모양 네 가지를 차례로 보고, 주문 서비스는 그중 무엇을 조합하는지 확인합니다.</p>
+      <p>첫째는 <dfn title="3-tier">3-티어</dfn> 구조입니다. 요청을 받는 <strong>표현 계층</strong>(로드 밸런서), 업무 로직을 도는 <strong>애플리케이션 계층</strong>(앱 서버), 데이터를 보관하는 <strong>데이터 계층</strong>(DB, 캐시)으로 나누고, 계층마다 따로 늘리고 보호합니다.</p>
+    </div>
+    <div class="prose">
+      <p>AWS에서는 각 계층을 13장의 서브넷 구분에 맞춰 놓습니다. 인터넷에서 직접 닿아야 하는 로드 밸런서만 <strong>Public Subnet</strong>에 두고, 앱 서버와 DB는 인터넷에서 직접 닿지 않는 <strong>Private Subnet</strong>에 둡니다.</p>
+      <p>그리고 모든 계층을 AZ 두 개 이상에 펼칩니다. 앱 계층은 EC2 Auto Scaling 그룹이든 ECS 서비스든 원리가 같습니다. 주문 서비스는 ECS on Fargate 태스크로 이 자리를 채웁니다. 다음 슬라이드가 전체 그림입니다.</p>
     </div>
   </div>
 </section>
 
 <!-- ===== 3-tier reference ============================================ -->
 <section class="slide">
-  <h2>레퍼런스 1: 고가용성 3-티어</h2>
+  <h2>모든 계층이 두 AZ에 걸쳐 있다</h2>
   <div class="slide__body">
     <figure class="figure">
       <svg class="dg" viewBox="0 0 1400 520" role="img" aria-labelledby="f-3t-t">
-        <title id="f-3t-t">사용자 요청이 Route 53, CloudFront를 거쳐 두 가용 영역에 걸친 ALB로 들어가고, Auto Scaling 그룹의 앱 서버가 RDS Multi-AZ와 ElastiCache에 접근한다. 정적 파일은 CloudFront가 S3에서 제공한다.</title>
+        <title id="f-3t-t">사용자 요청이 Route 53, CloudFront를 거쳐 두 가용 영역에 걸친 ALB로 들어가고, Auto Scaling되는 앱 서버가 RDS Multi-AZ와 ElastiCache에 접근한다. 정적 파일은 CloudFront가 S3에서 제공한다.</title>
         <rect class="dg-box" x="20" y="40" width="180" height="64"/>
         <text x="110" y="72" text-anchor="middle">사용자</text>
         <rect class="dg-box" x="20" y="160" width="180" height="64"/>
@@ -220,11 +325,11 @@
         <path class="dg-arrow dg-arrow--flow" d="M200,312 H332"/>
         <rect class="dg-zone" x="596" y="92" width="256" height="356"/>
         <rect class="dg-box dg-box--flow" x="620" y="110" width="210" height="64"/>
-        <text x="725" y="142" text-anchor="middle">앱 서버</text>
+        <text x="725" y="142" text-anchor="middle">주문 API</text>
         <rect class="dg-box dg-box--flow" x="620" y="358" width="210" height="64"/>
-        <text x="725" y="390" text-anchor="middle">앱 서버</text>
+        <text x="725" y="390" text-anchor="middle">주문 API</text>
         <rect class="dg-fill-paper" x="634" y="252" width="182" height="36"/>
-        <text class="dg-label--sm" x="725" y="270" text-anchor="middle">Auto Scaling 그룹</text>
+        <text class="dg-label--sm" x="725" y="270" text-anchor="middle">Auto Scaling</text>
         <path class="dg-arrow dg-arrow--flow" d="M520,236 H548 Q570,236 570,214 V164 Q570,142 592,142 H612"/>
         <path class="dg-arrow dg-arrow--flow" d="M520,304 H548 Q570,304 570,326 V368 Q570,390 592,390 H612"/>
         <rect class="dg-box" x="930" y="72" width="220" height="64"/>
@@ -245,7 +350,7 @@
         <path class="dg-arrow dg-arrow--back" d="M1040,232 V292"/>
         <text class="dg-label--sm" x="1054" y="268" text-anchor="start">복제</text>
       </svg>
-      <figcaption>모든 계층이 두 개 이상의 AZ에 걸쳐 있어 어느 한 곳이 사라져도 나머지가 요청을 받습니다. 앱 서버와 DB는 Private Subnet에 있습니다.</figcaption>
+      <figcaption>어느 AZ가 사라져도 나머지가 요청을 받습니다. 앱 서버와 DB, 캐시는 Private Subnet에 있습니다. 앱 서버는 기본 DB와 기본 캐시에만 접근하고, 대기와 복제본은 복제만 받습니다.</figcaption>
     </figure>
     <ul class="legend">
       <li class="is-flow"><i></i>요청 흐름</li>
@@ -255,9 +360,21 @@
   </div>
 </section>
 
+<!-- ===== Walk the request =========================================== -->
+<section class="slide">
+  <h2>요청을 따라가며 각 부품의 대비책을 본다</h2>
+  <div class="prose prose--cols">
+    <p>사용자가 주문 버튼을 누르면 먼저 <strong>Route 53</strong>이 도메인을 주소로 바꿉니다. 13장에서 본 헬스 체크 기반 장애 조치 레코드를 쓰면, 주 엔드포인트가 죽었을 때 보조 엔드포인트의 주소를 대신 돌려줍니다.</p>
+    <p>상품 이미지와 화면 파일은 <strong>CloudFront</strong>(16장)가 전 세계 엣지에서 캐시로 응답합니다. 이벤트 날 트래픽이 몰려도 대부분은 엣지에서 끝나 뒤쪽 서버까지 오지 않습니다.</p>
+    <p>주문 요청은 <strong>ALB</strong>로 갑니다. ALB는 대상마다 헬스 체크를 보내고, 실패한 대상에는 요청을 보내지 않습니다. 앱 서버 한 대가 죽어도 사용자는 알아채지 못합니다.</p>
+    <p>앱 계층의 <strong>Auto Scaling</strong>은 "늘 몇 대를 유지하라"는 원하는 용량을 지킵니다. 한 대가 사라지면 새로 띄우고, 여러 AZ에 고르게 나눕니다.</p>
+    <p><strong>RDS Multi-AZ</strong>(15장)는 다른 AZ에 대기 인스턴스를 두고 쓰기를 동기로 복제합니다. 기본이 죽으면 대기가 기본으로 승격되고, DB 엔드포인트의 DNS가 새 기본을 가리키도록 바뀝니다. <strong>ElastiCache</strong>도 다른 AZ의 복제본을 기본으로 올립니다.</p>
+  </div>
+</section>
+
 <!-- ===== Failure absorption table =================================== -->
 <section class="slide">
-  <h2>각 부품은 서로 다른 장애를 흡수한다</h2>
+  <h2>상태를 데이터 계층으로 몰아내면 앱은 버려도 된다</h2>
   <div class="slide__body">
     <table class="compare">
       <thead><tr><th scope="col">구성 요소</th><th scope="col">흡수하는 장애</th><th scope="col">어떻게</th></tr></thead>
@@ -271,14 +388,14 @@
       </tbody>
     </table>
     <div class="prose">
-      <p>정적 파일을 S3와 CloudFront로 빼면 앱 서버는 상태 없는 계산만 맡아 언제 죽고 새로 떠도 괜찮아집니다. 세션은 ElastiCache에, 업로드 파일은 S3에 둡니다. <strong>상태를 관리형 데이터 계층으로 몰아내는 것</strong>이 3-티어 고가용성의 핵심입니다.</p>
+      <p>앞 슬라이드를 표로 묶었습니다. 이 구조가 성립하는 조건은 앱 서버가 무상태라는 것입니다. 주문 서비스는 장바구니와 세션을 ElastiCache에, 상품 이미지는 S3에 둡니다. <strong>상태를 관리형 데이터 계층으로 몰아내면</strong> 앱 서버는 언제 죽고 새로 떠도 괜찮은 계산 노드가 됩니다.</p>
     </div>
   </div>
 </section>
 
 <!-- ===== Serverless API ============================================== -->
 <section class="slide">
-  <h2>레퍼런스 2: 서버리스는 AZ를 AWS가 맡는다</h2>
+  <h2>레퍼런스 2: 서버리스는 AZ 배치를 AWS가 맡는다</h2>
   <div class="slide__body">
     <ol class="flow">
       <li class="flow__node"><b>CloudFront</b><span>캐시, WAF 부착</span></li>
@@ -287,8 +404,8 @@
       <li class="flow__node"><b>DynamoDB</b><span>여러 AZ에 자동 복제</span></li>
     </ol>
     <div class="prose">
-      <p>API Gateway, Lambda, DynamoDB는 모두 <strong>리전 단위 서비스</strong>라 여러 AZ에 걸친 배치를 AWS가 알아서 합니다. 3-티어에서 직접 그리던 서브넷과 Auto Scaling 그룹이 사라지고, 사용자는 코드와 한도 설정만 관리합니다.</p>
-      <p>대신 장애의 모양이 바뀝니다. 서버가 죽는 대신 <mark>동시성 한도, 스로틀링, 다운스트림 폭주</mark>가 주된 장애가 됩니다. Lambda가 VPC 안의 RDS를 부른다면 커넥션 폭증을 막을 RDS Proxy가 필요합니다(17장).</p>
+      <p>3-티어에서는 서브넷과 Auto Scaling 그룹을 AZ마다 직접 그렸습니다. EC2 인스턴스나 RDS 인스턴스는 특정 AZ에 놓이는 <strong>AZ 단위 자원</strong>이기 때문입니다. 반면 API Gateway, Lambda, DynamoDB는 <dfn title="regional service">리전 단위 서비스</dfn>입니다. 리전을 고르면 그 안의 여러 AZ에 걸친 배치를 AWS가 알아서 하므로, 사용자는 코드와 한도 설정만 관리합니다.</p>
+      <p>대신 장애의 모양이 바뀝니다. 서버가 죽는 일 대신 <mark>동시성 한도, 스로틀링, 하류 시스템 폭주</mark>가 주된 장애가 됩니다(17장). 예를 들어 Lambda가 VPC 안의 RDS를 부르면 함수 인스턴스마다 DB 연결을 열어 연결 수가 폭증하므로, 연결을 모아 재사용하는 RDS Proxy(15장)를 사이에 둡니다.</p>
     </div>
   </div>
 </section>
@@ -298,14 +415,14 @@
   <h2>레퍼런스 3: 이벤트 기반은 장애를 큐에 가둔다</h2>
   <div class="split split--center">
     <div class="prose">
-      <p>주문 서비스는 "주문 생성됨" 이벤트를 EventBridge에 던지고 바로 응답합니다. 결제, 알림, 정산은 각자의 SQS 큐에서 이벤트를 꺼내 처리합니다.</p>
-      <p>알림 서비스가 30분 동안 죽어도 주문은 계속 받습니다. 이벤트는 큐에 쌓였다가 서비스가 살아나면 처리되고, 계속 실패하는 메시지는 DLQ로 격리합니다(17장). 대가는 <strong>결과적 일관성</strong>과 멱등 컨슈머입니다(8장).</p>
+      <p>주문 서비스의 후처리가 이 모양입니다. 주문 API는 주문을 저장한 뒤 "주문 생성됨" 이벤트를 EventBridge에 던지고 바로 응답합니다. 규칙이 이벤트를 결제, 알림, 정산 각자의 SQS 큐로 나눠 보내고, 각 서비스는 자기 큐에서 꺼내 처리합니다(17장).</p>
+      <p>알림 서비스가 30분 동안 죽어도 주문은 계속 받습니다. 이벤트는 큐에 쌓였다가 서비스가 살아나면 처리되고, 계속 실패하는 메시지는 DLQ(실패 메시지를 따로 모아 두는 큐)로 격리됩니다.</p>
     </div>
     <figure class="figure">
       <svg class="dg" viewBox="0 0 760 440" role="img" aria-labelledby="f-ev-t">
         <title id="f-ev-t">주문 서비스가 EventBridge에 이벤트를 보내면 규칙이 결제, 알림, 정산 큐로 나눠 보내고, 알림 소비자가 죽어도 큐에 메시지가 쌓인다.</title>
         <rect class="dg-box dg-box--flow" x="20" y="186" width="160" height="64"/>
-        <text x="100" y="218" text-anchor="middle">주문 서비스</text>
+        <text x="100" y="218" text-anchor="middle">주문 API</text>
         <rect class="dg-box dg-box--solid" x="230" y="170" width="170" height="96"/>
         <text class="dg-label--on" x="315" y="218" text-anchor="middle">EventBridge</text>
         <path class="dg-arrow dg-arrow--flow" d="M180,218 H222"/>
@@ -333,13 +450,28 @@
   </div>
 </section>
 
+<!-- ===== Event-driven cost ========================================== -->
+<section class="slide">
+  <h2>큐로 얻는 격리에는 일관성의 대가가 따른다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>앞 그림에서 큐는 장애를 <strong>공간이 아닌 시간 방향으로</strong> 흡수합니다. 3-티어가 다른 AZ의 서버로 우회했다면, 이벤트 기반은 일을 미뤄 두었다가 나중에 처리합니다. 덕분에 주문 API는 알림 서비스의 상태와 무관하게 응답합니다.</p>
+      <p>대가는 둘입니다. 첫째, 주문 직후 알림이 아직 안 갔을 수 있습니다. 이렇게 잠시 어긋났다가 결국 맞춰지는 성질을 4장에서 <strong>최종 일관성</strong>이라고 불렀습니다.</p>
+    </div>
+    <div class="prose">
+      <p>둘째, SQS는 메시지를 적어도 한 번 전달하므로 같은 메시지가 두 번 올 수 있습니다. 알림 서비스가 같은 주문에 문자를 두 번 보내지 않으려면, 이미 처리한 메시지 ID를 기억해 두 번째는 건너뛰는 <strong>멱등 컨슈머</strong>(8장)로 만들어야 합니다.</p>
+      <p>그래서 이벤트 기반은 "지금 바로 결과가 필요 없는 일"에 씁니다. 주문 저장과 재고 차감은 API 안에서 바로, 알림과 정산은 큐 뒤에서 처리하는 식으로 나눕니다.</p>
+    </div>
+  </div>
+</section>
+
 <!-- ===== Static web + API ============================================ -->
 <section class="slide">
-  <h2>레퍼런스 4: 정적 웹과 API를 한 도메인에</h2>
+  <h2>레퍼런스 4: 정적 웹과 API를 한 도메인에 둔다</h2>
   <div class="split split--center">
     <div class="prose">
-      <p>React 같은 SPA는 빌드하면 정적 파일 묶음입니다. 이것을 S3에 올리고 CloudFront 하나에 오리진 두 개를 붙여 경로 패턴으로 나눕니다(16장).</p>
-      <p>기본 동작은 S3로, <code>/api/*</code> 동작은 ALB나 API Gateway로 보냅니다. 같은 도메인이라 CORS가 필요 없고(7장), S3 버킷은 OAC로 CloudFront만 읽게 잠급니다. 정적 파일은 엣지 캐시가 응답해 오리진 부하가 거의 없습니다.</p>
+      <p>쇼핑몰 화면을 React 같은 <dfn title="Single Page Application">SPA</dfn>로 만들면, 빌드 결과는 HTML, JS, CSS 파일 묶음입니다. 서버가 화면을 만들 필요가 없으니 S3에 올려 두면 됩니다.</p>
+      <p>CloudFront 배포 하나에 오리진 두 개를 붙이고 <strong>캐시 동작</strong>(16장, 경로 패턴별 처리 규칙)으로 나눕니다. 기본 경로는 S3로, <code>/api/*</code>는 ALB나 API Gateway로 보냅니다. 화면과 API가 같은 도메인이라 브라우저의 CORS 검사(7장)가 필요 없고, S3 버킷은 OAC(16장, CloudFront에만 읽기를 허용하는 접근 제어)로 잠급니다.</p>
     </div>
     <figure class="figure">
       <svg class="dg" viewBox="0 0 760 360" role="img" aria-labelledby="f-sw-t">
@@ -348,7 +480,7 @@
         <text x="90" y="180" text-anchor="middle">브라우저</text>
         <rect class="dg-box dg-box--solid" x="220" y="124" width="190" height="112"/>
         <text class="dg-label--on" x="315" y="170" text-anchor="middle">CloudFront</text>
-        <text class="dg-label--on" x="315" y="198" text-anchor="middle">app.example.com</text>
+        <text class="dg-label--on" x="315" y="198" text-anchor="middle">shop.example.com</text>
         <path class="dg-arrow dg-arrow--flow" d="M160,180 H212"/>
         <rect class="dg-box" x="540" y="40" width="200" height="64"/>
         <text x="640" y="72" text-anchor="middle">S3 (OAC)</text>
@@ -361,8 +493,45 @@
         <rect class="dg-fill-paper" x="420" y="222" width="100" height="28"/>
         <text class="dg-mono" x="470" y="236" text-anchor="middle">/api/*</text>
       </svg>
-      <figcaption>캐시 동작(behavior)의 경로 패턴이 요청을 오리진별로 나눕니다. API 동작은 캐시를 끄고 헤더를 전달합니다.</figcaption>
+      <figcaption>정적 파일은 엣지 캐시가 응답해 오리진 부하가 거의 없습니다. API 동작은 캐시를 끄고 헤더를 그대로 전달합니다.</figcaption>
     </figure>
+  </div>
+</section>
+
+<!-- ===== Combine ===================================================== -->
+<section class="slide">
+  <h2>실제 서비스는 네 모양을 부분마다 섞는다</h2>
+  <div class="slide__body">
+    <div class="prose">
+      <p>네 레퍼런스는 서로 배타적이지 않습니다. 주문 서비스를 다시 보면 각 부분이 다른 레퍼런스에서 왔습니다. 1부에서 컴퓨팅을 부분마다 다르게 골랐듯, 구조도 <strong>부분의 성질</strong>에 맞춰 고릅니다.</p>
+    </div>
+    <table class="compare">
+      <thead><tr><th scope="col">주문 서비스의 부분</th><th scope="col">레퍼런스</th><th scope="col">고른 이유</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">쇼핑몰 화면</th><td>정적 웹 + API</td><td>파일만 내려주면 됨</td></tr>
+        <tr><th scope="row">주문 API</th><td class="is-flow">3-티어(Fargate)</td><td>꾸준한 고부하, 관계형 DB</td></tr>
+        <tr><th scope="row">결제 웹훅</th><td>서버리스 API</td><td>드물고 들쭉날쭉한 요청</td></tr>
+        <tr><th scope="row">알림·정산</th><td>이벤트 기반</td><td>즉시 결과가 필요 없음</td></tr>
+      </tbody>
+    </table>
+    <div class="prose">
+      <p>여기까지가 "부품이 사라지면 다른 부품이 받는다"는 구조입니다. 그런데 이 구조는 장애 순간에 AWS가 무언가를 <strong>새로 해 주기를</strong> 기대합니다. 그 기대가 어긋나는 경우를 다음에 봅니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Control vs data plane ====================================== -->
+<section class="slide">
+  <h2>AWS 서비스는 만드는 쪽과 처리하는 쪽으로 나뉜다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>AWS 서비스 안쪽은 두 부분으로 나뉩니다. <dfn title="control plane">컨트롤 플레인</dfn>은 자원을 만들고, 바꾸고, 지우는 쪽입니다. 인스턴스를 새로 띄우거나, 로드 밸런서 설정을 바꾸거나, DNS 레코드를 수정하는 API가 여기에 속합니다.</p>
+      <p><dfn title="data plane">데이터 플레인</dfn>은 이미 만들어진 자원이 실제 요청을 처리하는 쪽입니다. 떠 있는 인스턴스가 요청에 응답하고, ALB가 요청을 전달하고, Route 53이 DNS 질의에 답하는 일입니다.</p>
+    </div>
+    <div class="prose">
+      <p>데이터 플레인은 하는 일이 단순하고 상태 변경이 적어 더 안정적으로 만들어져 있습니다. 컨트롤 플레인은 여러 시스템의 상태를 맞춰야 해서 복잡하고, 큰 장애가 나면 먼저 느려집니다.</p>
+      <p>문제는 AZ 장애 순간에 모든 고객이 같은 일을 한다는 점입니다. 사라진 용량을 채우려고 일제히 인스턴스를 새로 띄우면, 그 요청이 몰린 컨트롤 플레인이 느려지거나 용량이 모자랄 수 있습니다. <mark>장애 대응을 컨트롤 플레인 작업에 기대면 가장 필요할 때 늦어집니다</mark>.</p>
+    </div>
   </div>
 </section>
 
@@ -371,19 +540,19 @@
   <h2>정적 안정성: 장애 중에 새로 만들 필요가 없게</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>AWS 서비스는 자원을 만들고 바꾸는 <dfn title="control plane">컨트롤 플레인</dfn>과, 이미 있는 자원이 요청을 처리하는 <dfn title="data plane">데이터 플레인</dfn>으로 나뉩니다. 데이터 플레인이 더 단순해서 더 안정적입니다.</p>
-      <p><dfn title="static stability">정적 안정성</dfn>은 장애가 나도 <mark>아무것도 새로 띄우지 않고 버티는 성질</mark>입니다. AZ 장애 순간에는 모두가 인스턴스를 새로 띄우려 해 컨트롤 플레인이 느려질 수 있기 때문입니다.</p>
+      <p>그래서 나온 설계 원칙이 <dfn title="static stability">정적 안정성</dfn>입니다. 장애가 나도 <strong>아무것도 새로 띄우거나 바꾸지 않고</strong> 이미 떠 있는 것만으로 버티는 성질입니다. 컨트롤 플레인이 멈춰도 데이터 플레인만으로 서비스가 계속됩니다.</p>
+      <p>주문 서비스에 적용하면 "AZ 하나가 사라져도, 남은 AZ에 이미 떠 있는 태스크만으로 피크를 처리할 수 있는가"라는 질문이 됩니다. 오른쪽 표가 세 가지 배치를 비교합니다.</p>
     </div>
     <div class="slide__body">
       <table class="compare">
-        <thead><tr><th scope="col">설계</th><th scope="col">AZ 하나를 잃으면</th></tr></thead>
+        <thead><tr><th scope="col">평소 배치</th><th scope="col">AZ 하나를 잃으면</th></tr></thead>
         <tbody>
           <tr><th scope="row">2 AZ × 피크의 50%</th><td class="is-key">새로 띄울 때까지 과부하</td></tr>
           <tr><th scope="row">2 AZ × 피크의 100%</th><td class="is-flow">남은 AZ가 그대로 피크 처리</td></tr>
           <tr><th scope="row">3 AZ × 피크의 50%</th><td>남은 두 AZ 합이 100%</td></tr>
         </tbody>
       </table>
-      <p class="small">정적 안정성은 여유 용량을 미리 사 두는 대가로 얻습니다. 3 AZ가 2 AZ보다 싼 이유는 6부 용량 계획에서 계산합니다.</p>
+      <p class="small">정적 안정성은 여유 용량을 미리 사 두는 대가로 얻습니다. 3 AZ 배치가 2 AZ보다 싼 이유는 6부 용량 계획에서 계산합니다.</p>
     </div>
   </div>
 </section>
@@ -393,16 +562,16 @@
   <h2>셀 기반 아키텍처는 폭발 반경을 자른다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>Multi-AZ는 인프라 장애를 막지만, 잘못된 배포나 독이 든 요청 하나가 모든 서버를 동시에 쓰러뜨리는 것은 막지 못합니다. 모든 서버가 같은 코드와 같은 데이터를 공유하기 때문입니다.</p>
-      <p><dfn title="cell-based architecture">셀 기반 아키텍처</dfn>는 전체 스택을 작고 독립된 복제본(셀) 여러 개로 나누고, 얇은 라우팅 계층이 고객 ID 같은 키로 요청을 한 셀에 보냅니다. 한 셀이 망가져도 그 셀의 고객만 영향을 받습니다.</p>
+      <p>여러 AZ에 펼친 구조도 막지 못하는 장애가 있습니다. 버그가 든 버전을 배포하거나, 특정 형식의 요청 하나가 서버를 죽이는 <dfn title="poison request">독이 든 요청</dfn>이 들어오면 모든 AZ의 서버가 함께 쓰러집니다. 모두 같은 코드를 돌리고 같은 데이터를 보기 때문입니다.</p>
+      <p>한 장애가 영향을 미치는 범위를 <dfn title="blast radius">폭발 반경</dfn>이라고 합니다. <dfn title="cell-based architecture">셀 기반 아키텍처</dfn>는 전체 스택을 작고 독립된 복제본(셀) 여러 개로 나누고, 얇은 라우팅 계층이 고객 ID 같은 키로 요청을 한 셀에 보냅니다.</p>
     </div>
     <div class="slide__body">
       <div class="prose">
-        <p>배포도 셀 하나에 먼저 넣고 지켜본 뒤 다음 셀로 넓힙니다. 셀이 10개면 최악의 배포 사고도 고객의 약 10%에서 멈춥니다.</p>
+        <p>한 셀이 망가지면 그 셀의 고객만 영향을 받습니다. 배포도 셀 하나에 먼저 넣고 지켜본 뒤 다음 셀로 넓힙니다. 셀이 10개면 최악의 배포 사고도 고객의 약 10%에서 멈춥니다.</p>
       </div>
       <aside class="callout callout--note">
         <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>언제 필요한가</p>
-        <p>셀 라우팅과 셀 간 데이터 이동이라는 복잡도가 붙습니다. 장애 반경이 사업에 치명적인 대규모 서비스에서 고려합니다.</p>
+        <p>셀 라우팅과 셀 간 데이터 이동이라는 복잡도가 붙습니다. 장애 반경이 사업에 치명적인 대규모 서비스에서 고려하고, 주문 서비스 규모에서는 Multi-AZ와 안전한 배포로 충분합니다.</p>
       </aside>
     </div>
   </div>
@@ -413,19 +582,20 @@
   <h2>가용 영역 하나가 꺼지면 일어나는 일</h2>
   <div class="split split--even">
     <ol class="steps">
-      <li class="is-key"><b>AZ a 정전</b><p>AZ a의 앱 서버와 RDS 기본 인스턴스가 멈춥니다.</p></li>
+      <li class="is-key"><b>AZ a 정전</b><p>AZ a의 주문 API 태스크와 RDS 기본 인스턴스가 멈춥니다.</p></li>
       <li><b>ALB 우회</b><p>헬스 체크에 실패한 대상을 빼고 AZ b로만 보냅니다.</p></li>
       <li><b>RDS 장애 조치</b><p>대기가 기본으로 승격되고 엔드포인트 DNS가 바뀝니다.</p></li>
       <li><b>캐시 승격</b><p>ElastiCache가 AZ b의 복제본을 기본으로 올립니다.</p></li>
-      <li><b>용량 회복</b><p>Auto Scaling이 AZ b에 인스턴스를 더 띄웁니다.</p></li>
+      <li><b>용량 회복</b><p>Auto Scaling이 AZ b에 태스크를 더 띄웁니다.</p></li>
     </ol>
     <div class="slide__body">
       <div class="prose">
-        <p>이 시나리오는 AZ가 <strong>깨끗하게</strong> 죽은 경우입니다. 헬스 체크가 분명히 실패하니 모든 부품이 알아서 넘어갑니다. AZ a가 돌아오면 Auto Scaling이 다시 두 곳에 나눠 배치합니다.</p>
+        <p>지금까지의 부품을 한 사건에 겹쳐 보면 이렇습니다. 2~4단계는 각 부품이 스스로 하고, 5단계만 컨트롤 플레인 작업입니다. 정적 안정성을 갖췄다면 5단계 없이도 버틸 수 있습니다.</p>
+        <p>이 시나리오는 AZ가 <strong>깨끗하게</strong> 죽은 경우입니다. 헬스 체크가 분명히 실패하니 모든 부품이 알아서 넘어갑니다.</p>
       </div>
       <aside class="callout callout--key">
-        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>이 구조가 막지 못하는 것</p>
-        <p>리전 전체 장애, 잘못된 배포, 실수로 지운 데이터, DB 과부하는 Multi-AZ로 막을 수 없습니다. 그래서 배포 전략, 관측성, DR이 따로 필요합니다.</p>
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>현실의 AZ 장애는 깔끔하지 않을 때가 많습니다</p>
+        <p>반쯤 살아 있는 AZ는 헬스 체크를 통과해 버립니다. 다음 슬라이드가 그 경우입니다.</p>
       </aside>
     </div>
   </div>
@@ -436,12 +606,12 @@
   <h2>반쯤 죽은 AZ는 사람이 빼 줘야 한다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>현실의 AZ 장애는 깔끔하지 않은 경우가 많습니다. 패킷 일부만 유실되거나 지연만 늘어나는 <dfn title="gray failure">회색 장애</dfn>에서는 헬스 체크가 간신히 통과해 트래픽이 계속 아픈 AZ로 갑니다.</p>
-      <p>이때 쓰는 것이 ARC(Application Recovery Controller)의 <dfn title="zonal shift">zonal shift</dfn>입니다. ALB, NLB 같은 지원 자원에서 특정 AZ로 가는 트래픽을 한 번에 빼고, 정한 시간이 지나면 자동으로 원래대로 돌아옵니다.</p>
+      <p>패킷 일부만 유실되거나 지연만 늘어나는 장애를 <dfn title="gray failure">회색 장애</dfn>라고 합니다. 헬스 체크는 연속으로 여러 번 실패해야 대상을 빼는데, 회색 장애에서는 실패 사이사이에 성공이 끼어 그 기준에 닿지 않습니다. 그래서 트래픽은 계속 아픈 AZ로 가고 사용자는 느린 응답과 간헐적 오류를 겪습니다.</p>
+      <p>이때 쓰는 것이 <dfn title="Application Recovery Controller">ARC</dfn>, 즉 장애 복구용 트래픽 전환 기능을 모은 서비스입니다. 그중 <dfn title="zonal shift">zonal shift</dfn>는 ALB, NLB 같은 지원 자원에서 특정 AZ로 가는 트래픽을 한 번에 빼고, 정한 시간이 지나면 자동으로 원래대로 돌려놓습니다.</p>
     </div>
     <div class="slide__body">
       <div class="prose">
-        <p><dfn title="zonal autoshift">zonal autoshift</dfn>를 켜 두면 AWS가 AZ 이상을 감지했을 때 대신 트래픽을 뺍니다. 그래서 켜기 전에 <strong>남은 AZ만으로 피크를 버틸 용량</strong>이 있는지가 전제 조건입니다(정적 안정성).</p>
+        <p><dfn title="zonal autoshift">zonal autoshift</dfn>를 켜 두면 AWS가 AZ 이상을 감지했을 때 사람 대신 트래픽을 뺍니다. 그러니 켜기 전에 <strong>남은 AZ만으로 피크를 버틸 용량</strong>이 있는지가 전제 조건입니다. 앞에서 본 정적 안정성이 여기서 필요해집니다.</p>
       </div>
       <aside class="callout callout--key">
         <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>zonal shift에는 만료 시간이 있습니다</p>
@@ -456,17 +626,32 @@
   <h2>인프라가 넘어가도 앱이 따라와야 끝난다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>RDS Multi-AZ 장애 조치는 엔드포인트의 DNS 레코드를 새 기본 인스턴스로 바꿔서 끝납니다. 그런데 JVM이 DNS 결과를 오래 캐시하거나, 커넥션 풀(4장)에 끊긴 연결이 남아 있으면 <strong>앱은 몇 분째 옛 IP로 갑니다</strong>.</p>
-      <p>JVM DNS 캐시 TTL(<code>networkaddress.cache.ttl</code>)을 60초 이하로, 풀의 최대 수명을 짧게 두는 설정은 15장에서 코드로 봤습니다. 이 장의 관심은 그 설정이 실제 장애 때 동작하는지 확인하는 일입니다.</p>
+      <p>RDS 장애 조치는 엔드포인트의 DNS 레코드가 새 기본 인스턴스를 가리키면 끝납니다. 그런데 주문 API 쪽 사정은 다릅니다. JVM은 DNS 조회 결과를 메모리에 캐시하고, 커넥션 풀(4장)은 미리 열어 둔 연결을 재사용합니다. 둘 다 옛 기본 인스턴스를 가리키고 있으면 <strong>앱은 몇 분째 사라진 IP로 갑니다</strong>.</p>
+      <p>15장에서 JVM DNS 캐시 시간(<code>networkaddress.cache.ttl</code>)을 60초 이하로, 풀의 연결 최대 수명을 짧게 두는 설정을 보았습니다. 이 장의 관심은 그 설정이 실제 장애에서 동작하는지 확인하는 일입니다.</p>
     </div>
     <div class="slide__body">
       <div class="prose">
-        <p>RDS Proxy(15장)는 장애 조치 동안 앱의 연결을 붙잡고 있다가 새 기본 인스턴스로 이어 주어, 앱이 보는 중단 시간을 줄입니다.</p>
+        <p>RDS Proxy(15장)를 앱과 DB 사이에 두면, Proxy가 장애 조치 동안 앱의 연결을 붙잡고 있다가 새 기본 인스턴스로 이어 줍니다. 앱은 DNS 변경을 몰라도 되고, 사용자가 보는 중단 시간이 줄어듭니다.</p>
       </div>
       <aside class="callout callout--note">
         <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>훈련 때 확인할 것</p>
-        <p>장애 조치 훈련은 "DB가 넘어갔나"가 아니라 "앱 에러율이 몇 초 만에 0으로 돌아왔나"로 판정합니다.</p>
+        <p>장애 조치 훈련은 "DB가 넘어갔나"가 아니라 "주문 API 에러율이 몇 초 만에 0으로 돌아왔나"로 판정합니다.</p>
       </aside>
+    </div>
+  </div>
+</section>
+
+<!-- ===== DR: why ===================================================== -->
+<section class="slide">
+  <h2>Multi-AZ가 막지 못하는 장애가 DR의 몫이다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>여기까지의 구조는 앞의 장애 표에서 위쪽 두 줄, 즉 서버와 AZ의 장애를 막습니다. 남은 것 중 둘은 구조만으로 막을 수 없습니다. 하나는 <strong>리전 전체 장애</strong>입니다. 서울 리전의 여러 AZ가 함께 영향을 받으면 리전 안에서 아무리 펼쳐 두어도 소용이 없습니다.</p>
+      <p>다른 하나는 <strong>데이터 손상</strong>입니다. 운영자가 조건 없이 <code>DELETE</code>를 실행하거나 랜섬웨어가 데이터를 암호화하면, Multi-AZ의 동기 복제는 그 손상을 대기 인스턴스에도 충실히 복사합니다. <mark>Multi-AZ는 DR이 아닙니다.</mark></p>
+    </div>
+    <div class="prose">
+      <p>이런 장애에 대비하는 것을 <dfn title="Disaster Recovery">재해 복구(DR)</dfn>라고 합니다. 고가용성이 "멈추지 않기"라면 DR은 "멈춘 뒤 되살리기"입니다. 데이터를 다른 곳(다른 리전, 다른 계정)에 복사해 두고, 그것으로 서비스를 다시 세우는 절차까지 포함합니다.</p>
+      <p>DR을 얼마나 할지는 기분으로 정하지 않습니다. 업계는 두 개의 숫자로 목표를 정하고, 그 숫자에 맞는 전략과 비용을 고릅니다. 다음 슬라이드가 그 두 숫자입니다.</p>
     </div>
   </div>
 </section>
@@ -476,9 +661,9 @@
   <h2>DR의 두 숫자: 잃어도 되는 데이터와 시간</h2>
   <div class="split split--center">
     <div class="prose">
-      <p>Multi-AZ가 막지 못하는 리전 장애와 데이터 손상에는 <dfn title="Disaster Recovery">재해 복구(DR)</dfn>로 대비합니다. 목표는 두 숫자로 정합니다.</p>
-      <p><dfn>RPO</dfn>(Recovery Point Objective)는 장애 시점에서 거꾸로 얼마만큼의 데이터를 잃어도 되는가, <dfn>RTO</dfn>(Recovery Time Objective)는 얼마 만에 서비스를 되살려야 하는가입니다.</p>
-      <p><mark>Multi-AZ는 DR이 아닙니다.</mark> 실수로 실행한 DELETE나 랜섬웨어 암호화는 대기 인스턴스에도 그대로 복제됩니다.</p>
+      <p><dfn title="Recovery Point Objective">RPO</dfn>는 장애 시점에서 거꾸로 얼마만큼의 데이터를 잃어도 되는가입니다. 백업이 하루 한 번이면 최악의 경우 하루치 주문이 사라지므로 RPO는 24시간입니다.</p>
+      <p><dfn title="Recovery Time Objective">RTO</dfn>는 장애가 난 뒤 얼마 만에 서비스를 되살려야 하는가입니다. 백업에서 복원하는 데 4시간이 걸리면 RTO는 최소 4시간입니다.</p>
+      <p>그림처럼 RPO는 장애 <strong>이전</strong>으로, RTO는 장애 <strong>이후</strong>로 뻗습니다. 그래서 줄이는 수단도 다릅니다.</p>
     </div>
     <figure class="figure">
       <svg class="dg" viewBox="0 0 760 300" role="img" aria-labelledby="f-dr-t">
@@ -504,9 +689,99 @@
   </div>
 </section>
 
-<!-- ===== DR strategies ============================================== -->
+<!-- ===== RPO/RTO by business ========================================= -->
 <section class="slide">
-  <h2>DR 전략 넷: 평소에 무엇을 켜 두는가</h2>
+  <h2>목표 숫자는 기술이 아니라 사업이 정한다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>RPO와 RTO는 "멈추면 얼마나 손해인가"에서 출발합니다. 주문 서비스가 저녁 피크에 1시간 멈추면 그 시간의 매출이 통째로 사라지고, 이미 결제된 주문 기록을 잃으면 고객 신뢰와 법적 문제가 따라옵니다. 그래서 주문 DB는 RPO 1분, 서비스는 RTO 1시간 정도를 목표로 잡습니다.</p>
+      <p>반면 운영자가 쓰는 사내 관리 화면은 하루 멈춰도 일이 조금 불편할 뿐입니다. RPO 24시간, RTO 하루면 충분합니다.</p>
+    </div>
+    <div class="prose">
+      <p>숫자를 줄일수록 비용은 직선이 아니라 가파르게 늡니다. RPO를 하루에서 1분으로 줄이려면 하루 한 번 백업 대신 다른 리전으로의 <strong>상시 복제</strong>가 필요하고, RTO를 하루에서 몇 분으로 줄이려면 다른 리전에 <strong>서버를 미리 켜 둬야</strong> 합니다.</p>
+      <p>그래서 서비스 하나에 하나의 숫자를 정하지 않고, 데이터와 기능마다 따로 정합니다. 주문 기록과 결제는 엄격하게, 상품 추천이나 사내 도구는 느슨하게. 이 숫자가 정해져야 다음에 볼 네 전략 중 무엇을 쓸지 고를 수 있습니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== DR spectrum ================================================= -->
+<section class="slide">
+  <h2>DR 전략은 평소에 무엇을 켜 두느냐의 스펙트럼이다</h2>
+  <div class="slide__body">
+    <div class="prose">
+      <p>AWS 백서 "Disaster Recovery of Workloads on AWS"는 DR 전략을 네 단계로 나눕니다. 기준은 하나입니다. <strong>평소에 DR 리전에 무엇을 켜 두는가.</strong> 왼쪽은 데이터 복사본만 두고, 오른쪽으로 갈수록 서버와 트래픽까지 켜 둡니다. 켜 둔 것이 많을수록 장애 때 할 일이 줄어 RPO와 RTO가 짧아지고, 평소 비용은 늘어납니다.</p>
+    </div>
+    <ol class="flow">
+      <li class="flow__node"><b>Backup &amp; Restore</b><span>백업 복사본만</span></li>
+      <li class="flow__node"><b>Pilot Light</b><span>데이터 복제, 서버 꺼 둠</span></li>
+      <li class="flow__node"><b>Warm Standby</b><span>작은 전체 스택 가동</span></li>
+      <li class="flow__node is-flow"><b>Active-Active</b><span>두 리전 모두 서비스</span></li>
+    </ol>
+    <p class="small">네 이름은 백서의 분류명이라 영어 그대로 씁니다. 다음 슬라이드부터 왼쪽부터 하나씩 보고, 마지막에 표로 묶습니다.</p>
+  </div>
+</section>
+
+<!-- ===== Backup & Restore ============================================ -->
+<section class="slide">
+  <h2>Backup &amp; Restore는 복사본과 IaC가 짝이다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>가장 단순한 전략입니다. 평소에는 <dfn title="snapshot">스냅샷</dfn>(어느 시점의 디스크나 DB를 통째로 떠 둔 복사본, 14·15장)을 DR 리전으로 복사해 두기만 합니다. <dfn>AWS Backup</dfn>은 RDS, EBS, DynamoDB, EFS 같은 여러 서비스의 백업 일정과 보관 기간, 교차 리전 복사를 한 곳에서 정의하는 서비스입니다.</p>
+      <p>두 가지를 빠뜨리면 동작하지 않습니다. 첫째, 복사본은 <strong>다른 리전</strong>, 가능하면 <strong>다른 계정</strong>에 둬야 리전 장애와 계정 탈취에서 살아남습니다. 둘째, 데이터만 있고 인프라가 없으면 VPC부터 손으로 만드느라 며칠이 걸립니다. IaC(11장)로 정의해 두어야 같은 환경을 빠르게 다시 만듭니다.</p>
+    </div>
+    <ol class="steps">
+      <li><b>평소</b><p>스냅샷을 DR 리전으로 주기적으로 복사합니다.</p></li>
+      <li><b>선언</b><p>리전 장애로 판단하고 DR을 선언합니다.</p></li>
+      <li><b>인프라 생성</b><p>IaC로 DR 리전에 스택을 만듭니다.</p></li>
+      <li class="is-key"><b>데이터 복원</b><p>스냅샷을 복원합니다. 데이터 크기에 비례해 오래 걸립니다.</p></li>
+      <li><b>전환</b><p>DNS를 DR 리전으로 돌립니다.</p></li>
+    </ol>
+  </div>
+</section>
+
+<!-- ===== Pilot light vs warm standby ================================= -->
+<section class="slide">
+  <h2>Pilot Light는 서버를 끄고, Warm은 작게 켠다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>Backup &amp; Restore의 RPO는 백업 주기에, RTO는 복원 시간에 묶입니다. 둘을 줄이려면 DR 리전에 무언가를 켜 둬야 합니다.</p>
+      <p><strong>Pilot Light</strong>는 가스 보일러의 불씨처럼 핵심만 켜 둡니다. DB는 교차 리전 복제로 늘 최신이라 RPO가 짧지만, 앱 서버는 0대이거나 이미지와 템플릿만 있습니다. 장애 때 서버를 띄우는 시간이 RTO가 됩니다.</p>
+      <p><strong>Warm Standby</strong>는 작은 규모의 완전한 스택이 늘 돌아갑니다. 바로 트래픽을 받을 수 있고, 장애 때는 용량만 늘리면 됩니다. 평소에도 동작하므로 DR 환경이 고장 난 채 방치되지 않았는지 계속 확인됩니다.</p>
+    </div>
+    <div class="slide__body">
+      <div class="prose">
+        <p>둘 다 장애 때 Auto Scaling으로 용량을 키우는데, 앞에서 본 컨트롤 플레인 작업입니다. 백서는 이 의존마저 없애려면 DR 리전에 전체 용량을 미리 켜 두는 <dfn title="hot standby">hot standby</dfn>를 고르라고 설명합니다.</p>
+      </div>
+      <aside class="callout callout--key">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>DR 리전의 서비스 할당량을 미리 올립니다</p>
+        <p>할당량은 계정과 리전마다 정해진 자원 사용 상한입니다. DR 리전의 vCPU 할당량이 낮으면 장애 당일 용량을 늘리지 못합니다.</p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Active-Active ============================================== -->
+<section class="slide">
+  <h2>Active-Active의 진짜 문제는 쓰기 위치다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p><strong>Multi-Site Active-Active</strong>는 두 리전이 평소에도 실제 트래픽을 나눠 받습니다. 장애 조치라는 절차 자체가 사라지고, 한 리전이 죽으면 그쪽 트래픽만 다른 리전으로 보내면 됩니다.</p>
+      <p>읽기는 각 리전에서 가까운 복제본을 읽으면 그만입니다. 어려운 것은 쓰기입니다. 서울과 도쿄에서 같은 주문을 동시에 고치면 어느 쪽이 맞는가. 4장의 CAP에서 보았듯, 리전 사이 지연을 감수하고 일관성을 지키거나, 각자 쓰고 충돌을 나중에 해결하거나 둘 중 하나를 골라야 합니다.</p>
+    </div>
+    <div class="prose">
+      <p>백서는 쓰기 전략을 셋으로 나눕니다.</p>
+      <ul>
+        <li><strong>Write global</strong>: 모든 쓰기를 한 리전으로 보냅니다. 단순하지만 먼 리전 사용자의 쓰기가 느립니다.</li>
+        <li><strong>Write local</strong>: 가까운 리전에 쓰고 서로 복제합니다. 빠르지만 같은 데이터를 동시에 쓰면 충돌을 풀어야 합니다.</li>
+        <li><strong>Write partitioned</strong>: 사용자마다 홈 리전을 정해 그 리전에만 씁니다. 충돌이 없지만 홈을 정하는 라우팅이 필요합니다.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ===== DR strategies table ========================================= -->
+<section class="slide">
+  <h2>네 전략을 비용과 복구 속도로 비교한다</h2>
   <div class="slide__body">
     <table class="compare">
       <thead><tr><th scope="col">전략</th><th scope="col">평소 DR 리전의 상태</th><th scope="col">RPO / RTO</th><th scope="col">비용</th></tr></thead>
@@ -516,88 +791,63 @@
         <tr><th scope="row">Warm Standby</th><td>축소된 전체 스택이 상시 가동</td><td>분 단위</td><td>중간</td></tr>
         <tr><th scope="row">Multi-Site Active-Active</th><td>두 리전 모두 실제 트래픽 처리</td><td class="is-flow">거의 0 / 실시간</td><td class="is-key">가장 높음</td></tr>
       </tbody>
-      <caption>AWS 백서 "Disaster Recovery of Workloads on AWS"의 분류입니다.</caption>
+      <caption>AWS 백서 "Disaster Recovery of Workloads on AWS"의 분류입니다. 수치는 일반적인 범위입니다.</caption>
     </table>
     <div class="prose">
-      <p>아래로 갈수록 평소에 켜 두는 것이 많아지고, 그만큼 RPO와 RTO가 줄어듭니다. 서비스마다 요구가 다르므로 전부 멀티 사이트로 만들 필요는 없습니다. 결제는 Warm Standby, 사내 도구는 Backup &amp; Restore처럼 나눕니다.</p>
+      <p>서비스 전체를 한 전략으로 통일할 필요는 없습니다. 앞에서 정한 목표에 맞춰, 주문 DB와 주문 API는 Warm Standby로 RPO 1분과 RTO 1시간을 맞추고, 사내 관리 화면은 Backup &amp; Restore로 둡니다. 이제 이 전략들을 실제로 받치는 AWS 부품을 봅니다.</p>
     </div>
   </div>
 </section>
 
-<!-- ===== Backup & Restore ============================================ -->
+<!-- ===== DR building blocks prose ==================================== -->
 <section class="slide">
-  <h2>Backup &amp; Restore는 복사본과 IaC다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p>가장 단순한 전략이지만 두 가지를 빠뜨리면 동작하지 않습니다. 첫째, 백업은 <strong>다른 리전</strong>, 가능하면 다른 계정에 복사해야 리전 장애와 계정 탈취에서 살아남습니다. AWS Backup의 백업 계획으로 RDS, EBS, DynamoDB, EFS 스냅숏을 교차 리전으로 복사합니다.</p>
-      <p>둘째, 데이터만 있고 인프라가 없으면 복구에 며칠이 걸립니다. VPC부터 앱까지 IaC(11장)로 정의해 두어야 DR 리전에 같은 환경을 빠르게 다시 만들 수 있습니다.</p>
-    </div>
-    <ol class="steps">
-      <li><b>평소</b><p>스냅숏을 DR 리전으로 주기적으로 복사합니다.</p></li>
-      <li><b>선언</b><p>리전 장애를 판단하고 DR을 선언합니다.</p></li>
-      <li><b>인프라 생성</b><p>IaC로 DR 리전에 스택을 만듭니다.</p></li>
-      <li class="is-key"><b>데이터 복원</b><p>스냅숏을 복원합니다. 크기에 비례해 오래 걸립니다.</p></li>
-      <li><b>전환</b><p>DNS를 DR 리전으로 돌립니다.</p></li>
-    </ol>
+  <h2>리전 간 DR은 복제 부품과 전환 부품으로 짠다</h2>
+  <div class="prose prose--cols">
+    <p>DR 전략이 하는 일은 결국 두 가지입니다. 데이터를 다른 리전에 <strong>복제</strong>해 두는 일과, 장애 때 사용자를 그 리전으로 <strong>전환</strong>하는 일입니다.</p>
+    <p>전환은 <strong>Route 53</strong>이 맡습니다. 13장의 장애 조치 라우팅은 헬스 체크가 주 리전의 실패를 보고하면 DNS 응답을 보조 리전 주소로 바꿉니다.</p>
+    <p>관계형 DB 복제는 <dfn>Aurora Global Database</dfn>가 맡습니다. Aurora(15장)의 스토리지 계층이 다른 리전으로 데이터를 비동기 복제하며, 지연은 보통 1초 미만입니다. 보조 리전은 평소 읽기 전용이고, 장애 때 1분 안쪽으로 쓰기 가능한 기본으로 승격할 수 있습니다.</p>
+    <p>S3 객체는 <dfn title="Cross-Region Replication">교차 리전 복제(CRR)</dfn>로 다른 리전 버킷에 비동기 복사합니다. 대부분 몇 초 안에 복제되지만 시간 보장은 없어서, 보장이 필요하면 <dfn title="Replication Time Control">RTC</dfn>를 켭니다. RTC는 객체의 99.9%를 15분 안에 복제한다고 약속합니다.</p>
+    <p><strong>DynamoDB 글로벌 테이블</strong>(15장)은 여러 리전에서 읽기와 쓰기를 모두 받고 서로 비동기로 복제합니다. 앞의 write local 방식에 맞는 부품입니다.</p>
+    <p>마지막으로 <strong>AWS Backup</strong>은 복제와 다른 역할을 합니다. 복제는 손상도 복제하지만, 백업은 손상 이전 시점으로 돌아갈 수 있게 해 줍니다.</p>
   </div>
 </section>
 
-<!-- ===== Pilot light vs warm standby ================================= -->
+<!-- ===== DR building blocks table ==================================== -->
 <section class="slide">
-  <h2>Pilot Light는 끄고 Warm은 작게 켠다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p><strong>Pilot Light</strong>는 가스 보일러의 불씨처럼 핵심만 켜 둡니다. DB는 교차 리전 복제로 늘 최신이지만, 앱 서버는 0대이거나 AMI와 템플릿만 있습니다. 장애 때 서버를 띄우는 시간이 RTO가 됩니다.</p>
-      <p><strong>Warm Standby</strong>는 작은 규모의 완전한 스택이 늘 돌아갑니다. 바로 트래픽을 받을 수 있고, 장애 때는 용량만 늘리면 됩니다. 평소에도 동작하므로 DR 환경이 썩지 않았는지 계속 검증됩니다.</p>
-    </div>
-    <div class="slide__body">
-      <div class="prose">
-        <p>둘 다 장애 때 Auto Scaling으로 용량을 키우는데, 이것은 컨트롤 플레인 작업입니다. 백서는 이 의존을 없애려면 DR 리전에 전체 용량을 미리 켜 두는 <dfn title="hot standby">hot standby</dfn>를 고르라고 설명합니다.</p>
-      </div>
-      <aside class="callout callout--key">
-        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>DR 리전의 서비스 할당량</p>
-        <p>DR 리전의 EC2 vCPU 같은 할당량이 낮으면 장애 당일에 용량을 늘리지 못합니다. 미리 올려 둡니다.</p>
-      </aside>
-    </div>
-  </div>
-</section>
-
-<!-- ===== Active-Active ============================================== -->
-<section class="slide">
-  <h2>Active-Active의 진짜 문제는 쓰기다</h2>
-  <div class="split split--even">
-    <div class="prose">
-      <p>두 리전이 모두 트래픽을 받으면 장애 조치라는 절차 자체가 사라집니다. 한 리전이 죽으면 그쪽 트래픽만 다른 리전으로 보내면 됩니다. 읽기는 가까운 리전에서 처리하면 되지만, <strong>쓰기를 어디서 받을지</strong>가 설계의 핵심입니다.</p>
-      <p>4장의 CAP에서 봤듯, 리전 사이 지연을 감수하고 강한 일관성을 얻거나, 각자 쓰고 충돌을 나중에 해결하는 길 중 하나를 골라야 합니다.</p>
-    </div>
-    <table class="compare">
-      <thead><tr><th scope="col">쓰기 전략</th><th scope="col">방식</th></tr></thead>
-      <tbody>
-        <tr><th scope="row">Write global</th><td>모든 쓰기를 한 리전으로</td></tr>
-        <tr><th scope="row">Write local</th><td class="is-key">가까운 리전에 쓰고 충돌 해결</td></tr>
-        <tr><th scope="row">Write partitioned</th><td class="is-flow">사용자별 홈 리전에만 쓰기</td></tr>
-      </tbody>
-      <caption>Aurora Global Database는 write global, DynamoDB 글로벌 테이블은 write local에 맞습니다.</caption>
-    </table>
-  </div>
-</section>
-
-<!-- ===== DR building blocks ========================================== -->
-<section class="slide">
-  <h2>리전 간 DR을 받치는 세 부품</h2>
+  <h2>부품마다 지키는 숫자가 다르다</h2>
   <div class="slide__body">
     <table class="compare">
       <thead><tr><th scope="col">부품</th><th scope="col">맡는 역할</th><th scope="col">알아 둘 수치와 성질</th></tr></thead>
       <tbody>
-        <tr><th scope="row">Route 53</th><td>트래픽을 DR 리전으로 전환</td><td>헬스 체크 기반 장애 조치 레코드(13장)</td></tr>
+        <tr><th scope="row">Route 53</th><td>트래픽을 DR 리전으로 전환</td><td>헬스 체크 기반 장애 조치 레코드</td></tr>
         <tr><th scope="row">Aurora Global Database</th><td>DB를 리전 간 복제</td><td class="is-flow">보통 1초 미만 지연, 1분 미만 승격</td></tr>
-        <tr><th scope="row">S3 교차 리전 복제(CRR)</th><td>객체를 비동기 복제</td><td>RTC 켜면 99.9%를 15분 안에</td></tr>
-        <tr><th scope="row">DynamoDB 글로벌 테이블</th><td>여러 리전에서 읽기·쓰기</td><td>리전 간 비동기 복제(15장)</td></tr>
-        <tr><th scope="row">AWS Backup</th><td>스냅숏 교차 리전·계정 복사</td><td>논리적 손상에서 되돌아갈 시점</td></tr>
+        <tr><th scope="row">S3 CRR</th><td>객체를 비동기 복제</td><td>RTC 켜면 99.9%를 15분 안에</td></tr>
+        <tr><th scope="row">DynamoDB 글로벌 테이블</th><td>여러 리전에서 읽기·쓰기</td><td>리전 간 비동기 복제</td></tr>
+        <tr><th scope="row">AWS Backup</th><td>스냅샷 교차 리전·계정 복사</td><td class="is-key">손상 이전 시점으로 복원</td></tr>
       </tbody>
     </table>
     <div class="prose">
-      <p>Aurora Global Database는 보조 리전을 최대 10개까지 둘 수 있고, 계획된 리전 이동에는 데이터 손실 없는 switchover를, 실제 장애에는 failover를 씁니다. 복제는 비동기라 failover 때는 <strong>복제 지연만큼의 데이터가 RPO</strong>가 됩니다.</p>
+      <p>앞 슬라이드의 설명을 표로 묶었습니다. 복제 부품들이 모두 <strong>비동기</strong>라는 점을 눈여겨보세요. 리전 사이는 수십 ms 떨어져 있어서, 동기로 복제하면 모든 쓰기가 그만큼 느려집니다. 그래서 리전 간 DR에서는 복제 지연이 곧 RPO의 바닥이 됩니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Aurora switchover/failover ================================== -->
+<section class="slide">
+  <h2>계획된 이동은 switchover, 장애는 failover</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>Aurora Global Database는 보조 리전을 최대 10개까지 둘 수 있고, 기본 리전을 옮기는 방법이 둘입니다.</p>
+      <p><dfn>switchover</dfn>는 기본 리전이 멀쩡할 때 쓰는 계획된 이동입니다. 기본 리전의 쓰기를 멈추고 보조 리전이 마지막 변경까지 따라잡기를 기다린 뒤 역할을 바꾸므로 <strong>데이터 손실이 없습니다</strong>. DR 훈련이나 리전 이전에 씁니다.</p>
+    </div>
+    <div class="slide__body">
+      <div class="prose">
+        <p><dfn>failover</dfn>는 기본 리전이 응답하지 않을 때 보조 리전을 강제로 승격합니다. 기다릴 상대가 없으므로, 아직 복제되지 못한 마지막 변경은 잃습니다. 즉 <mark>복제 지연만큼의 데이터가 RPO</mark>가 됩니다.</p>
+      </div>
+      <aside class="callout callout--note">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>복제 지연을 지표로 지켜봅니다</p>
+        <p>평소 복제 지연이 1초 미만이어도, 쓰기가 몰리면 늘어날 수 있습니다. 지연 지표에 알람을 걸어 두면 RPO가 목표를 넘기 전에 알 수 있습니다.</p>
+      </aside>
     </div>
   </div>
 </section>
@@ -607,17 +857,18 @@
   <h2>장애 조치 스위치는 데이터 플레인에 둔다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>리전 장애 중에는 그 리전의 콘솔이나 API가 느리거나 안 될 수 있습니다. 그래서 DR 전환 절차는 <strong>장애가 난 리전에 의존하지 않아야</strong> 합니다.</p>
-      <p>백서는 Route 53 레코드 가중치를 바꾸는 방식이 컨트롤 플레인 작업이라 덜 탄력적이라고 지적합니다. 대신 ARC의 routing control은 Route 53 헬스 체크를 사람이 켜고 끄는 스위치로 만들어, 고가용성 데이터 플레인 API로 전환합니다.</p>
+      <p>리전 장애 중에는 그 리전의 콘솔이나 API도 느리거나 안 될 수 있습니다. 그래서 DR 전환 절차는 <strong>장애가 난 리전에 의존하지 않아야</strong> 합니다.</p>
+      <p>Route 53 레코드의 가중치나 값을 고쳐 전환하는 방식은 편하지만, 레코드 수정은 컨트롤 플레인 작업입니다. 백서는 이 방식이 덜 탄력적이라고 지적합니다.</p>
+      <p>대안은 ARC의 <dfn title="routing control">routing control</dfn>입니다. 사람이 켜고 끄는 스위치를 Route 53 헬스 체크에 연결해 두고, 스위치를 끄면 헬스 체크가 실패로 바뀌어 장애 조치 레코드가 보조 리전을 가리킵니다. 스위치 조작은 여러 리전에 분산된 고가용성 데이터 플레인 API로 처리됩니다.</p>
     </div>
     <div class="slide__body">
       <aside class="callout callout--key">
-        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>훈련하지 않은 DR은 없는 것과 같다</p>
-        <p>복원해 본 적 없는 백업은 복원된다는 보장이 없습니다. 분기마다 실제로 DR 리전에 전환해 보고 걸린 시간을 RTO와 비교합니다.</p>
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>훈련하지 않은 DR은 없는 것과 같습니다</p>
+        <p>복원해 본 적 없는 백업은 복원된다는 보장이 없습니다. 분기마다 DR 리전으로 실제 전환해 보고 걸린 시간을 RTO와 비교합니다.</p>
       </aside>
       <aside class="callout callout--note">
-        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>자동이냐 수동이냐</p>
-        <p>리전 전체 전환은 오판 비용이 커서 사람이 결정하고, 실행은 스크립트 한 줄로 끝나게 만드는 것이 일반적입니다.</p>
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>결정은 사람이, 실행은 한 줄로</p>
+        <p>리전 전체 전환은 오판 비용이 커서 사람이 결정하고, 실행은 스크립트 한 줄로 끝나게 만드는 것이 일반적입니다. 2부의 구조로 막지 못한 마지막 장애, 잘못된 변경은 3부에서 다룹니다.</p>
       </aside>
     </div>
   </div>
@@ -626,32 +877,59 @@
 <!-- ===== Part 3 divider (core) ======================================= -->
 <section class="slide slide--divider" data-section="AWS에서의 배포" data-depth="core">
   <p class="divider__no">3부</p>
-  <h2>배포 전략을 AWS 도구로 구현하기</h2>
-  <p class="lede">장애의 가장 흔한 원인은 인프라가 아니라 변경입니다. Rolling, Blue-Green, Canary의 개념은 11장에서 보았으니, 여기서는 그 전략을 AWS 서비스가 실제로 어떻게 실행하는지 따라갑니다.</p>
+  <h2>변경을 작게 넣고 자동으로 되돌린다</h2>
+  <p class="lede">2부의 구조는 무언가가 사라지는 장애를 막지만, 모든 AZ에 함께 퍼지는 잘못된 변경은 막지 못합니다. 실제 장애의 가장 흔한 원인이 바로 이 변경입니다. 11장에서 배포 전략의 개념을 보았으니, 이 부는 그 전략을 AWS 도구가 어떻게 실행하는지, 그리고 이상이 보이면 누가 어떻게 되돌리는지를 주문 API의 배포로 따라갑니다.</p>
+</section>
+
+<!-- ===== Strategy recap ============================================== -->
+<section class="slide">
+  <h2>11장의 배포 전략을 한 번 더 짚는다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>11장의 전략들은 모두 같은 질문에 대한 서로 다른 답입니다. "새 버전이 틀렸을 때, 몇 명의 사용자가 얼마 동안 겪게 할 것인가."</p>
+      <ul>
+        <li><strong>Rolling</strong>: 서버를 몇 대씩 차례로 새 버전으로 바꿔 끼웁니다. 추가 서버가 적게 들지만, 중간에는 두 버전이 섞여 돕니다.</li>
+        <li><strong>Blue-Green</strong>: 새 버전(green)을 옆에 통째로 띄우고 트래픽을 한 번에 넘깁니다. 되돌리기는 다시 넘기기만 하면 됩니다.</li>
+      </ul>
+    </div>
+    <div class="prose">
+      <ul>
+        <li><strong>Canary</strong>: 트래픽 일부(예: 10%)만 새 버전으로 보내 지켜본 뒤, 이상이 없으면 나머지를 넘깁니다. 문제가 있어도 일부 사용자만 겪습니다.</li>
+        <li><strong>Linear</strong>: Canary를 여러 단계로 늘린 것입니다. 정해진 간격마다 같은 비율씩(예: 1분마다 10%) 새 버전 쪽을 키웁니다.</li>
+      </ul>
+      <p>네 전략 모두 "지켜보다가 이상하면 되돌린다"를 전제로 합니다. 이 부에서는 <strong>되돌리는 판단을 사람 대신 알람이 하게</strong> 만드는 방법이 계속 나옵니다. 알람 자체는 4부에서 자세히 봅니다.</p>
+    </div>
+  </div>
 </section>
 
 <!-- ===== Strategy mapping ============================================ -->
 <section class="slide">
   <h2>같은 전략도 플랫폼마다 구현이 다르다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>전략은 같아도 "트래픽을 어디서 나누느냐"는 플랫폼마다 다릅니다. ECS는 서비스 설정으로, EC2는 로드 밸런서나 배포 도구로, Lambda는 함수의 별칭으로 나눕니다. 아래 표의 각 칸은 이어지는 슬라이드에서 하나씩 설명합니다.</p>
+    </div>
     <table class="compare">
-      <thead><tr><th scope="col">11장 전략</th><th scope="col">ECS</th><th scope="col">EC2·ALB</th><th scope="col">Lambda</th></tr></thead>
+      <thead><tr><th scope="col">전략</th><th scope="col">ECS</th><th scope="col">EC2·ALB</th><th scope="col">Lambda</th></tr></thead>
       <tbody>
-        <tr><th scope="row">Rolling</th><td>ROLLING 전략 + 서킷 브레이커</td><td>ASG 인스턴스 새로 고침</td><td>해당 없음</td></tr>
+        <tr><th scope="row">Rolling</th><td>ROLLING + 서킷 브레이커</td><td>ASG 인스턴스 새로 고침</td><td>해당 없음</td></tr>
         <tr><th scope="row">Blue-Green</th><td class="is-flow">BLUE_GREEN 전략(내장)</td><td>CodeDeploy, 대상 그룹 전환</td><td>별칭을 새 버전으로</td></tr>
         <tr><th scope="row">Canary</th><td>CANARY 전략(내장)</td><td>ALB 가중치 대상 그룹</td><td>가중치 별칭</td></tr>
         <tr><th scope="row">Linear</th><td>LINEAR 전략(내장)</td><td>가중치를 단계별로 조정</td><td>CodeDeploy Linear</td></tr>
-        <tr><th scope="row">스택 단위 전환</th><td colspan="3">Route 53 가중치 레코드로 두 환경 사이 비율 조절</td></tr>
+        <tr><th scope="row">환경 통째 전환</th><td colspan="3">Route 53 가중치 레코드로 두 환경 사이 비율 조절</td></tr>
       </tbody>
     </table>
-    <p class="small">ECS는 예전에는 Blue-Green과 Canary를 CodeDeploy에 맡겨야 했지만, 지금은 서비스의 배포 전략으로 BLUE_GREEN, LINEAR, CANARY를 직접 고를 수 있습니다. CodeDeploy 방식도 계속 지원됩니다.</p>
+    <p class="small">ECS는 예전에는 Blue-Green과 Canary를 CodeDeploy에 맡겨야 했지만, 지금은 서비스의 배포 전략으로 BLUE_GREEN, LINEAR, CANARY를 직접 고를 수 있습니다. CodeDeploy 방식도 계속 지원됩니다. 인스턴스 새로 고침은 14장의 Auto Scaling 그룹 롤링 교체입니다.</p>
   </div>
 </section>
 
 <!-- ===== CodePipeline ================================================ -->
 <section class="slide">
-  <h2>CodePipeline이 단계를 잇는다</h2>
+  <h2>코드가 운영에 닿기까지 세 도구가 나눠 맡는다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>주문 API 개발자가 GitHub에 코드를 푸시하면, 테스트와 이미지 빌드를 거쳐 ECS에 새 버전이 올라가야 합니다. AWS에서는 이 과정을 세 도구가 나눠 맡습니다.</p>
+    </div>
     <ol class="flow">
       <li class="flow__node"><b>소스</b><span>GitHub 연결, 푸시 감지</span></li>
       <li class="flow__node"><b>CodeBuild</b><span>테스트, 이미지 빌드</span></li>
@@ -660,8 +938,7 @@
       <li class="flow__node is-flow"><b>배포</b><span>ECS, CodeDeploy</span></li>
     </ol>
     <div class="prose">
-      <p><dfn>CodePipeline</dfn>은 단계와 산출물(artifact)을 이어 주는 오케스트레이터이고, 스스로 빌드하거나 배포하지 않습니다. <dfn>CodeBuild</dfn>는 요청마다 깨끗한 빌드 컨테이너를 띄워 <code>buildspec.yml</code>을 실행하고 끝나면 버립니다. <dfn>CodeDeploy</dfn>는 EC2, ECS, Lambda에 새 버전을 넣고 트래픽을 옮기며, 알람이 울리면 되돌립니다.</p>
-      <p>GitHub Actions(11장)로 빌드하고 배포 단계만 AWS 도구에 맡기는 조합도 흔합니다. 어느 쪽이든 배포 단계가 <strong>IAM 역할로 인증</strong>해야 장기 키가 남지 않습니다(12장).</p>
+      <p><dfn>CodePipeline</dfn>은 단계를 순서대로 잇고 한 단계의 <dfn title="artifact">산출물</dfn>(빌드 결과 파일 등)을 다음 단계로 넘기는 오케스트레이터이며, 스스로 빌드하거나 배포하지 않습니다. <dfn>CodeBuild</dfn>는 요청마다 깨끗한 빌드 컨테이너를 띄워 빌드 대본을 실행하고 끝나면 버립니다. <dfn>CodeDeploy</dfn>는 EC2, ECS, Lambda에 새 버전을 넣고 트래픽을 옮기며, 알람이 울리면 되돌립니다.</p>
     </div>
   </div>
 </section>
@@ -687,19 +964,34 @@
 <span class="hl">          $REPO:$TAG &gt; imagedefinitions.json</span>
 <span class="k">artifacts</span>: { <span class="k">files</span>: [imagedefinitions.json] }</code></pre>
     <div class="prose">
-      <p>단계는 <code>install</code>, <code>pre_build</code>, <code>build</code>, <code>post_build</code> 순서로 실행됩니다. 테스트가 실패하면 그 자리에서 파이프라인이 멈춥니다.</p>
-      <p>강조한 줄이 다음 단계로 넘길 산출물입니다. ECS 배포 단계는 이 파일에서 컨테이너 이름과 새 이미지 주소를 읽어 Task Definition의 새 리비전을 만듭니다. 태그에는 커밋 해시를 써서 어떤 코드가 배포됐는지 추적합니다.</p>
+      <p>CodeBuild가 읽는 대본이 <code>buildspec.yml</code>입니다. 단계는 <code>install</code>, <code>pre_build</code>, <code>build</code>, <code>post_build</code> 순서로 실행됩니다. 여기서는 ECR에 로그인하고, 테스트와 JAR 빌드 후 이미지를 만들어 푸시합니다. 테스트가 실패하면 그 자리에서 파이프라인이 멈춥니다.</p>
+      <p>강조한 줄은 다음 단계로 넘길 산출물입니다. ECS 배포 단계는 이 파일에서 컨테이너 이름과 새 이미지 주소를 읽어 태스크 정의(14장)의 새 리비전을 만듭니다. <code>$TAG</code>에 커밋 해시를 쓰면 어떤 코드가 배포됐는지 추적할 수 있습니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Pipeline auth =============================================== -->
+<section class="slide">
+  <h2>파이프라인도 장기 키 없이 역할로 인증한다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>빌드와 배포를 꼭 AWS 도구로 할 필요는 없습니다. GitHub Actions(11장)로 테스트와 이미지 빌드를 하고, 배포 단계만 ECS나 CodeDeploy에 맡기는 조합도 흔합니다. 어느 쪽을 고르든 지켜야 할 규칙은 같습니다.</p>
+      <p>파이프라인은 운영 계정의 ECS를 바꿀 수 있는 강력한 주체입니다. 여기에 IAM 사용자의 액세스 키를 넣어 두면, 그 키가 유출되는 순간 누구나 운영 환경에 아무 이미지나 배포할 수 있습니다.</p>
+    </div>
+    <div class="prose">
+      <p>그래서 CodeBuild와 CodePipeline은 각자의 <strong>서비스 역할</strong>로, GitHub Actions는 12장에서 본 <strong>OIDC 페더레이션</strong>으로 실행 때마다 짧게 사는 임시 자격 증명을 받습니다. 저장된 비밀이 없으니 유출될 것도 없습니다.</p>
+      <p>역할의 권한은 "이 클러스터의 이 서비스를 갱신하고, 이 저장소에 이미지를 푸시한다"까지만 줍니다. 파이프라인이 준비되었으니, 이제 마지막 배포 단계가 ECS 안에서 트래픽을 어떻게 옮기는지 봅니다.</p>
     </div>
   </div>
 </section>
 
 <!-- ===== ECS blue/green mechanism ==================================== -->
 <section class="slide">
-  <h2>ECS Blue/Green은 리스너 규칙을 바꾼다</h2>
+  <h2>ECS Blue/Green은 리스너 규칙의 대상을 바꾼다</h2>
   <div class="split split--center">
     <div class="prose">
-      <p>ALB 리스너에 대상 그룹 두 개를 준비합니다. 현재 버전(blue) 태스크는 한쪽에, 새 버전(green) 태스크는 다른 쪽에 등록됩니다.</p>
-      <p>green이 뜨면 먼저 <strong>테스트 리스너 규칙</strong>(특정 헤더를 단 요청 등)으로만 검증 트래픽을 보냅니다. 통과하면 프로덕션 규칙이 green을 가리키도록 한 번에 바꿉니다. blue는 <dfn title="bake time">bake time</dfn> 동안 살려 두어, 문제가 생기면 규칙만 되돌려 즉시 롤백합니다.</p>
+      <p>13장에서 보았듯 ALB의 <strong>리스너 규칙</strong>은 들어온 요청을 어느 <strong>대상 그룹</strong>(요청을 받을 서버 묶음)으로 보낼지 정합니다. Blue/Green은 대상 그룹 두 개를 준비해 현재 버전(blue)과 새 버전(green) 태스크를 따로 등록합니다.</p>
+      <p>green이 뜨면 먼저 <strong>테스트 리스너 규칙</strong>(특정 헤더를 단 요청 등)으로 검증 트래픽만 보냅니다. 통과하면 프로덕션 규칙이 green을 가리키도록 한 번에 바꿉니다. blue는 <dfn title="bake time">bake time</dfn>, 즉 전환 후 지켜보는 대기 시간 동안 살려 두어 문제가 생기면 규칙만 되돌립니다.</p>
     </div>
     <figure class="figure">
       <svg class="dg" viewBox="0 0 760 420" role="img" aria-labelledby="f-bg-t">
@@ -744,27 +1036,27 @@
   }
 }</code></pre>
     <div class="prose">
-      <p>새 버전에 트래픽 10%를 보내고 10분간 지켜본 뒤 나머지 90%를 옮깁니다. 기본값은 5%, 10분입니다. 전부 옮긴 뒤에도 15분 동안 옛 버전을 살려 둡니다.</p>
-      <p>그동안 지정한 CloudWatch 알람이 ALARM이 되면 ECS가 자동으로 되돌립니다. 각 단계에 Lambda 함수를 거는 <strong>수명 주기 훅</strong>으로 스모크 테스트를 넣을 수도 있습니다.</p>
+      <p>같은 대상 그룹 두 개 구조 위에서 트래픽을 비율로 나누면 Canary가 됩니다. 주문 API 서비스의 설정입니다. 강조한 두 줄은 새 버전에 트래픽 10%를 보내고 10분 지켜본 뒤 나머지 90%를 옮기라는 뜻입니다(기본값은 5%, 10분). <code>bakeTimeInMinutes</code>는 전부 옮긴 뒤에도 15분 동안 옛 버전을 살려 두라는 뜻입니다.</p>
+      <p><code>alarms</code>는 그동안 지켜볼 CloudWatch 알람입니다. 5xx 비율 알람이 울리면 ECS가 자동으로 되돌립니다. 각 단계에 Lambda 함수를 거는 <dfn title="lifecycle hook">수명 주기 훅</dfn>으로 스모크 테스트를 넣을 수도 있습니다.</p>
     </div>
   </div>
 </section>
 
 <!-- ===== Rolling + circuit breaker =================================== -->
 <section class="slide">
-  <h2>Rolling은 비율 둘과 서킷 브레이커로</h2>
+  <h2>Rolling은 비율 둘과 서킷 브레이커로 지킨다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>ROLLING 전략은 태스크를 조금씩 바꿔 끼웁니다. <code>minimumHealthyPercent</code>와 <code>maximumPercent</code> 두 비율로 빠르기와 여유 용량을 맞바꾸는 계산은 14장에서 봤습니다.</p>
+      <p>ROLLING 전략은 대상 그룹 하나 안에서 태스크를 조금씩 바꿔 끼웁니다. 14장에서 <code>minimumHealthyPercent</code>(배포 중 유지할 최소 태스크 비율)와 <code>maximumPercent</code>(동시에 떠 있을 수 있는 최대 비율) 두 값으로 빠르기와 여유 용량을 맞바꾸는 계산을 보았습니다.</p>
       <p>운영에서 더 중요한 질문은 잘못된 버전을 누가 멈추느냐입니다. ECS가 스스로 멈추는 장치와, 사람이 정한 지표로 멈추는 장치가 따로 있습니다.</p>
     </div>
     <div class="slide__body">
       <div class="prose">
-        <p>새 이미지가 기동하자마자 죽으면 ECS는 기본적으로 끝없이 다시 띄웁니다. <dfn title="deployment circuit breaker">배포 서킷 브레이커</dfn>(14장)를 켜면 실패가 임계값에 닿을 때 배포를 실패로 끝내고, <code>rollback</code>을 켜 두면 마지막 성공 리비전으로 되돌립니다.</p>
+        <p>새 이미지가 기동하자마자 죽으면 ECS는 기본적으로 끝없이 다시 띄웁니다. <dfn title="deployment circuit breaker">배포 서킷 브레이커</dfn>(14장)를 켜면 실패 횟수가 임계값에 닿을 때 배포를 실패로 끝내고, <code>rollback</code>을 켜 두면 마지막 성공 리비전으로 되돌립니다.</p>
       </div>
       <aside class="callout callout--key">
         <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>서킷 브레이커는 "뜨는가"만 봅니다</p>
-        <p>태스크는 건강한데 응답이 틀리는 버그는 못 잡습니다. 에러율 알람을 함께 걸어야 합니다.</p>
+        <p>태스크는 건강한데 응답이 틀리는 버그는 못 잡습니다. 앞 슬라이드처럼 에러율 알람을 함께 걸어야 합니다.</p>
       </aside>
     </div>
   </div>
@@ -772,8 +1064,11 @@
 
 <!-- ===== CodeDeploy configs ========================================== -->
 <section class="slide">
-  <h2>CodeDeploy는 이동 방식을 이름으로 고른다</h2>
+  <h2>CodeDeploy는 트래픽 이동 방식을 이름으로 고른다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>ECS 내장 전략이 생기기 전부터 쓰여 온 방식이 CodeDeploy입니다. EC2와 Lambda는 지금도 CodeDeploy로 Canary와 Linear를 합니다. CodeDeploy는 비율과 간격을 <dfn title="deployment configuration">배포 구성</dfn>이라는 이름 붙은 설정으로 고르게 합니다. 이름에 동작이 그대로 적혀 있습니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">대상</th><th scope="col">미리 정의된 배포 구성 예</th><th scope="col">동작</th></tr></thead>
       <tbody>
@@ -785,9 +1080,7 @@
       </tbody>
       <caption>이름 앞에는 모두 CodeDeployDefault.가 붙습니다. 비율과 간격을 바꾼 사용자 지정 구성도 만들 수 있습니다.</caption>
     </table>
-    <div class="prose">
-      <p>Canary는 작은 비율로 오래 지켜보고 한 번에 넘기며, Linear는 같은 폭으로 꾸준히 늘립니다. 어느 쪽이든 배포 그룹에 CloudWatch 알람을 연결해 두어야 <strong>사람 없이 롤백</strong>됩니다.</p>
-    </div>
+    <p class="small">어느 구성이든 배포 그룹에 CloudWatch 알람을 연결해 두어야 사람 없이 롤백됩니다.</p>
   </div>
 </section>
 
@@ -810,23 +1103,23 @@
   }
 }</code></pre>
     <div class="prose">
-      <p>forward 동작에 대상 그룹 여러 개와 0~999의 가중치를 주면 ALB가 비율대로 나눕니다. 90:10에서 50:50, 0:100으로 바꿔 가는 것이 Canary입니다.</p>
-      <p>대상 그룹 고정(stickiness)을 켜야 한 사용자가 요청마다 두 버전을 오가지 않습니다. 또 한쪽 그룹이 비거나 전부 unhealthy여도 ALB는 <mark>다른 그룹으로 자동으로 넘기지 않습니다</mark>.</p>
+      <p>배포 도구 없이 ALB 설정만으로도 Canary를 할 수 있습니다. 13장의 가중치 대상 그룹입니다. forward 동작에 대상 그룹 여러 개와 0~999의 가중치를 주면 ALB가 비율대로 나눕니다. 90:10에서 50:50, 0:100으로 바꿔 갑니다.</p>
+      <p>아래쪽 <code>TargetGroupStickinessConfig</code>는 대상 그룹 고정입니다. 한 사용자를 600초 동안 같은 그룹에 묶어, 요청마다 두 버전을 오가지 않게 합니다. 그리고 한쪽 그룹이 비거나 전부 unhealthy여도 ALB는 <mark>다른 그룹으로 자동으로 넘기지 않습니다</mark>.</p>
     </div>
   </div>
 </section>
 
 <!-- ===== Route 53 weighted ========================================== -->
 <section class="slide">
-  <h2>Route 53 가중치는 환경 통째로 나눈다</h2>
+  <h2>Route 53 가중치는 환경을 통째로 나눈다</h2>
   <div class="split split--even">
     <div class="prose">
+      <p>ALB 가중치는 로드 밸런서 하나 안에서 대상 그룹을 나눕니다. 그보다 큰 단위, 예를 들어 새 VPC나 새 클러스터, DB 버전을 올린 새 스택 전체로 이사할 때는 Route 53의 가중치 레코드(13장)를 씁니다.</p>
       <p>같은 이름과 타입의 레코드를 여럿 만들고 각각 0~255의 가중치를 주면, Route 53이 가중치 합 대비 비율로 응답합니다. 1과 255면 1/256만 새 쪽으로 갑니다. 0이면 보내지 않습니다.</p>
-      <p>ALB 가중치가 대상 그룹 단위라면 Route 53 가중치는 <strong>로드 밸런서나 리전 같은 환경 통째</strong>를 나눕니다. 새 VPC나 새 클러스터로 이사할 때, DB 버전을 올린 새 스택으로 옮길 때 씁니다.</p>
     </div>
     <aside class="callout callout--key">
       <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>DNS는 즉시 바뀌지 않습니다</p>
-      <p>클라이언트와 리졸버가 TTL 동안 옛 응답을 캐시하고, JVM처럼 더 오래 쥐는 클라이언트도 있습니다. 전환 전에 TTL을 60초 정도로 낮춰 두고, 롤백도 TTL만큼 늦다는 점을 감안합니다.</p>
+      <p>클라이언트와 리졸버는 TTL(DNS 응답을 캐시해도 되는 시간) 동안 옛 응답을 씁니다. 전환 며칠 전에 TTL을 60초 정도로 낮춰 두고, 롤백도 TTL만큼 늦다는 점을 감안합니다.</p>
     </aside>
   </div>
 </section>
@@ -836,18 +1129,19 @@
   <h2>Lambda는 별칭이 두 버전에 트래픽을 나눈다</h2>
   <div class="split split--wide-left">
     <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>aws lambda publish-version \
-    --function-name order-api
+    --function-name payment-webhook
 <span class="dim">{ "Version": "8", … }</span>
 
 <span class="c"># live 별칭: v7에 90%, v8에 10%</span>
 <span class="prompt">$ </span>aws lambda update-alias \
-    --function-name order-api --name live \
-    --function-version <span class="n">7</span> \
+    --function-name payment-webhook \
+    --name live --function-version <span class="n">7</span> \
 <span class="hl">    --routing-config \</span>
 <span class="hl">    <span class="s">'{"AdditionalVersionWeights":{"8":0.1}}'</span></span></code></pre>
     <div class="prose">
-      <p>API Gateway나 이벤트 소스는 함수 버전이 아니라 <code>live</code> 같은 <dfn title="alias">별칭</dfn>을 가리킵니다. 별칭은 주 버전 하나와 추가 버전 하나 사이에 가중치를 줄 수 있습니다. 두 버전 모두 게시된 버전이어야 하며 <code>$LATEST</code>는 쓸 수 없습니다.</p>
-      <p>실무에서는 이 비율을 손으로 바꾸지 않고, SAM이나 CodeDeploy가 <code>LambdaCanary10Percent5Minutes</code> 같은 구성으로 옮기며 알람 시 되돌립니다.</p>
+      <p>결제 웹훅 함수의 배포입니다. 17장에서 보았듯 <code>publish-version</code>은 현재 코드를 바뀌지 않는 번호 붙은 버전으로 굳히고, API Gateway는 버전이 아니라 <code>live</code> 같은 <strong>별칭</strong>을 가리킵니다.</p>
+      <p>별칭은 주 버전 하나와 추가 버전 하나 사이에 가중치를 줄 수 있습니다. 강조한 줄이 v8에 10%를 주는 부분입니다. 두 버전 모두 게시된 버전이어야 하고, 계속 바뀌는 <code>$LATEST</code>는 쓸 수 없습니다.</p>
+      <p>실무에서는 이 비율을 손으로 바꾸지 않습니다. 서버리스 앱 배포 도구인 <dfn title="Serverless Application Model">SAM</dfn>이 CodeDeploy 구성으로 옮기며 알람 시 되돌립니다.</p>
     </div>
   </div>
 </section>
@@ -857,8 +1151,8 @@
   <h2>드레이닝 시간이 배포 시간의 바닥을 정한다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>옛 태스크나 인스턴스를 내릴 때 ALB는 그 대상을 <code>draining</code> 상태로 두고 새 요청을 보내지 않으면서, 진행 중인 요청이 끝나기를 <dfn title="deregistration delay">등록 취소 지연</dfn>만큼 기다립니다. 기본값은 <strong>300초</strong>입니다.</p>
-      <p>요청이 대부분 1초 안에 끝나는 API라면 300초는 배포마다 5분씩 허비하는 셈입니다. 가장 긴 정상 요청보다 조금 길게, 예를 들어 30초로 줄입니다.</p>
+      <p>어느 전략이든 마지막에는 옛 태스크를 내립니다. 그런데 그 태스크가 아직 처리 중인 요청을 갖고 있으면 그대로 끊깁니다. 그래서 ALB는 내릴 대상을 <code>draining</code> 상태로 두고 새 요청은 보내지 않으면서, 진행 중인 요청이 끝나기를 <dfn title="deregistration delay">등록 취소 지연</dfn>만큼 기다립니다. 기본값은 <strong>300초</strong>입니다.</p>
+      <p>주문 API처럼 요청이 대부분 1초 안에 끝나면 300초는 배포마다 5분씩 허비하는 셈입니다. 가장 긴 정상 요청보다 조금 길게, 예를 들어 30초로 줄입니다.</p>
     </div>
     <div class="slide__body">
       <aside class="callout callout--key">
@@ -866,9 +1160,24 @@
         <p>지연이 끝났는데도 처리 중인 요청이 있으면 ALB는 502를 돌려줍니다. 긴 업로드나 보고서 생성 API가 있다면 따로 계산합니다.</p>
       </aside>
       <aside class="callout callout--note">
-        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>앱 쪽 종료 처리는 10·11장</p>
-        <p>SIGTERM을 받은 앱이 새 요청을 거절하고 진행 중인 요청을 끝내는 Graceful Shutdown과 짝을 이뤄야 무중단이 됩니다.</p>
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>앱 쪽 종료 처리와 짝을 이룹니다</p>
+        <p>종료 신호 SIGTERM을 받은 앱이 진행 중인 요청을 마치고 내려가는 Graceful Shutdown(10·11장)이 있어야 무중단이 됩니다.</p>
       </aside>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Deploy wrap ================================================= -->
+<section class="slide">
+  <h2>모든 안전장치가 결국 알람 하나에 기댄다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>3부에서 본 도구를 다시 늘어놓으면 공통점이 보입니다. ECS Canary의 <code>alarms</code>, CodeDeploy 배포 그룹의 알람, SAM의 롤백 조건이 모두 <strong>CloudWatch 알람</strong>을 받아 "되돌릴지"를 판단합니다. 배포 서킷 브레이커만 예외인데, 그것은 태스크가 뜨는지만 봅니다.</p>
+      <p>그러니 배포의 안전은 알람의 질에 달려 있습니다. 5xx 비율 알람이 너무 둔하면 잘못된 버전이 끝까지 배포되고, 너무 예민하면 멀쩡한 배포가 계속 되돌려집니다.</p>
+    </div>
+    <div class="prose">
+      <p>알람은 숫자를 보고 울립니다. 그 숫자는 어디서 오고, 어떤 주기로 모이고, 평균과 백분위 중 무엇을 봐야 하는가. 이것이 다음 부의 주제입니다.</p>
+      <p>4부는 관측성입니다. 주문 서비스가 지금 건강한지 판단하는 데이터를 어떻게 모으고, 무엇을 지켜보고, 언제 사람을 깨울지를 CloudWatch를 중심으로 봅니다.</p>
     </div>
   </div>
 </section>
@@ -877,12 +1186,27 @@
 <section class="slide slide--divider" data-section="관측성" data-depth="practice">
   <p class="divider__no">4부</p>
   <h2>보이지 않으면 운영할 수 없다</h2>
-  <p class="lede">구조가 장애를 흡수하고 배포가 안전해도, 지금 무슨 일이 일어나는지 볼 수 없으면 대응할 수 없습니다. CloudWatch의 메트릭, 로그, 알람과 분산 추적, 그리고 무엇을 지켜볼지 정하는 SLO까지 다룹니다.</p>
+  <p class="lede">3부의 자동 롤백은 알람에, 2부의 장애 조치 판단은 지표에 기댑니다. 이 부는 그 데이터가 어디서 오는지부터 시작합니다. 주문 서비스의 숫자와 기록을 CloudWatch에 모으는 방법, 알람이 울리는 정확한 규칙, 요청 하나를 여러 서비스에 걸쳐 따라가는 추적, 그리고 무엇을 지켜볼지 정하는 SLO까지 갑니다.</p>
   <div class="depth-shift" aria-label="깊이 전환: 원리에서 실무로">
     <span class="depth-shift__step"><span class="depth" data-depth="core"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>원리</span>
     <span class="depth-shift__line" aria-hidden="true"></span>
     <span class="depth-shift__step is-to"><span class="depth" data-depth="practice"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>실무</span>
     <span class="depth-shift__note">CloudWatch 설정값, 쿼리, 알람 설계 수치를 다룹니다.</span>
+  </div>
+</section>
+
+<!-- ===== Monitoring vs observability ================================ -->
+<section class="slide">
+  <h2>관측성은 예상 못 한 질문에도 답할 수 있는 성질이다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>전통적인 <dfn title="monitoring">모니터링</dfn>은 미리 정한 지표를 지켜보는 일입니다. "CPU 80% 넘으면 알림"처럼 무엇이 잘못될지 미리 알고 있을 때 잘 동작합니다.</p>
+      <p>그런데 실제 장애는 대개 예상하지 못한 모양으로 옵니다. "특정 카드사로 결제한 주문만 3초씩 걸린다" 같은 문제는 미리 만든 그래프에 없습니다. <dfn title="observability">관측성</dfn>은 이런 처음 보는 문제도 시스템이 밖으로 내놓은 데이터만으로 원인을 좁혀 갈 수 있는 성질을 말합니다.</p>
+    </div>
+    <div class="prose">
+      <p>관측성을 이루는 데이터는 세 종류로 나눕니다. 시간에 따른 숫자인 <strong>메트릭</strong>, 사건 하나하나의 기록인 <strong>로그</strong>, 그리고 요청 하나가 여러 서비스를 거친 경로와 시간을 담은 <strong>트레이스</strong>입니다.</p>
+      <p>세 가지는 서로 다른 질문에 답하고, 비용 구조도 다릅니다. 다음 슬라이드에서 나란히 놓고 비교한 뒤, 메트릭부터 차례로 봅니다.</p>
+    </div>
   </div>
 </section>
 
@@ -894,13 +1218,28 @@
       <thead><tr><th scope="col">항목</th><th scope="col">메트릭</th><th scope="col">로그</th><th scope="col">트레이스</th></tr></thead>
       <tbody>
         <tr><th scope="row">답하는 질문</th><td>얼마나 나쁜가</td><td>그때 무슨 일이 있었나</td><td class="is-flow">어디서 느려졌나</td></tr>
-        <tr><th scope="row">형태</th><td>시계열 숫자</td><td>이벤트 기록(JSON)</td><td>요청 하나의 span 트리</td></tr>
-        <tr><th scope="row">비용</th><td>낮음, 오래 보관</td><td class="is-key">양에 비례해 커짐</td><td>샘플링으로 조절</td></tr>
+        <tr><th scope="row">형태</th><td>시계열 숫자</td><td>사건 기록(JSON 등)</td><td>요청 하나의 구간 트리</td></tr>
+        <tr><th scope="row">비용</th><td>낮음, 오래 보관</td><td class="is-key">양에 비례해 커짐</td><td>일부만 골라 저장</td></tr>
         <tr><th scope="row">AWS 도구</th><td>CloudWatch Metrics</td><td>CloudWatch Logs</td><td>X-Ray, OpenTelemetry</td></tr>
       </tbody>
     </table>
     <div class="prose">
-      <p>모니터링이 미리 정한 지표를 지켜보는 것이라면, <dfn title="Observability">관측성</dfn>은 예상하지 못한 문제도 밖으로 드러난 데이터만으로 원인을 좁혀 갈 수 있는 성질입니다. 메트릭으로 이상을 알아채고, 트레이스로 구간을 찾고, 로그로 이유를 읽습니다.</p>
+      <p>주문 API가 느려졌다면 순서는 이렇습니다. 메트릭에서 "p99 지연이 두 배가 됐다"를 알아채고, 트레이스에서 "결제 서비스 호출 구간이 길어졌다"를 찾고, 그 요청의 로그에서 "카드사 응답 타임아웃"이라는 이유를 읽습니다. 메트릭은 숫자만 남겨 싸고, 로그는 요청마다 남아 비싸고, 트레이스는 비싸서 일부만 저장합니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== CloudWatch overview ======================================== -->
+<section class="slide">
+  <h2>CloudWatch는 AWS의 관측 데이터가 모이는 곳이다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p><dfn>CloudWatch</dfn>는 AWS의 기본 관측 서비스입니다. 메트릭 저장소, 로그 저장소, 알람, 대시보드가 한 이름 아래 묶여 있고, 그 위에 추적과 APM 기능이 얹혀 있습니다.</p>
+      <p>가장 큰 장점은 따로 설치하지 않아도 데이터가 들어온다는 것입니다. ALB는 요청 수와 응답 시간을, RDS는 연결 수와 CPU를, SQS는 큐 길이를, Lambda는 호출 수와 오류를 자동으로 보냅니다. 주문 서비스를 띄우는 순간 수백 개의 메트릭이 생깁니다.</p>
+    </div>
+    <div class="prose">
+      <p>앱이 직접 보내야 하는 것도 있습니다. 서버 안의 메모리 사용률, 앱이 남기는 로그, "주문 완료 수" 같은 업무 지표입니다. 이것들은 에이전트나 API로 보냅니다.</p>
+      <p>이 부의 순서는 데이터가 쌓이는 순서를 따릅니다. 먼저 메트릭이 어떤 모양으로 저장되는지, 그다음 로그, 그다음 둘을 지켜보는 알람, 마지막으로 트레이스와 SLO입니다.</p>
     </div>
   </div>
 </section>
@@ -922,8 +1261,8 @@
 <span class="hl">LoadBalancer=…           → 메트릭 A</span>
 <span class="hl">LoadBalancer=…, TG=api   → 메트릭 B</span></code></pre>
     <div class="prose">
-      <p><dfn title="namespace">네임스페이스</dfn>는 출처별 칸막이(<code>AWS/EC2</code>, 직접 만든 <code>MyApp</code>)이고, <dfn title="dimension">차원</dfn>은 이름=값 쌍으로 된 꼬리표입니다. 메트릭 하나에 차원을 30개까지 붙일 수 있습니다.</p>
-      <p>CloudWatch는 <strong>차원 조합마다 별개의 메트릭</strong>으로 저장합니다. 사용자 지정 메트릭은 차원을 가로질러 합산해 주지 않으므로, 서비스 전체 값이 필요하면 그 조합으로도 따로 보내야 합니다.</p>
+      <p>CloudWatch 메트릭은 시각과 값의 쌍인 <dfn title="data point">데이터 포인트</dfn>가 시간 순으로 늘어선 <dfn title="time series">시계열</dfn>입니다. 왼쪽은 주문 API 앞 ALB의 응답 시간입니다.</p>
+      <p><dfn title="namespace">네임스페이스</dfn>는 출처별 칸막이(<code>AWS/EC2</code>, 직접 만든 <code>OrderService</code>)이고, <dfn title="dimension">차원</dfn>은 이름=값 쌍으로 된 꼬리표입니다. 메트릭 하나에 차원을 30개까지 붙일 수 있습니다. CloudWatch는 <strong>차원 조합마다 별개의 메트릭</strong>으로 저장하고, 사용자 지정 메트릭은 차원을 가로질러 합산해 주지 않습니다.</p>
     </div>
   </div>
 </section>
@@ -945,8 +1284,8 @@
       <p class="small">1분 데이터는 15일이 지나면 5분 단위로, 63일이 지나면 1시간 단위로 합쳐져 남습니다.</p>
     </div>
     <div class="prose">
-      <p>AWS 서비스 메트릭은 기본이 <strong>표준 해상도(1분)</strong>입니다. 사용자 지정 메트릭은 1초 단위의 고해상도로도 보낼 수 있지만 호출 비용이 늘어납니다.</p>
-      <p>EC2는 기본 모니터링이면 5분, 세부 모니터링을 켜면 1분 주기입니다. 5분 주기로는 2분짜리 장애가 한 점으로 뭉개지므로, 운영 서버는 세부 모니터링을 켜는 편이 낫습니다.</p>
+      <p>데이터 포인트가 얼마나 촘촘한지를 <dfn title="resolution">해상도</dfn>라고 합니다. AWS 서비스 메트릭은 대부분 1분 간격의 표준 해상도이고, 사용자 지정 메트릭은 1초 단위의 고해상도로도 보낼 수 있지만 그만큼 호출 비용이 늘어납니다.</p>
+      <p>저장 공간을 아끼려고 CloudWatch는 오래된 데이터를 거칠게 합칩니다. 그래서 두 달 전 장애를 1분 단위로 다시 볼 수는 없습니다. 또 EC2는 기본 모니터링이면 5분 간격이고, <strong>세부 모니터링</strong>을 켜야 1분 간격입니다. 5분 간격으로는 2분짜리 장애가 한 점에 뭉개지므로 운영 서버는 세부 모니터링을 켜는 편이 낫습니다.</p>
     </div>
   </div>
 </section>
@@ -956,8 +1295,8 @@
   <h2>평균은 꼬리를 숨기고 백분위는 드러낸다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>CloudWatch는 한 주기 안의 값들을 <dfn title="statistic">통계</dfn>로 요약해 돌려줍니다. Average, Sum, Minimum, Maximum, SampleCount와 함께 p50, p99 같은 <dfn title="percentile">백분위</dfn>를 고를 수 있습니다.</p>
-      <p>요청 99건이 50ms, 1건이 5초면 평균은 약 100ms로 멀쩡해 보입니다. 그 1%의 사용자가 겪는 고통은 <mark>p99에서만 보입니다</mark>. 지연 시간은 p50, p99를 함께, 개수는 Sum으로 봅니다.</p>
+      <p>1분 동안 주문 API에 요청이 수천 건 들어오면, CloudWatch는 그 값들을 하나의 <dfn title="statistic">통계</dfn>로 요약해 돌려줍니다. Average, Sum, Minimum, Maximum, SampleCount 중에서 고르거나 <dfn title="percentile">백분위</dfn>를 고릅니다. p99는 값들을 작은 순으로 줄 세웠을 때 99% 지점의 값, 즉 "100명 중 가장 느린 1명 직전"의 값입니다.</p>
+      <p>요청 99건이 50ms, 1건이 5초면 평균은 약 100ms로 멀쩡해 보입니다. 그 1%의 사용자가 겪는 5초는 <mark>p99에서만 보입니다</mark>.</p>
     </div>
     <div class="slide__body">
       <table class="compare">
@@ -992,8 +1331,8 @@
   }
 }</code></pre>
     <div class="prose">
-      <p>EC2 기본 메트릭은 하이퍼바이저가 VM을 <strong>밖에서</strong> 본 값입니다. CPU, 네트워크, 디스크 I/O는 보이지만 게스트 OS 안의 메모리 사용률과 파일 시스템 사용률은 모릅니다.</p>
-      <p>그래서 인스턴스에 CloudWatch 에이전트를 설치해 <code>CWAgent</code> 네임스페이스로 보냅니다. 에이전트는 로그 파일 수집과 트레이스 수집도 맡을 수 있습니다. 컨테이너는 다음에 볼 Container Insights가 같은 역할을 합니다.</p>
+      <p>EC2의 기본 메트릭에는 메모리 사용률이 없습니다. 기본 메트릭은 14장에서 본 하이퍼바이저, 즉 VM들을 돌리는 아래층 소프트웨어가 VM을 <strong>밖에서</strong> 본 값이기 때문입니다. CPU와 네트워크, 디스크 I/O는 밖에서 보이지만, VM 안의 OS가 메모리를 어떻게 나눠 쓰는지와 파일 시스템이 얼마나 찼는지는 안 보입니다.</p>
+      <p>그래서 인스턴스 안에 CloudWatch 에이전트를 설치해 <code>CWAgent</code> 네임스페이스로 보냅니다. 왼쪽 설정은 메모리 사용률과 루트 파일 시스템 사용률을 모읍니다. 에이전트는 로그 파일 수집도 맡을 수 있습니다.</p>
     </div>
   </div>
 </section>
@@ -1017,8 +1356,8 @@
   <span class="s">"orderId"</span>: <span class="s">"o-8f21"</span>
 }</code></pre>
     <div class="prose">
-      <p>사용자 지정 메트릭은 <code>PutMetricData</code> API로 직접 보낼 수 있지만, 요청 경로에서 API를 부르면 지연과 비용이 붙습니다.</p>
-      <p><dfn title="Embedded Metric Format">EMF</dfn>는 정해진 형식의 JSON 로그를 쓰면 CloudWatch Logs가 받아서 메트릭을 뽑아 줍니다. Lambda처럼 stdout이 곧 로그인 환경에서 특히 편하고, <code>orderId</code> 같은 상세 필드는 로그에 남아 나중에 검색할 수 있습니다.</p>
+      <p>"주문 처리 지연" 같은 업무 지표는 앱이 직접 만들어야 합니다. <code>PutMetricData</code> API로 보낼 수 있지만, 요청을 처리하는 도중에 API를 부르면 지연과 호출 비용이 붙습니다.</p>
+      <p><dfn title="Embedded Metric Format">EMF</dfn>는 정해진 형식의 JSON을 로그로 찍기만 하면 CloudWatch Logs가 받아서 메트릭을 뽑아 주는 방식입니다. 강조한 <code>_aws</code> 블록이 "이 줄의 <code>Latency</code> 필드를 <code>Operation</code> 차원의 메트릭으로 만들라"는 지시입니다. 나머지 필드인 <code>orderId</code>는 메트릭이 되지 않고 로그에 남아 나중에 검색할 수 있습니다.</p>
     </div>
   </div>
 </section>
@@ -1028,12 +1367,12 @@
   <h2>차원에 사용자 ID를 넣으면 청구서가 터진다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>차원 조합마다 별개 메트릭이고, 사용자 지정 메트릭은 메트릭 개수로 과금됩니다. 차원에 <code>userId</code>를 넣으면 사용자 10만 명이 메트릭 10만 개가 됩니다. 이렇게 값의 종류가 많은 것을 <dfn title="cardinality">카디널리티</dfn>가 높다고 합니다.</p>
-      <p>차원에는 API 이름, 상태 코드 계열, 리전처럼 <strong>값이 몇십 개 이하로 정해진 것</strong>만 넣습니다.</p>
+      <p>EMF를 쓰다 보면 차원에 이것저것 넣고 싶어집니다. 그런데 차원 조합마다 별개 메트릭이고, 사용자 지정 메트릭은 메트릭 개수로 과금됩니다. 차원에 <code>userId</code>를 넣으면 사용자 10만 명이 메트릭 10만 개가 됩니다.</p>
+      <p>이렇게 값의 종류가 많은 것을 <dfn title="cardinality">카디널리티</dfn>가 높다고 합니다. 차원에는 API 이름, 상태 코드 계열(2xx, 5xx), 리전처럼 <strong>값이 몇십 개 이하로 정해진 것</strong>만 넣습니다.</p>
     </div>
     <aside class="callout callout--note">
       <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>고카디널리티 값은 로그와 트레이스로</p>
-      <p>"이 사용자의 요청이 왜 느렸나"는 메트릭이 아니라 로그 검색과 트레이스가 답할 질문입니다. EMF로 쓰면 메트릭과 상세 필드를 한 줄에 함께 남길 수 있습니다.</p>
+      <p>"이 사용자의 요청이 왜 느렸나"는 메트릭이 아니라 로그 검색과 트레이스가 답할 질문입니다. 앞의 EMF처럼 메트릭과 상세 필드를 한 줄에 함께 남기면 둘 다 얻습니다.</p>
     </aside>
   </div>
 </section>
@@ -1043,8 +1382,8 @@
   <h2>로그 그룹이 보존 기간과 권한의 단위다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>로그는 <dfn title="log stream">로그 스트림</dfn>(인스턴스나 컨테이너 하나가 쓰는 순서 있는 기록)에 쌓이고, 스트림들은 <dfn title="log group">로그 그룹</dfn>으로 묶입니다. 보존 기간, 접근 권한, 암호화, 필터는 모두 로그 그룹 단위로 정합니다.</p>
-      <p>로그 그룹의 기본 보존 기간은 <mark>무기한</mark>입니다. 정하지 않으면 저장 비용이 매달 쌓입니다. 보존 기간이 지난 로그는 보통 72시간 안에 지워집니다.</p>
+      <p>이제 로그로 넘어갑니다. CloudWatch Logs에서 로그는 <dfn title="log stream">로그 스트림</dfn>(태스크나 인스턴스 하나가 쓰는 순서 있는 기록)에 쌓이고, 스트림들은 <dfn title="log group">로그 그룹</dfn>으로 묶입니다. 주문 API 태스크가 열 개면 스트림이 열 개, 그룹은 <code>/ecs/order-api</code> 하나입니다. 보존 기간, 접근 권한, 암호화, 필터는 모두 그룹 단위로 정합니다.</p>
+      <p>그룹의 기본 보존 기간은 <mark>무기한</mark>입니다. 정하지 않으면 저장 비용이 매달 쌓입니다. 보존 기간이 지난 로그는 보통 72시간 안에 지워집니다.</p>
     </div>
     <div class="slide__body">
       <table class="compare">
@@ -1053,9 +1392,9 @@
           <tr><th scope="row">Standard</th><td>모든 기능(메트릭 필터, 실시간 보기 등)</td></tr>
           <tr><th scope="row">Essentials</th><td class="is-flow">수집 단가가 낮고 기능은 일부</td></tr>
         </tbody>
-        <caption>Essentials는 예전 이름이 Infrequent Access입니다. 저장과 Logs Insights 요금은 같고 수집 요금만 다릅니다.</caption>
+        <caption>Essentials의 예전 이름은 Infrequent Access입니다. 저장과 Logs Insights 요금은 같고 수집 요금만 다릅니다.</caption>
       </table>
-      <p class="small">감사 목적으로 오래 둘 로그는 S3로 내보내고 S3 수명 주기로 더 싼 클래스에 넘기는 것이 일반적입니다(15장).</p>
+      <p class="small">감사 목적으로 오래 둘 로그는 S3로 내보내고 S3 수명 주기로 더 싼 스토리지 클래스에 넘기는 것이 일반적입니다(15장).</p>
     </div>
   </div>
 </section>
@@ -1076,8 +1415,8 @@
 <span class="hl"><span class="k">filter</span> traceId = <span class="s">"1-6f3a…"</span></span>
 | <span class="k">sort</span> @timestamp <span class="k">asc</span></code></pre>
     <div class="prose">
-      <p>파이프(<code>|</code>)로 명령을 이어 붙입니다. 위 질의는 5분 구간마다 경로별 5xx 개수와 p99 지연을 셉니다. JSON 로그는 필드가 자동으로 인식되므로, 애초에 <strong>구조화된 JSON 로그</strong>를 남기는 것이 전제입니다.</p>
-      <p>과금은 스캔한 데이터양 기준입니다. 시간 범위와 로그 그룹을 좁혀서 질의합니다.</p>
+      <p>로그를 쌓았으면 물어볼 수 있어야 합니다. Logs Insights는 파이프(<code>|</code>)로 명령을 이어 붙이는 질의 언어입니다. 위 질의는 5xx 응답만 골라, 5분 구간마다 경로별 에러 수와 p99 지연을 셉니다.</p>
+      <p>이것이 가능하려면 로그가 <dfn title="structured logging">구조화된 로그</dfn>, 즉 사람이 읽는 문장 대신 <code>status</code>, <code>latency</code> 같은 필드를 가진 JSON이어야 합니다. JSON 로그는 필드가 자동으로 인식됩니다. 과금은 스캔한 데이터양 기준이므로 시간 범위와 로그 그룹을 좁혀서 질의합니다. 아래 두 줄의 <code>traceId</code>는 뒤의 분산 추적에서 다시 나옵니다.</p>
     </div>
   </div>
 </section>
@@ -1087,25 +1426,25 @@
   <h2>메트릭 필터는 세고, 구독 필터는 흘려보낸다</h2>
   <div class="slide__body">
     <ol class="flow">
-      <li class="flow__node"><b>애플리케이션</b><span>JSON 로그 출력</span></li>
+      <li class="flow__node"><b>주문 API</b><span>JSON 로그 출력</span></li>
       <li class="flow__node is-flow"><b>로그 그룹</b><span>CloudWatch Logs</span></li>
       <li class="flow__node"><b>메트릭 필터</b><span>패턴이 맞으면 +1</span></li>
-      <li class="flow__node"><b>구독 필터</b><span>실시간 전달</span></li>
+      <li class="flow__node"><b>구독 필터</b><span>다른 곳으로 전달</span></li>
     </ol>
     <div class="prose">
-      <p><dfn title="metric filter">메트릭 필터</dfn>는 들어오는 로그에서 패턴(<code>{ $.level = "ERROR" }</code> 같은)을 찾아 메트릭 값으로 만듭니다. 코드를 고치지 않고 "ERROR 로그 수" 알람을 걸 수 있습니다. 필터를 만든 뒤에 들어온 로그만 셉니다.</p>
-      <p><dfn title="subscription filter">구독 필터</dfn>는 맞는 로그를 Kinesis Data Streams, Firehose, Lambda, OpenSearch로 보통 몇 분 안에 넘깁니다. 로그 그룹당 다섯 개까지 걸 수 있고, 보안 계정이나 외부 로그 분석 도구로 모을 때 씁니다.</p>
+      <p>로그 그룹에 들어오는 로그에는 두 종류의 필터를 걸 수 있습니다. <dfn title="metric filter">메트릭 필터</dfn>는 패턴(<code>{ $.level = "ERROR" }</code> 같은)에 맞는 로그를 세어 메트릭 값으로 만듭니다. 앱 코드를 고치지 않고 "ERROR 로그 수" 알람을 걸 수 있다는 것이 장점이고, 필터를 만든 뒤에 들어온 로그만 셉니다.</p>
+      <p><dfn title="subscription filter">구독 필터</dfn>는 맞는 로그를 다른 서비스로 흘려보냅니다. 대상은 Kinesis Data Streams와 Firehose(17장), Lambda, 그리고 로그 검색·분석 엔진인 OpenSearch입니다. 로그 그룹당 다섯 개까지 걸 수 있고, 여러 계정의 로그를 보안 계정 한 곳에 모으거나 외부 분석 도구로 보낼 때 씁니다.</p>
     </div>
   </div>
 </section>
 
 <!-- ===== Alarm evaluation ============================================ -->
 <section class="slide">
-  <h2>알람은 N개 중 M개가 넘으면 울린다</h2>
+  <h2>알람은 최근 N개 중 M개가 넘으면 울린다</h2>
   <div class="split split--center">
     <div class="prose">
-      <p>알람은 <dfn title="period">기간</dfn>마다 통계 하나를 계산해 임계값과 비교합니다. <dfn title="Evaluation Periods">평가 기간 수</dfn>(N)는 최근 몇 개를 볼지, <dfn title="Datapoints to Alarm">경보 데이터 포인트 수</dfn>(M)는 그중 몇 개가 넘어야 ALARM인지입니다. 넘은 점이 연속일 필요는 없습니다.</p>
-      <p>기간 1분, 5개 중 3개로 두면 한 번 튀는 값은 무시하고, 5분 안에 3분 이상 나쁘면 울립니다. 상태는 OK, ALARM, INSUFFICIENT_DATA 셋입니다.</p>
+      <p>메트릭과 로그가 모였으니 지켜볼 차례입니다. CloudWatch 알람은 정해진 <dfn title="period">기간</dfn>마다 통계 하나를 계산해 임계값과 비교합니다. <dfn title="Evaluation Periods">평가 기간 수</dfn>(N)는 최근 몇 개를 볼지, <dfn title="Datapoints to Alarm">경보 데이터 포인트 수</dfn>(M)는 그중 몇 개가 넘어야 울릴지입니다. 넘은 점이 연속일 필요는 없습니다.</p>
+      <p>기간 1분, 5개 중 3개로 두면 한 번 튀는 값은 무시하고, 5분 안에 3분 이상 나쁘면 울립니다. 알람의 상태는 OK, ALARM, 판단할 데이터가 부족한 INSUFFICIENT_DATA 셋입니다.</p>
     </div>
     <figure class="figure">
       <svg class="dg" viewBox="0 0 760 340" role="img" aria-labelledby="f-al-t">
@@ -1131,10 +1470,28 @@
   </div>
 </section>
 
+<!-- ===== Alarm actions =============================================== -->
+<section class="slide">
+  <h2>알람은 상태가 바뀔 때 행동을 일으킨다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>알람이 ALARM이 되는 것만으로는 아무 일도 일어나지 않습니다. 상태가 바뀔 때 무엇을 할지 <dfn title="alarm action">알람 동작</dfn>으로 연결해야 합니다. 가장 흔한 것은 SNS 토픽(17장)으로 알림을 보내는 것이고, 토픽 뒤에 이메일, 메신저, 호출 도구를 붙입니다.</p>
+      <p>사람에게 알리는 것 말고도 Auto Scaling 정책을 실행하거나, EC2 인스턴스를 재시작·복구하거나, Systems Manager의 대응 절차를 시작할 수 있습니다.</p>
+    </div>
+    <div class="prose">
+      <p>3부의 배포 롤백은 조금 다릅니다. ECS나 CodeDeploy가 지정한 알람의 상태를 <strong>직접 지켜보다가</strong> ALARM이 되면 되돌립니다. 알람 쪽에 동작을 걸지 않아도 됩니다.</p>
+      <p>OK로 돌아올 때도 동작을 걸 수 있습니다. "장애 해소" 알림을 같은 채널로 보내 두면, 받는 사람이 아직 진행 중인지 끝났는지 헷갈리지 않습니다. 다음은 알람 설계에서 자주 빠뜨리는 질문, 데이터가 없을 때입니다.</p>
+    </div>
+  </div>
+</section>
+
 <!-- ===== Missing data ================================================ -->
 <section class="slide">
   <h2>데이터가 없을 때의 해석도 정해 둬야 한다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>메트릭에 점이 찍히지 않는 기간이 있습니다. 5xx 개수 메트릭은 에러가 하나도 없으면 아예 점을 보내지 않습니다. 알람은 이 빈칸을 어떻게 해석할지 정해야 합니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">설정</th><th scope="col">누락된 점을</th><th scope="col">맞는 경우</th></tr></thead>
       <tbody>
@@ -1145,7 +1502,7 @@
       </tbody>
     </table>
     <div class="prose">
-      <p>5xx 개수 메트릭은 에러가 없으면 아예 점이 찍히지 않습니다. 기본값으로 두면 평온한 시간에 INSUFFICIENT_DATA로 바뀌어 헷갈리므로 <code>notBreaching</code>이 맞습니다. 반대로 "배치가 매시간 성공 메트릭을 보낸다"는 알람은 점이 없는 것이 곧 실패이므로 <code>breaching</code>입니다.</p>
+      <p>5xx 알람을 기본값으로 두면 평온한 새벽마다 INSUFFICIENT_DATA로 바뀌어 헷갈리므로 <code>notBreaching</code>이 맞습니다. 반대로 정산 배치가 매시간 "성공" 메트릭을 보내는 구조라면, 점이 없는 것이 곧 실패이므로 <code>breaching</code>입니다.</p>
     </div>
   </div>
 </section>
@@ -1158,28 +1515,22 @@
 <span class="hl">  AND ALARM(<span class="s">"api-p99-latency-high"</span>)</span>
   AND NOT ALARM(<span class="s">"maintenance-window"</span>)</code></pre>
     <div class="prose">
-      <p>트래픽이 낮과 밤에 열 배씩 차이 나면 "요청 수 1,000 미만" 같은 고정값은 밤마다 울립니다. <dfn title="anomaly detection">이상 탐지</dfn> 알람은 과거 데이터에서 시간대와 요일 패턴을 학습해 기대 범위를 <strong>띠</strong>로 만들고, 그 띠를 벗어날 때 울립니다.</p>
-      <p><dfn title="composite alarm">복합 알람</dfn>은 다른 알람들의 상태를 AND, OR, NOT으로 엮습니다. 하위 알람 열 개가 동시에 울려도 사람에게는 복합 알람 하나만 알리게 해서 알람 폭풍을 막습니다.</p>
+      <p>주문 수는 저녁과 새벽이 열 배씩 차이 납니다. "분당 주문 1,000건 미만이면 알람" 같은 고정값은 새벽마다 울립니다. <dfn title="anomaly detection">이상 탐지</dfn> 알람은 과거 데이터에서 시간대와 요일 패턴을 학습해 기대 범위를 <strong>띠</strong>로 만들고, 실제 값이 그 띠를 벗어날 때 울립니다.</p>
+      <p><dfn title="composite alarm">복합 알람</dfn>은 다른 알람들의 상태를 AND, OR, NOT으로 엮습니다. 왼쪽 규칙은 에러율과 지연이 함께 나쁘고 점검 시간이 아닐 때만 울립니다. 장애 하나에 하위 알람 열 개가 동시에 울리는 <strong>알람 폭풍</strong>이 와도 사람에게는 복합 알람 하나만 가게 합니다.</p>
     </div>
   </div>
 </section>
 
 <!-- ===== Managed observability tools ================================ -->
 <section class="slide">
-  <h2>CloudWatch 위에 얹힌 관측 도구들</h2>
-  <div class="slide__body">
-    <table class="compare">
-      <thead><tr><th scope="col">도구</th><th scope="col">하는 일</th><th scope="col">언제 쓰나</th></tr></thead>
-      <tbody>
-        <tr><th scope="row">대시보드</th><td>메트릭·로그 위젯을 한 화면에</td><td>서비스별 골든 시그널 화면</td></tr>
-        <tr><th scope="row">Container Insights</th><td>ECS·EKS 클러스터, 서비스, Pod 지표</td><td>컨테이너 CPU·메모리, 재시작 수</td></tr>
-        <tr><th scope="row">Application Signals</th><td class="is-flow">자동 계측 APM, 서비스 맵, SLO</td><td>서비스 간 호출의 지연과 오류</td></tr>
-        <tr><th scope="row">Managed Prometheus</th><td>Prometheus 호환 메트릭 저장소</td><td>EKS에서 PromQL을 계속 쓸 때</td></tr>
-        <tr><th scope="row">Managed Grafana</th><td>관리형 Grafana 대시보드</td><td>여러 데이터 소스를 한 화면에</td></tr>
-      </tbody>
-    </table>
+  <h2>대시보드와 컨테이너 지표는 CloudWatch 위에 얹힌다</h2>
+  <div class="split split--even">
     <div class="prose">
-      <p>대시보드는 장애 때 처음 여는 화면이므로 서비스마다 하나씩, 위에서부터 사용자 증상(요청 수, 에러율, p99) 다음에 원인 지표(CPU, DB 연결, 큐)를 배치합니다. Kubernetes 생태계에 익숙한 팀은 Prometheus와 Grafana의 관리형 버전(짧게만 언급)을 고르기도 합니다.</p>
+      <p>알람이 울리면 사람이 가장 먼저 여는 것이 <strong>대시보드</strong>, 즉 메트릭과 로그 질의 결과를 위젯으로 한 화면에 모은 것입니다. 주문 API 대시보드는 위에서부터 사용자 증상(요청 수, 에러율, p99)을, 그 아래 원인 후보(CPU, 메모리, DB 연결 수, 큐 길이)를 놓습니다. 위에서 이상을 보고 아래로 내려가며 원인을 찾게 하려는 배치입니다.</p>
+    </div>
+    <div class="prose">
+      <p><dfn>Container Insights</dfn>는 ECS와 EKS의 클러스터, 서비스, 태스크·Pod 단위 CPU, 메모리, 재시작 횟수를 모아 줍니다. Fargate에서는 에이전트를 직접 설치할 서버가 없으니 이 기능이 메모리 지표의 주된 출처가 됩니다.</p>
+      <p>Kubernetes 생태계(10장)에 익숙한 팀은 Prometheus와 Grafana를 계속 쓰고 싶어 합니다. <strong>Amazon Managed Service for Prometheus</strong>는 Prometheus 호환 메트릭 저장소를, <strong>Amazon Managed Grafana</strong>는 대시보드 도구를 서버 관리 없이 제공합니다.</p>
     </div>
   </div>
 </section>
@@ -1189,8 +1540,8 @@
   <h2>trace id 하나로 요청의 전 구간을 꿴다</h2>
   <div class="split split--center">
     <div class="prose">
-      <p>요청이 들어올 때 <dfn title="trace id">추적 ID</dfn>를 만들고, 서비스가 다른 서비스를 부를 때마다 헤더(W3C <code>traceparent</code> 등)로 넘깁니다. 각 구간은 시작과 끝 시각을 가진 <dfn>span</dfn>이 됩니다.</p>
-      <p>로그에도 같은 trace id를 찍으면 느린 span에서 바로 그 요청의 로그로 넘어갈 수 있습니다. 앞에서 본 Logs Insights 질의의 마지막 줄이 바로 그 동작입니다.</p>
+      <p>메트릭은 "p99가 나빠졌다"까지만 알려 줍니다. 주문 요청 하나는 ALB, 주문 API, 재고 조회, 결제 서비스, DB를 거치는데, 그중 어디서 시간이 갔는지는 <dfn title="distributed tracing">분산 추적</dfn>이 보여 줍니다.</p>
+      <p>요청이 처음 들어올 때 <dfn title="trace id">추적 ID</dfn>를 만들고, 다른 서비스를 부를 때마다 HTTP 헤더(W3C 표준 <code>traceparent</code> 등)에 실어 넘깁니다. 이를 <dfn title="context propagation">전파</dfn>라고 합니다. 각 서비스는 자기 구간의 시작과 끝 시각을 <dfn>span</dfn>으로 기록하고, 같은 추적 ID를 가진 span들을 모으면 요청 하나의 <dfn>trace</dfn>가 됩니다.</p>
     </div>
     <figure class="figure">
       <svg class="dg" viewBox="0 0 760 412" role="img" aria-labelledby="f-tr-t">
@@ -1211,26 +1562,41 @@
         <text class="dg-label--key" x="530" y="342" text-anchor="middle">360ms</text>
         <text class="dg-label--sm" x="200" y="392" text-anchor="start">trace id: 1-6f3a…  (모든 span이 공유)</text>
       </svg>
-      <figcaption>trace를 시간 축에 펼친 워터폴입니다. 느린 원인은 결제 서비스 안의 DB 쿼리입니다.</figcaption>
+      <figcaption>trace를 시간 축에 펼친 그림입니다. 480ms 중 360ms가 결제 서비스 안의 DB 쿼리입니다.</figcaption>
     </figure>
+  </div>
+</section>
+
+<!-- ===== Trace + logs ================================================ -->
+<section class="slide">
+  <h2>로그에도 trace id를 찍어야 세 데이터가 이어진다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>앞 그림에서 느린 span을 찾았다면, 다음 질문은 "그 쿼리가 왜 느렸나"입니다. 그 답은 로그에 있습니다. 앱이 로그를 남길 때마다 현재 요청의 추적 ID를 필드로 함께 찍어 두면, 느린 span에서 바로 그 요청의 로그로 넘어갈 수 있습니다.</p>
+      <p>앞에서 본 Logs Insights 질의의 마지막 두 줄, <code>filter traceId = "1-6f3a…"</code>가 바로 이 동작입니다. 여러 태스크, 여러 서비스에 흩어진 로그를 요청 하나 기준으로 시간 순으로 모읍니다.</p>
+    </div>
+    <div class="prose">
+      <p>이렇게 이어 두면 4부 앞에서 본 순서가 실제로 가능해집니다. 메트릭에서 이상을 알아채고, 트레이스에서 구간을 찾고, 같은 ID로 로그를 열어 이유를 읽습니다.</p>
+      <p>Spring Boot라면 계측 라이브러리가 MDC(로그 문맥에 값을 넣어 두는 장치)에 추적 ID를 넣어 주므로, 로그 형식에 그 필드만 추가하면 됩니다. 그렇다면 span은 누가 만들까요. 다음 슬라이드가 계측 도구입니다.</p>
+    </div>
   </div>
 </section>
 
 <!-- ===== X-Ray / ADOT ================================================ -->
 <section class="slide">
-  <h2>계측은 OpenTelemetry, 분석은 X-Ray</h2>
+  <h2>계측은 OpenTelemetry, 저장과 분석은 X-Ray</h2>
   <div class="split split--even">
     <div class="prose">
-      <p><dfn>X-Ray</dfn>는 AWS의 트레이스 저장·분석 서비스입니다. 앱에서 span을 만드는 계측은 예전에는 X-Ray SDK를 썼지만, AWS는 2026년 2월 25일부터 X-Ray SDK와 데몬을 보안 수정만 하는 유지 관리 모드로 돌리고 <strong>OpenTelemetry로 옮기라고</strong> 권장합니다.</p>
-      <p><dfn title="AWS Distro for OpenTelemetry">ADOT</dfn>는 AWS가 검증해 배포하는 OpenTelemetry 배포판입니다. Java는 에이전트 JAR를 붙이는 것만으로 HTTP, JDBC, AWS SDK 호출이 자동 계측되고, 콜렉터나 CloudWatch 에이전트가 X-Ray로 보냅니다.</p>
+      <p>span을 만드는 일을 <dfn title="instrumentation">계측</dfn>이라고 합니다. <dfn>X-Ray</dfn>는 AWS의 트레이스 저장·분석 서비스이고, 예전에는 계측도 X-Ray SDK로 했습니다. AWS는 2026년 2월 25일부터 X-Ray SDK와 데몬을 보안 수정만 하는 유지 관리 모드로 돌렸고, 계측은 업계 표준인 <strong>OpenTelemetry</strong>로 옮기라고 권장합니다.</p>
+      <p><dfn title="AWS Distro for OpenTelemetry">ADOT</dfn>는 AWS가 검증해 배포하는 OpenTelemetry 배포판입니다. Java는 에이전트 JAR를 붙이는 것만으로 HTTP, JDBC, AWS SDK 호출이 자동 계측되고, 수집기가 X-Ray로 보냅니다.</p>
     </div>
     <div class="slide__body">
       <div class="prose">
-        <p>모든 요청을 기록하면 비싸므로 <dfn title="sampling">샘플링</dfn>합니다. X-Ray 기본 규칙은 <strong>매초 첫 요청 1건 + 나머지의 5%</strong>입니다. 규칙을 X-Ray 서비스에 두면 재배포 없이 바꿀 수 있습니다.</p>
+        <p>모든 요청을 기록하면 비싸므로 일부만 골라 저장하는 <dfn title="sampling">샘플링</dfn>을 합니다. X-Ray 기본 규칙은 <strong>매초 첫 요청 1건 + 나머지의 5%</strong>입니다. 규칙을 X-Ray 서비스에 두면 재배포 없이 바꿀 수 있습니다.</p>
       </div>
       <aside class="callout callout--note">
-        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>표준에 계측하면 백엔드를 바꿀 수 있다</p>
-        <p>OpenTelemetry로 계측해 두면 코드 수정 없이 수집 대상을 X-Ray에서 다른 APM으로 바꿀 수 있습니다.</p>
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>표준에 계측하면 백엔드를 바꿀 수 있습니다</p>
+        <p>OpenTelemetry로 계측해 두면 앱 코드 수정 없이 보내는 곳을 X-Ray에서 다른 APM으로 바꿀 수 있습니다.</p>
       </aside>
     </div>
   </div>
@@ -1238,15 +1604,15 @@
 
 <!-- ===== Application Signals ========================================= -->
 <section class="slide">
-  <h2>자동 APM과 SLO를 한곳에서</h2>
+  <h2>Application Signals는 APM·SLO를 준다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>메트릭, 로그, 트레이스를 각각 설정해 서비스 상태를 조립하는 것은 손이 많이 갑니다. <dfn>Application Signals</dfn>는 ADOT 기반 자동 계측으로 서비스마다 호출 수, 지연, 오류(fault/error) 같은 표준 지표를 만들고 서비스 간 의존 관계를 지도로 그립니다.</p>
-      <p>Java, Python, Node.js, .NET을 지원하며 EKS, ECS, EC2, Lambda의 앱에서 데이터를 모읍니다.</p>
+      <p>메트릭, 로그, 트레이스를 각각 설정해 서비스 상태를 조립하는 것은 손이 많이 갑니다. 이 조립을 대신해 주는 도구를 <dfn title="Application Performance Monitoring">APM</dfn>이라고 부릅니다.</p>
+      <p><dfn>Application Signals</dfn>는 CloudWatch의 APM입니다. ADOT 기반 자동 계측으로 서비스마다 호출 수, 지연, 오류 같은 표준 지표를 만들고, 서비스 사이의 호출 관계를 지도로 그립니다. Java, Python, Node.js, .NET을 지원하며 EKS, ECS, EC2, Lambda의 앱에서 데이터를 모읍니다.</p>
     </div>
     <div class="prose">
-      <p>여기에 <strong>SLO를 직접 정의</strong>할 수 있다는 점이 핵심입니다. "주문 API의 p99 지연이 300ms 이하인 비율 99.9%"를 SLO로 등록하면, 남은 에러 예산과 소진 추이를 보여 주고 그 위에 알람을 겁니다.</p>
-      <p>이제 무엇을 SLO로 삼아야 하는지, 그 출발점인 골든 시그널부터 봅니다.</p>
+      <p>여기에 <strong>SLO를 직접 정의</strong>할 수 있다는 점이 중요합니다. "주문 API의 p99 지연이 300ms 이하인 비율 99.9%"를 등록하면, 남은 여유와 그 여유가 줄어드는 속도를 보여 주고, 그 위에 알람을 겁니다.</p>
+      <p>SLO, 에러 예산, 소진 속도라는 말이 처음 나왔습니다. 도구보다 개념이 먼저이므로, 무엇을 지켜볼지 정하는 출발점인 골든 시그널부터 차례로 봅니다.</p>
     </div>
   </div>
 </section>
@@ -1255,6 +1621,9 @@
 <section class="slide">
   <h2>골든 시그널 넷부터 본다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>메트릭은 수백 개인데 사람이 볼 수 있는 것은 몇 개뿐입니다. Google SRE가 정리한 <dfn title="golden signals">골든 시그널</dfn>은 사용자 쪽에서 본 서비스 건강의 최소 집합입니다. 주문 API에서는 각각 아래 지표에 해당합니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">신호</th><th scope="col">의미</th><th scope="col">AWS에서 보는 지표</th></tr></thead>
       <tbody>
@@ -1265,7 +1634,7 @@
       </tbody>
     </table>
     <div class="prose">
-      <p>Google SRE가 정리한 <dfn title="golden signals">골든 시그널</dfn>은 사용자 쪽에서 본 서비스 건강의 최소 집합입니다. 지연 시간은 <strong>성공한 요청과 실패한 요청을 나눠</strong> 봅니다. 빠르게 실패하는 500 응답이 평균 지연을 끌어내려 상황을 좋아 보이게 만들 수 있기 때문입니다.</p>
+      <p>지연 시간은 <strong>성공한 요청과 실패한 요청을 나눠</strong> 봅니다. 빠르게 실패하는 500 응답이 섞이면 지연 그래프가 오히려 좋아 보이기 때문입니다.</p>
     </div>
   </div>
 </section>
@@ -1275,8 +1644,8 @@
   <h2>SLO는 얼마나 실패해도 되는지를 정한다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p><dfn title="Service Level Indicator">SLI</dfn>는 측정값(성공 요청 비율), <dfn title="Service Level Objective">SLO</dfn>는 내부 목표(30일간 99.9%), <dfn title="Service Level Agreement">SLA</dfn>는 어기면 보상하는 고객과의 계약입니다. SLO를 SLA보다 엄격하게 잡아 계약을 어기기 전에 알아챕니다.</p>
-      <p>100%에서 SLO를 뺀 나머지가 <mark>에러 예산</mark>입니다. 예산이 남으면 과감히 배포하고, 다 쓰면 기능 배포를 멈추고 안정화에 집중합니다.</p>
+      <p>골든 시그널을 지켜보다 보면 "에러율 0.05%면 괜찮은가"라는 질문이 생깁니다. 이에 답하는 세 용어가 있습니다. <dfn title="Service Level Indicator">SLI</dfn>는 측정값(성공한 요청의 비율), <dfn title="Service Level Objective">SLO</dfn>는 팀이 정한 내부 목표(30일간 99.9%), <dfn title="Service Level Agreement">SLA</dfn>는 어기면 보상하는 고객과의 계약입니다. SLO를 SLA보다 엄격하게 잡아 계약을 어기기 전에 알아챕니다.</p>
+      <p>100%에서 SLO를 뺀 나머지가 <mark>에러 예산</mark>, 즉 그 기간에 허락된 실패의 양입니다. 예산이 남으면 과감히 배포하고, 다 쓰면 기능 배포를 멈추고 안정화에 집중합니다.</p>
     </div>
     <table class="compare">
       <thead><tr><th scope="col">가용성 SLO</th><th scope="col">30일 허용 중단</th></tr></thead>
@@ -1286,27 +1655,42 @@
         <tr><th scope="row">99.95%</th><td class="num">21.6분</td></tr>
         <tr><th scope="row">99.99%</th><td class="num is-key">4.3분</td></tr>
       </tbody>
-      <caption>9가 하나 늘 때마다 허용 시간이 10분의 1로 줄고, 비용은 크게 늡니다.</caption>
+      <caption>9가 하나 늘 때마다 허용 시간이 10분의 1로 줄고, 그것을 지키는 비용은 크게 늡니다.</caption>
     </table>
   </div>
 </section>
 
 <!-- ===== Burn rate =================================================== -->
 <section class="slide">
-  <h2>에러 예산이 타는 속도에 알람을 건다</h2>
+  <h2>에러 예산이 타는 속도로 위험을 잰다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p><dfn title="burn rate">소진 속도</dfn>는 지금 추세대로면 예산을 몇 배 빠르게 쓰는지입니다. 30일 SLO 99.9%에서 에러율이 0.1%면 소진 속도 1로 정확히 30일에 다 씁니다. 에러율 1.44%면 14.4배로, <strong>1시간에 한 달 예산의 2%</strong>를 태웁니다.</p>
-      <p>"에러율 1% 넘으면 알람"은 짧은 튐에도 울리고 느린 누수는 놓칩니다. 소진 속도로 걸면 예산에 실제로 위협이 되는 것만 잡습니다.</p>
+      <p>주문 API의 SLO는 30일 99.9%이니 에러 예산은 요청의 0.1%입니다. <dfn title="burn rate">소진 속도</dfn>는 지금의 에러율이 예산을 정확히 30일에 다 쓰는 속도의 몇 배인지입니다.</p>
+      <p>에러율이 0.1%면 소진 속도 1로 딱 30일에 다 씁니다. 에러율이 1.44%면 14.4배입니다. 30일은 720시간이므로, 1시간 동안 14.4배로 태우면 14.4 ÷ 720 = <strong>한 달 예산의 2%</strong>를 씁니다. 이 속도가 계속되면 이틀 남짓이면 예산이 바닥납니다.</p>
+    </div>
+    <div class="prose">
+      <p>이 개념이 필요한 이유는 "에러율 1% 넘으면 알람" 같은 고정 규칙의 약점 때문입니다. 이 규칙은 1분짜리 짧은 튐에도 울려 사람을 괜히 깨우고, 반대로 에러율 0.5%가 사흘 내내 이어지는 느린 누수는 끝까지 놓칩니다. 후자는 사흘 만에 한 달 예산의 절반을 태우는데도 말입니다.</p>
+      <p>소진 속도로 걸면 "이대로면 예산이 위험한가"라는 하나의 기준으로 짧은 폭발과 느린 누수를 모두 잡습니다. 다음 슬라이드가 그 알람의 구체적인 모양입니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Burn rate windows =========================================== -->
+<section class="slide">
+  <h2>긴 창과 짧은 창을 함께 걸어 오탐을 줄인다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>소진 속도는 어떤 기간(창)의 에러율로 계산하느냐에 따라 값이 달라집니다. 창이 짧으면 빨리 감지하지만 순간 튐에도 반응하고, 창이 길면 안정적이지만 회복된 뒤에도 한동안 높게 남습니다.</p>
+      <p>그래서 Google SRE Workbook은 창 두 개를 겹칩니다. 예를 들어 "1시간 창과 5분 창이 <strong>둘 다</strong> 14.4배 이상"일 때 울리게 하면, 1시간 창이 충분히 심각한지 확인하고 5분 창이 지금도 진행 중인지 확인합니다. 이미 회복됐는데 계속 울리는 일을 막습니다.</p>
     </div>
     <table class="compare">
-      <thead><tr><th scope="col">창</th><th scope="col">소진 속도</th><th scope="col">대응</th></tr></thead>
+      <thead><tr><th scope="col">긴 창 + 짧은 창</th><th scope="col">소진 속도</th><th scope="col">대응</th></tr></thead>
       <tbody>
         <tr><th scope="row">1시간 + 5분</th><td class="num is-key">14.4배</td><td>즉시 호출</td></tr>
         <tr><th scope="row">6시간 + 30분</th><td class="num">6배</td><td>즉시 호출</td></tr>
         <tr><th scope="row">3일 + 6시간</th><td class="num">1배</td><td>업무 시간 티켓</td></tr>
       </tbody>
-      <caption>Google SRE Workbook의 다중 창 예시입니다. 짧은 창은 이미 회복됐는데 계속 울리는 것을 막습니다.</caption>
+      <caption>Google SRE Workbook의 다중 창 예시입니다. CloudWatch에서는 메트릭 수식과 복합 알람으로 만듭니다.</caption>
     </table>
   </div>
 </section>
@@ -1316,17 +1700,18 @@
   <h2>알람은 사람을 깨울 가치가 있을 때만 울린다</h2>
   <div class="split split--even">
     <div class="prose">
+      <p>지금까지의 도구를 어떻게 조합할지에 대한 원칙입니다.</p>
       <ul>
-        <li><strong>증상에 겁니다.</strong> 에러율, p99, SLO 소진 속도처럼 사용자가 겪는 것에 겁니다.</li>
+        <li><strong>증상에 겁니다.</strong> 에러율, p99, 소진 속도처럼 사용자가 겪는 것이 기준입니다.</li>
         <li><strong>원인 지표는 대시보드로.</strong> CPU, GC 시간은 조사할 때 봅니다.</li>
-        <li><strong>모든 알람에 런북을.</strong> 받은 사람이 할 행동을 링크로 답니다.</li>
+        <li><strong>모든 알람에 런북을.</strong> 받은 사람이 할 일을 적은 절차서 링크를 답니다.</li>
         <li><strong>등급을 나눕니다.</strong> 즉시 호출과 업무 시간 티켓을 구분합니다.</li>
-        <li><strong>울리고 닫기만 한 알람은 지웁니다.</strong> 주기적으로 정리합니다.</li>
+        <li><strong>행동 없이 닫힌 알람은 지웁니다.</strong> 주기적으로 정리합니다.</li>
       </ul>
     </div>
     <aside class="callout callout--key">
       <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>"CPU 80%" 알람이 나쁜 이유</p>
-      <p>CPU가 높아도 사용자는 멀쩡할 수 있고, 매번 확인만 하고 닫다 보면 진짜 알람도 무시하게 됩니다. 이것을 알람 피로라고 합니다. 울리면 반드시 행동하는 알람만 남깁니다.</p>
+      <p>CPU가 높아도 사용자는 멀쩡할 수 있습니다. 울릴 때마다 확인만 하고 닫다 보면 진짜 알람도 무시하게 되는데, 이를 알람 피로라고 합니다. 울리면 반드시 행동하는 알람만 남깁니다.</p>
     </aside>
   </div>
 </section>
@@ -1334,8 +1719,8 @@
 <!-- ===== Part 5 divider (practice) ================================== -->
 <section class="slide slide--divider" data-section="장애 대응" data-depth="practice">
   <p class="divider__no">5부</p>
-  <h2>장애가 났을 때 무엇부터 하는가</h2>
-  <p class="lede">알람이 울렸습니다. 사람과 절차가 움직이는 인시던트 대응, 증상에서 원인으로 좁혀 가는 플레이북, 자주 터지는 장애 유형, 그리고 장애를 일부러 일으켜 미리 대비하는 카오스 엔지니어링까지 봅니다.</p>
+  <h2>알람이 울린 뒤 무엇부터 하는가</h2>
+  <p class="lede">4부에서 주문 서비스가 아플 때 알람이 울리게 만들었습니다. 이제 저녁 8시, 소진 속도 알람이 당신의 휴대폰을 울렸다고 합시다. 사람과 절차가 움직이는 순서, 증상에서 원인으로 좁혀 가는 순서, 자주 터지는 장애 여섯 가지, 그리고 장애를 미리 일으켜 대비하는 방법을 봅니다.</p>
 </section>
 
 <!-- ===== Incident process ============================================ -->
@@ -1343,15 +1728,15 @@
   <h2>인시던트 대응은 정해진 순서로 움직인다</h2>
   <div class="split split--even">
     <ol class="steps">
-      <li><b>탐지</b><p>알람이나 사용자 신고로 이상을 알아챕니다.</p></li>
+      <li><b>탐지</b><p>알람이나 고객 문의로 이상을 알아챕니다.</p></li>
       <li><b>선언과 분류</b><p>인시던트를 선언하고 영향 범위로 심각도를 정합니다.</p></li>
       <li class="is-key"><b>완화</b><p>원인을 몰라도 사용자 피해부터 멈춥니다.</p></li>
       <li><b>복구와 원인 분석</b><p>정상으로 되돌리고 근본 원인을 찾습니다.</p></li>
       <li><b>포스트모템</b><p>재발을 막을 조치를 정하고 기록합니다.</p></li>
     </ol>
     <div class="prose">
-      <p>장애 대응에서 가장 흔한 실수는 원인을 찾느라 완화를 미루는 것입니다. 사용자는 원인이 아니라 <strong>복구 시간</strong>을 겪습니다. 그래서 탐지까지 걸린 시간과 완화까지 걸린 시간을 따로 재서 개선합니다.</p>
-      <p>심각도(SEV1~3 등)는 미리 정의해 둡니다. "결제 불가는 SEV1, 관리자 화면 오류는 SEV3"처럼 정해져 있어야 새벽에 누구를 깨울지 고민하지 않습니다.</p>
+      <p>사용자에게 영향을 주는 계획되지 않은 사건을 <dfn title="incident">인시던트</dfn>라고 합니다. 인시던트가 나면 다들 바로 원인을 찾으러 뛰어들고 싶어 하지만, 그보다 먼저 할 일이 있습니다. 왼쪽 순서에서 원인 분석이 완화 <strong>뒤</strong>에 있다는 점이 핵심입니다. 사용자는 원인이 아니라 멈춰 있는 시간을 겪기 때문입니다.</p>
+      <p><dfn title="severity">심각도</dfn>(SEV1~3 등)는 미리 정의해 둡니다. "주문 불가는 SEV1, 관리자 화면 오류는 SEV3"처럼 정해져 있어야 새벽에 누구를 깨울지 고민하지 않습니다.</p>
     </div>
   </div>
 </section>
@@ -1361,25 +1746,38 @@
   <h2>원인보다 완화가 먼저, 단 증거는 남긴다</h2>
   <div class="split split--even">
     <div class="slide__body">
+      <div class="prose">
+        <p>완화 수단은 대부분 앞 부들에서 이미 만들어 둔 것입니다. 상황별로 꺼낼 수단을 미리 짝지어 두면 판단이 빨라집니다.</p>
+      </div>
       <table class="compare">
         <thead><tr><th scope="col">상황</th><th scope="col">완화 수단</th></tr></thead>
         <tbody>
-          <tr><th scope="row">배포 직후 에러</th><td class="is-flow">즉시 롤백</td></tr>
+          <tr><th scope="row">배포 직후 에러</th><td class="is-flow">즉시 롤백(3부)</td></tr>
           <tr><th scope="row">부하 폭증</th><td>스케일 아웃, 스로틀링</td></tr>
-          <tr><th scope="row">한 AZ만 이상</th><td>zonal shift</td></tr>
-          <tr><th scope="row">의존 서비스 장애</th><td>기능 플래그로 끄기, 서킷 브레이커</td></tr>
+          <tr><th scope="row">한 AZ만 이상</th><td>zonal shift(2부)</td></tr>
+          <tr><th scope="row">의존 서비스 장애</th><td>기능 끄기, 서킷 브레이커</td></tr>
           <tr><th scope="row">특정 클라이언트 폭주</th><td>WAF 규칙으로 차단(16장)</td></tr>
         </tbody>
       </table>
     </div>
-    <div class="slide__body">
-      <div class="prose">
-        <p>재시작은 증거를 지웁니다. 재시작하기 전에 스레드 덤프를 뜨고(5장), 문제 인스턴스 하나는 로드 밸런서에서만 빼서 살려 두면 나중에 원인을 볼 수 있습니다.</p>
-      </div>
-      <aside class="callout callout--note">
-        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>역할을 나누면 빨라진다</p>
-        <p>지휘자 한 명이 결정하고, 기술 담당이 조사하고, 소통 담당이 30분마다 상태 페이지와 사내 채널에 진행 상황을 올립니다.</p>
-      </aside>
+    <div class="prose">
+      <p>의존 서비스 장애에서 "기능 끄기"는 11장의 Feature Flag, 즉 재배포 없이 설정으로 기능을 켜고 끄는 스위치를 말합니다. 카드사 하나가 장애면 그 결제 수단만 끄고 나머지 주문은 받습니다.</p>
+      <p>완화가 먼저지만 증거를 지우면 안 됩니다. 재시작은 메모리 상태를 지웁니다. 재시작하기 전에 스레드 덤프를 뜨고(5장), 문제 서버 하나는 로드 밸런서에서만 빼서 살려 두면 나중에 원인을 볼 수 있습니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Roles & comms =============================================== -->
+<section class="slide">
+  <h2>역할을 나누고 정해진 간격으로 알린다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>장애 중에 다섯 명이 각자 서버에 들어가 무언가를 고치면, 누가 무엇을 바꿨는지 아무도 모르게 됩니다. 그래서 역할을 나눕니다. <strong>지휘자</strong> 한 명이 결정하고 기록하며, <strong>기술 담당</strong>이 조사와 조치를 하고, <strong>소통 담당</strong>이 바깥에 상황을 알립니다.</p>
+      <p>작은 팀이라 사람이 둘뿐이어도 "지금 결정하는 사람은 누구인가"는 정해 둡니다.</p>
+    </div>
+    <div class="prose">
+      <p>소통 담당은 정해진 간격, 예를 들어 30분마다 진행 상황을 올립니다. 대상은 사내 채널과 <dfn title="status page">상태 페이지</dfn>, 즉 고객이 서비스 상태를 확인하는 공개 페이지입니다. 새로운 내용이 없어도 "조사 중, 다음 갱신 30분 뒤"를 올립니다. 소식이 끊기면 고객 문의와 사내 질문이 쏟아져 기술 담당의 손을 묶습니다.</p>
+      <p>완화가 끝나고 서비스가 안정되면 인시던트를 종료하고, 마지막 단계인 포스트모템으로 넘어갑니다.</p>
     </div>
   </div>
 </section>
@@ -1389,8 +1787,8 @@
   <h2>포스트모템은 사람이 아니라 시스템을 고친다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>포스트모템은 장애의 타임라인, 영향, 근본 원인, 재발 방지 조치를 기록하는 문서입니다. <dfn title="blameless">비난 없는</dfn> 원칙이 핵심입니다. "누가 잘못 쳤나"에서 멈추면 사람들은 실수를 숨기고, 같은 실수를 가능하게 한 시스템은 그대로 남습니다.</p>
-      <p>"운영자가 잘못된 명령을 실행했다"가 아니라 "검토 없이 운영 DB에 명령을 실행할 수 있었다"를 원인으로 적습니다.</p>
+      <p><dfn title="postmortem">포스트모템</dfn>은 장애의 타임라인, 영향, 근본 원인, 재발 방지 조치를 기록하는 문서입니다. <dfn title="blameless">비난 없는</dfn> 원칙이 핵심입니다. "누가 잘못 쳤나"에서 멈추면 사람들은 실수를 숨기고, 같은 실수를 가능하게 한 시스템은 그대로 남습니다.</p>
+      <p>"운영자가 잘못된 명령을 실행했다"가 아니라 "검토 없이 운영 DB에 명령을 실행할 수 있었다"를 원인으로 적습니다. 그래야 조치가 "조심하자"가 아니라 "운영 DB 쓰기는 승인 절차를 거친다"가 됩니다.</p>
     </div>
     <div class="prose">
       <ul>
@@ -1408,15 +1806,15 @@
   <h2>"서버가 느려요"에 답하는 순서</h2>
   <div class="split split--even">
     <ol class="steps">
-      <li><b>범위 좁히기</b><p>전체인가, 특정 API나 인스턴스인가. 배포와 겹치나.</p></li>
+      <li><b>범위 좁히기</b><p>전체인가, 특정 API나 태스크인가. 배포와 겹치나.</p></li>
       <li><b>지표</b><p>골든 시그널, CPU, 메모리, GC 시간, DB 연결 수.</p></li>
-      <li><b>로그와 트레이스</b><p>느린 span과 그 요청의 에러 로그.</p></li>
+      <li><b>트레이스와 로그</b><p>느린 span과 그 요청의 로그.</p></li>
       <li class="is-key"><b>스레드·힙 덤프</b><p>스레드가 어디서 기다리는지, 무엇이 힙을 채우는지.</p></li>
       <li><b>DB</b><p>슬로 쿼리, 실행 계획, 락 대기.</p></li>
     </ol>
     <div class="prose">
-      <p>바깥에서 안으로, 싼 정보에서 비싼 정보로 내려갑니다. 대시보드 한 화면은 몇 초면 보지만, 힙 덤프는 수 GB를 받아 분석 도구로 열어야 합니다.</p>
-      <p>각 단계의 도구는 앞 장에 있습니다. 서버 명령어는 9장, K8s 상태별 진단은 10장, 덤프 읽는 법은 5장, 슬로 쿼리와 실행 계획은 4장입니다. 여기서는 <strong>어느 순서로 그 도구를 꺼내는지</strong>를 정합니다.</p>
+      <p>절차를 봤으니 이제 기술 담당의 일입니다. 가장 흔한 신고는 "주문이 느려요"입니다. 조사 순서의 원칙은 <strong>바깥에서 안으로, 싼 정보에서 비싼 정보로</strong>입니다. 대시보드는 몇 초면 보지만, 힙 덤프는 수 GB를 받아 분석 도구로 열어야 합니다.</p>
+      <p>각 단계의 도구는 앞 장에 있습니다. 서버 명령어는 9장, Kubernetes 상태별 진단은 10장, 스레드 덤프와 힙 덤프 읽는 법은 5장, 슬로 쿼리와 실행 계획은 4장입니다. 여기서는 그 도구를 <strong>어느 순서로 꺼내는지</strong>를 정합니다.</p>
     </div>
   </div>
 </section>
@@ -1425,19 +1823,20 @@
 <section class="slide">
   <h2>지표 조합이 원인의 방향을 가리킨다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>2단계에서 지표 하나만 보면 판단이 어렵지만, 두세 개를 함께 보면 원인의 방향이 좁혀집니다. 표의 용어는 모두 앞 장의 것입니다. GC는 JVM이 안 쓰는 객체를 치우는 작업(5장), WAITING은 스레드 덤프에서 무언가를 기다리는 스레드 상태(5장), N+1은 연관 엔티티를 하나씩 따로 조회하는 JPA의 함정(6장), CPU 크레딧은 T 계열 인스턴스의 버스트 한도(14장)입니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">증상 조합</th><th scope="col">의심할 원인</th><th scope="col">확인 방법</th></tr></thead>
       <tbody>
         <tr><th scope="row">CPU 높음 + GC 시간 증가</th><td>힙 부족, 과도한 객체 생성</td><td>GC 로그, 힙 사용률 추이</td></tr>
         <tr><th scope="row">CPU 낮음 + 지연 높음</th><td class="is-key">무언가를 기다림</td><td>스레드 덤프의 WAITING 스택</td></tr>
-        <tr><th scope="row">특정 API만 느림</th><td>슬로 쿼리, N+1(6장)</td><td>트레이스, 슬로 쿼리 로그</td></tr>
+        <tr><th scope="row">특정 API만 느림</th><td>슬로 쿼리, N+1</td><td>트레이스, 슬로 쿼리 로그</td></tr>
         <tr><th scope="row">메모리 증가 후 재시작</th><td>메모리 누수, OOM</td><td>힙 덤프, 컨테이너 종료 코드</td></tr>
-        <tr><th scope="row">인스턴스 하나만 느림</th><td>T 계열 CPU 크레딧 소진(14장)</td><td>인스턴스별 지표 비교</td></tr>
+        <tr><th scope="row">서버 하나만 느림</th><td>T 계열 CPU 크레딧 소진</td><td>서버별 지표 비교</td></tr>
       </tbody>
     </table>
-    <div class="prose">
-      <p>"CPU는 한가한데 느리다"는 가장 흔하고 헷갈리는 패턴입니다. 스레드가 일하지 않고 커넥션, 락, 외부 API 응답을 <strong>기다리고</strong> 있다는 뜻이라, 서버를 늘려도 나아지지 않습니다.</p>
-    </div>
+    <p class="small">"CPU는 한가한데 느리다"가 가장 흔하고 헷갈리는 패턴입니다. 스레드가 커넥션, 락, 외부 응답을 기다리고 있어서 서버를 늘려도 나아지지 않습니다.</p>
   </div>
 </section>
 
@@ -1445,33 +1844,34 @@
 <section class="slide">
   <h2>5xx 급증은 누가 만든 에러인지부터 가른다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>이제 자주 터지는 장애를 하나씩 봅니다. 첫째는 5xx 급증입니다. ALB 뒤의 서비스에서 5xx는 두 곳에서 생깁니다. 앱이 직접 500을 반환하면 <code>HTTPCode_Target_5XX_Count</code>가, ALB가 대상과 통신하다 실패해 스스로 에러를 만들면 <code>HTTPCode_ELB_5XX_Count</code>가 늘어납니다. 앞의 것이면 앱 로그를, 뒤의 것이면 ALB와 대상 사이의 연결을 봅니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">코드</th><th scope="col">ALB 문서의 대표 원인</th><th scope="col">먼저 볼 곳</th></tr></thead>
       <tbody>
-        <tr><th scope="row">대상이 만든 5xx</th><td>앱이 직접 500을 반환</td><td><code>HTTPCode_Target_5XX_Count</code>, 앱 로그</td></tr>
+        <tr><th scope="row">대상이 만든 5xx</th><td>앱이 직접 500을 반환</td><td>앱 로그, 최근 배포</td></tr>
         <tr><th scope="row">502</th><td class="is-key">요청 중 대상이 연결을 끊음</td><td>keep-alive 설정, 등록 취소 지연</td></tr>
         <tr><th scope="row">503</th><td>등록된 정상 대상이 없음</td><td>헬스 체크, 배포 상태</td></tr>
-        <tr><th scope="row">504</th><td>유휴 제한 시간 안에 응답 없음</td><td>느린 쿼리, 외부 호출</td></tr>
+        <tr><th scope="row">504</th><td>유휴 타임아웃 안에 응답 없음</td><td>느린 쿼리, 외부 호출</td></tr>
       </tbody>
     </table>
-    <div class="prose">
-      <p>ALB는 앱이 만든 에러(<code>HTTPCode_Target_5XX_Count</code>)와 ALB 자신이 만든 에러(<code>HTTPCode_ELB_5XX_Count</code>)를 따로 셉니다. 앞의 것이 늘면 앱 로그를, 뒤의 것이 늘면 ALB와 대상 사이의 연결을 봅니다. 그리고 첫 질문은 언제나 <strong>"방금 배포했나"</strong>입니다.</p>
-    </div>
+    <p class="small">어느 경우든 첫 질문은 "방금 배포했나"입니다. 배포와 시각이 겹치면 원인을 찾기 전에 롤백부터 합니다.</p>
   </div>
 </section>
 
 <!-- ===== 502 keep-alive ============================================== -->
 <section class="slide">
-  <h2>간헐적 502는 keep-alive 불일치 탓이다</h2>
+  <h2>새벽의 간헐적 502는 keep-alive 불일치 탓이다</h2>
   <div class="split split--wide-left">
-    <pre class="code" data-file="application.yml"><code><span class="c"># ALB 유휴 제한 시간: 기본 60초</span>
+    <pre class="code" data-file="application.yml"><code><span class="c"># ALB 유휴 타임아웃: 기본 60초</span>
 <span class="c"># 앱 keep-alive는 그보다 길게</span>
 <span class="k">server</span>:
   <span class="k">tomcat</span>:
 <span class="hl">    <span class="k">keep-alive-timeout</span>: <span class="n">75s</span></span></code></pre>
     <div class="prose">
-      <p>ALB는 대상과의 연결을 재사용합니다(2장 keep-alive). 앱이 유휴 연결을 ALB보다 먼저 닫으면, ALB가 그 연결로 막 요청을 보낸 순간 끊겨 502가 납니다. 트래픽이 적은 시간에 드문드문 나는 502가 전형적인 모습입니다.</p>
-      <p>규칙은 하나입니다. <mark>앱의 keep-alive 제한 시간을 ALB 유휴 제한 시간보다 길게</mark> 둡니다. 기본 5초인 Node.js 서버에서 특히 자주 보이는 사례입니다.</p>
+      <p>표의 502 중 가장 흔한 사례입니다. 2장의 HTTP keep-alive처럼 ALB도 대상과의 연결을 재사용합니다. 연결 양쪽은 각자 "이 시간 동안 요청이 없으면 닫는다"는 유휴 타임아웃을 갖습니다. 앱이 ALB보다 먼저 닫으면, ALB가 막 그 연결로 요청을 보낸 순간 끊겨 502가 납니다.</p>
+      <p>요청이 드문 시간에 연결이 오래 놀기 쉬워서, 새벽에 드문드문 나는 502가 전형적인 모습입니다. 규칙은 하나입니다. <mark>앱의 keep-alive 시간을 ALB 유휴 타임아웃보다 길게</mark> 둡니다. 기본 5초인 Node.js 서버에서 특히 자주 보입니다.</p>
     </div>
   </div>
 </section>
@@ -1491,8 +1891,8 @@
   at ...PaymentClient.call  <span class="c">// 트랜잭션 안</span>
   at ...OrderService.place</code></pre>
     <div class="prose">
-      <p>메커니즘과 크기 계산은 4장에서 봤습니다. 운영에서는 두 단서로 확정합니다. 로그의 <code>active=total</code>과 <code>waiting</code>이 풀 포화를, 덤프에서 커넥션을 <strong>쥔 스레드의 스택</strong>이 원인을 보여 줍니다. 여기서는 트랜잭션 안의 외부 결제 호출입니다.</p>
-      <p>평소에는 HikariCP의 대기 스레드 수(pending)를 메트릭으로 내보내 알람을 걸고, RDS의 <code>DatabaseConnections</code>와 함께 봅니다. 풀을 키우기 전에 DB 최대 연결 수와 인스턴스 수의 곱을 계산합니다.</p>
+      <p>주문 API가 "CPU는 낮은데 느린" 패턴을 보였습니다. 4장에서 본 커넥션 풀(DB 연결을 미리 열어 빌려 쓰는 장치)이 바닥난 경우입니다. 로그의 <code>active=10, total=10</code>은 열 개가 모두 대여 중, <code>waiting=187</code>은 187개 스레드가 줄 서 있다는 뜻입니다.</p>
+      <p>원인은 덤프에서 연결을 <strong>쥔 스레드의 스택</strong>이 보여 줍니다. 여기서는 트랜잭션 안에서 외부 결제 API를 부르느라 연결을 오래 붙잡고 있습니다. 평소에는 HikariCP의 대기 스레드 수를 메트릭으로 내보내 RDS의 <code>DatabaseConnections</code>와 함께 봅니다. 풀을 키우기 전에 DB 최대 연결 수와 태스크 수의 곱부터 계산합니다.</p>
     </div>
   </div>
 </section>
@@ -1502,8 +1902,8 @@
   <h2>두 OOM은 흔적이 남는 곳이 다르다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>JVM <code>OutOfMemoryError</code>(5장)와 컨테이너 OOM(9장)은 흔적이 다릅니다. 앞의 것은 앱 로그와 힙 덤프를 남기지만, 뒤의 것은 커널이 SIGKILL로 끝내 <strong>앱 로그가 조용합니다</strong>.</p>
-      <p>그래서 힙 덤프 경로는 태스크가 사라져도 남는 곳(EFS 등)에 두고, 메모리 알람은 태스크 한도 기준으로 겁니다. 종료 코드 137인데 Java 로그에 OOM이 없다면 힙 밖 메모리를 의심해 힙 비율을 낮춥니다.</p>
+      <p>메모리가 바닥나는 OOM(Out Of Memory)은 두 층에서 일어납니다. JVM의 <code>OutOfMemoryError</code>(5장)는 힙이 찬 것이라 앱이 로그와 힙 덤프를 남깁니다. 컨테이너 OOM(9장)은 프로세스 전체가 컨테이너 메모리 한도를 넘은 것이라, 커널이 SIGKILL로 즉시 끝내 <strong>앱 로그가 조용합니다</strong>. 종료 코드 137은 128에 SIGKILL의 번호 9를 더한 값입니다.</p>
+      <p>그래서 힙 덤프 경로는 태스크가 사라져도 남는 곳(EFS 등)에 두고, 메모리 알람은 태스크 한도 기준으로 겁니다. 137인데 Java 로그에 OOM이 없다면 힙 밖 메모리를 의심하고 힙 비율을 낮춥니다.</p>
     </div>
     <pre class="code" data-file="어디에 흔적이 남는가"><code><span class="c"># JVM OOM: 앱 로그와 덤프 파일</span>
 java.lang.OutOfMemoryError: Java heap space
@@ -1523,13 +1923,13 @@ $ aws ecs describe-tasks --cluster prod \
   <h2>주기적인 p99 튐은 GC 정지를 의심한다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>p50은 평온한데 p99만 몇 분마다 톱니처럼 솟는다면, 그 시각과 GC 로그의 정지 시간을 겹쳐 봅니다. Stop-The-World 동안에는 모든 요청이 함께 멈추기 때문입니다(5장).</p>
-      <p>컨테이너에서는 원인이 하나 더 있습니다. CPU 한도를 넘으면 cgroup이 프로세스를 잠시 멈추는 <strong>스로틀링</strong>(9장)이 GC 스레드까지 멈춰 정지 시간을 늘립니다.</p>
+      <p>p50은 평온한데 p99만 몇 분마다 톱니처럼 솟는다면, 그 시각과 GC 로그의 정지 시간을 겹쳐 봅니다. 5장에서 보았듯 Stop-The-World 동안에는 GC를 위해 모든 애플리케이션 스레드가 멈추므로, 그 순간 처리 중이던 요청이 함께 늦어집니다.</p>
+      <p>컨테이너에서는 원인이 하나 더 있습니다. 태스크가 CPU 한도를 다 쓰면 cgroup이 프로세스를 잠시 멈추는 <strong>CPU 스로틀링</strong>(9장)이 일어나는데, 이것이 GC 스레드까지 멈춰 정지 시간을 늘립니다.</p>
     </div>
     <div class="prose">
       <ul>
-        <li><strong>GC 로그를 켜 둡니다.</strong> 장애가 난 뒤에는 켤 수 없습니다.</li>
-        <li><strong>GC 시간을 메트릭으로.</strong> Micrometer의 GC 정지 지표를 CloudWatch로 보냅니다.</li>
+        <li><strong>GC 로그를 켜 둡니다.</strong> 장애가 난 뒤에는 지난 일을 기록할 수 없습니다.</li>
+        <li><strong>GC 시간을 메트릭으로.</strong> 앱의 GC 정지 지표를 CloudWatch로 보냅니다.</li>
         <li><strong>힙 사용률의 바닥을 봅니다.</strong> GC 직후 바닥이 계속 오르면 누수입니다.</li>
         <li><strong>CPU 여유를 둡니다.</strong> 태스크 CPU를 너무 빡빡하게 잡지 않습니다.</li>
       </ul>
@@ -1542,12 +1942,12 @@ $ aws ecs describe-tasks --cluster prod \
   <h2>디스크가 차면 서버는 엉뚱한 곳에서 터진다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>디스크가 가득 차면 로그 쓰기가 실패하고, DB는 쓰기를 멈추고, 앱은 임시 파일을 못 만들어 엉뚱한 예외를 냅니다. 흔한 주범은 회전되지 않는 로그 파일, 쌓인 힙 덤프, 지워졌지만 아직 열려 있는 파일(9장)입니다.</p>
-      <p>예방은 에이전트의 <code>disk used_percent</code> 알람(80%), 로그 회전, 로그를 파일 대신 stdout으로 보내 CloudWatch Logs에 맡기기입니다.</p>
+      <p>디스크가 가득 차면 로그 쓰기가 실패하고, DB는 쓰기를 멈추고, 앱은 임시 파일을 못 만들어 디스크와 상관없어 보이는 예외를 냅니다. 흔한 주범은 회전(오래된 로그를 잘라 지우는 처리)되지 않는 로그 파일, 쌓인 힙 덤프, 지웠지만 프로세스가 아직 열고 있어 공간이 반환되지 않은 파일(9장)입니다.</p>
+      <p>예방은 에이전트의 <code>disk used_percent</code> 알람(예: 80%), 로그 회전, 그리고 로그를 파일 대신 stdout으로 내보내 CloudWatch Logs에 맡기는 것입니다.</p>
     </div>
     <div class="slide__body">
       <div class="prose">
-        <p>EBS는 볼륨을 붙인 채로 크기를 늘릴 수 있습니다(14장). 다만 그다음 OS 안에서 파티션과 파일 시스템도 늘려야 공간이 보입니다.</p>
+        <p>EC2의 EBS 볼륨은 붙인 채로 크기를 늘릴 수 있습니다(14장). 다만 볼륨이 커져도 그 위의 파티션과 파일 시스템은 자동으로 커지지 않으므로, OS 안에서 둘을 따로 늘려야 공간이 보입니다.</p>
       </div>
       <aside class="callout callout--key">
         <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>RDS 저장 공간도 찹니다</p>
@@ -1562,7 +1962,8 @@ $ aws ecs describe-tasks --cluster prod \
   <h2>카오스 엔지니어링은 장애를 미리 일으켜 본다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>지금까지 본 설계는 모두 "AZ가 죽으면 이렇게 넘어갈 것이다"라는 가설입니다. 가설은 실제로 일으켜 보기 전까지 검증되지 않습니다. <dfn title="chaos engineering">카오스 엔지니어링</dfn>은 통제된 조건에서 장애를 주입해 시스템이 기대대로 버티는지 확인하는 실험입니다.</p>
+      <p>여기까지 본 장애 대응은 모두 장애가 난 뒤의 일입니다. 그리고 2부에서 설계한 구조는 "AZ가 죽으면 이렇게 넘어갈 것이다"라는 <strong>가설</strong>입니다. 가설은 실제로 일으켜 보기 전까지 검증되지 않았습니다.</p>
+      <p><dfn title="chaos engineering">카오스 엔지니어링</dfn>은 통제된 조건에서 일부러 장애를 주입해, 시스템이 기대대로 버티는지 확인하는 실험입니다. 오른쪽이 실험의 다섯 단계입니다. 특히 셋째와 다섯째 단계가 실험을 사고와 구분합니다.</p>
     </div>
     <ol class="steps">
       <li><b>정상 상태 정의</b><p>에러율, p99처럼 측정 가능한 정상 기준을 정합니다.</p></li>
@@ -1576,7 +1977,7 @@ $ aws ecs describe-tasks --cluster prod \
 
 <!-- ===== FIS template ================================================ -->
 <section class="slide">
-  <h2>FIS 실험 템플릿: 대상, 행동, 중단 조건</h2>
+  <h2>FIS 실험 템플릿은 대상, 행동, 중단 조건이다</h2>
   <div class="split split--wide-left">
     <pre class="code" data-file="FIS 실험 템플릿(일부)"><code>{
   <span class="s">"targets"</span>: { <span class="s">"azA"</span>: {
@@ -1594,8 +1995,8 @@ $ aws ecs describe-tasks --cluster prod \
     <span class="s">"value"</span>: <span class="s">"arn:…:alarm:api-5xx-rate"</span> }]
 }</code></pre>
     <div class="prose">
-      <p><dfn title="AWS Fault Injection Service">AWS FIS</dfn>는 장애 주입을 관리형으로 실행합니다. <strong>대상</strong>은 태그와 필터로 고른 자원, <strong>행동</strong>은 인스턴스 중지, ECS 태스크 중지, 네트워크 지연, API 오류 주입 같은 장애입니다.</p>
-      <p><strong>중단 조건</strong>은 CloudWatch 알람입니다. 실험 중 알람이 울리면 FIS가 실험을 멈춥니다. 실험은 IAM 역할로 실행되어 권한 밖 자원은 건드릴 수 없습니다.</p>
+      <p><dfn title="AWS Fault Injection Service">AWS FIS</dfn>는 이런 실험을 관리형으로 실행합니다. 템플릿은 세 부분입니다. <strong>대상</strong>은 태그와 필터로 고른 자원입니다. 왼쪽은 주문 API를 EC2에서 돌리는 경우로, <code>app=order-api</code> 태그가 붙고 AZ a에 있는 인스턴스 전부입니다. <strong>행동</strong>은 넣을 장애로, 여기서는 인스턴스 중지입니다. Fargate라면 ECS 태스크 중지를 고르고, 그 밖에 네트워크 지연, API 오류 주입 등이 있습니다.</p>
+      <p><strong>중단 조건</strong>은 4부에서 만든 CloudWatch 알람입니다. 실험 중 5xx 알람이 울리면 FIS가 실험을 멈춥니다. 실험은 IAM 역할로 실행되어 권한 밖 자원은 건드릴 수 없습니다.</p>
     </div>
   </div>
 </section>
@@ -1605,7 +2006,7 @@ $ aws ecs describe-tasks --cluster prod \
   <h2>AZ 정전을 연습하고 게임 데이로 사람도 훈련한다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>FIS의 시나리오 라이브러리에는 <strong>AZ Availability: Power Interruption</strong>이 있습니다. 한 AZ의 EC2·ECS·EKS 컴퓨팅 손실, 그 AZ에서의 재확장 실패, 서브넷 연결 끊김, RDS와 ElastiCache 장애 조치 같은 증상을 한꺼번에 일으킵니다. 기본으로 30분간 정전 증상, 이어서 30분간 복구 과정의 증상을 냅니다.</p>
+      <p>템플릿을 직접 짜지 않아도 됩니다. FIS의 시나리오 라이브러리에는 <strong>AZ Availability: Power Interruption</strong>이 있습니다. 한 AZ의 EC2·ECS·EKS 컴퓨팅 손실, 그 AZ에서의 재확장 실패, 서브넷 연결 끊김, RDS와 ElastiCache 장애 조치 같은 증상을 한꺼번에 일으킵니다. 기본으로 30분간 정전 증상, 이어서 30분간 복구 과정의 증상을 냅니다.</p>
       <p>2부에서 설계한 Multi-AZ와 정적 안정성이 실제로 동작하는지 확인하는 가장 직접적인 방법입니다.</p>
     </div>
     <div class="slide__body">
@@ -1613,7 +2014,7 @@ $ aws ecs describe-tasks --cluster prod \
         <p><dfn title="game day">게임 데이</dfn>는 이런 실험을 정해진 날 팀 전체가 실제 대응하듯 진행하는 훈련입니다. 알람이 제때 울렸는지, 런북대로 움직였는지, 대시보드가 원인을 보여 줬는지를 함께 검증합니다.</p>
       </div>
       <aside class="callout callout--note">
-        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>결과는 포스트모템처럼</p>
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>결과는 포스트모템처럼 남깁니다</p>
         <p>실험에서 발견한 빈틈은 실제 장애와 똑같이 조치 항목으로 남깁니다. 그래야 다음 실험이 더 큰 장애를 견딥니다.</p>
       </aside>
     </div>
@@ -1624,7 +2025,22 @@ $ aws ecs describe-tasks --cluster prod \
 <section class="slide slide--divider" data-section="용량과 비용" data-depth="practice">
   <p class="divider__no">6부</p>
   <h2>버틸 만큼 사고, 쓴 만큼만 낸다</h2>
-  <p class="lede">고가용성과 관측성은 모두 돈이 듭니다. 장애를 버틸 용량을 계산하고, 무엇을 기준으로 늘리고 줄일지 정하고, 비용이 어디서 새는지 찾아 줄이는 방법을 봅니다.</p>
+  <p class="lede">2부의 정적 안정성은 여유 용량을 미리 사 두라고 했고, 4부의 관측성은 로그와 메트릭을 쌓으라고 했습니다. 둘 다 돈입니다. 이 부는 주문 서비스가 장애를 버틸 용량을 숫자로 계산하고, 무엇을 기준으로 늘리고 줄일지 정하고, 청구서에서 돈이 새는 곳을 찾아 줄이는 방법을 봅니다.</p>
+</section>
+
+<!-- ===== Little's law ================================================ -->
+<section class="slide">
+  <h2>필요한 용량은 동시에 처리 중인 요청 수에서 나온다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>"서버가 몇 대 필요한가"는 초당 요청 수만으로는 답할 수 없습니다. 요청 하나가 서버를 얼마나 오래 붙잡는지도 알아야 합니다. 4장에서 커넥션 풀 크기를 어림할 때 쓴 <dfn title="Little's Law">리틀의 법칙</dfn>이 여기서도 쓰입니다.</p>
+      <p>리틀의 법칙은 "시스템 안에 동시에 머무는 요청 수 = 초당 도착하는 요청 수 × 요청 하나가 머무는 평균 시간"입니다. 가게에 손님이 분당 10명 오고 한 명이 3분 머물면, 가게 안에는 평균 30명이 있다는 것과 같은 계산입니다.</p>
+    </div>
+    <div class="prose">
+      <p>주문 서비스에 대입하면 피크 초당 2,000건 × 0.1초 = <strong>동시에 처리 중인 요청 200건</strong>입니다.</p>
+      <p>다음은 태스크 하나가 감당하는 양입니다. 이것은 계산이 아니라 측정으로 얻습니다. 스테이징에서 부하 테스트를 돌려 p99 지연이 목표를 넘기 직전까지 동시 요청을 올려 보고, 그보다 조금 낮은 값을 씁니다. 주문 API 태스크는 동시 50건까지 안정적이었다고 합시다. 그러면 정상 시 200 ÷ 50 = <strong>4개</strong>가 필요합니다.</p>
+    </div>
+  </div>
 </section>
 
 <!-- ===== Capacity planning ========================================== -->
@@ -1633,13 +2049,13 @@ $ aws ecs describe-tasks --cluster prod \
   <div class="split split--even">
     <ol class="steps">
       <li><b>피크 동시 요청</b><p>2,000 RPS × 0.1초 = 200건(리틀의 법칙).</p></li>
-      <li><b>인스턴스당 처리량</b><p>부하 테스트로 측정: 안정적으로 50건.</p></li>
-      <li><b>정상 시 필요 대수</b><p>200 ÷ 50 = 4대. 여기까지는 장애가 없을 때의 숫자입니다.</p></li>
-      <li class="is-key"><b>AZ 하나 손실 대비(N+1)</b><p>2 AZ면 각 4대, 총 8대. 3 AZ면 각 2대, 총 6대.</p></li>
+      <li><b>태스크당 처리량</b><p>부하 테스트로 측정: 안정적으로 50건.</p></li>
+      <li><b>정상 시 필요 수</b><p>200 ÷ 50 = 4개. 장애가 없을 때의 숫자입니다.</p></li>
+      <li class="is-key"><b>AZ 하나 손실 대비</b><p>2 AZ면 각 4개, 총 8개. 3 AZ면 각 2개, 총 6개.</p></li>
     </ol>
     <div class="prose">
-      <p>AZ 하나가 사라지는 순간 남은 AZ가 피크 전체를 받아야 합니다. 2 AZ에서는 남는 비율이 1/2이라 두 배를, 3 AZ에서는 2/3라 1.5배를 사 두면 됩니다. <strong>AZ가 많을수록 여유 용량이 싸지는</strong> 이유입니다.</p>
-      <p>이것이 2부의 정적 안정성을 숫자로 옮긴 것입니다. 장애 순간 Auto Scaling에 기대지 않고 미리 사 둔 용량으로 버팁니다.</p>
+      <p>4개는 아무 일도 없을 때의 숫자입니다. 정적 안정성을 지키려면 AZ 하나가 사라지는 순간 <strong>남은 AZ만으로</strong> 4개가 있어야 합니다. 이렇게 장애 하나만큼 여유를 더 두는 방식을 흔히 N+1이라고 부릅니다.</p>
+      <p>2 AZ에서는 하나를 잃으면 절반이 남으므로 AZ마다 4개, 총 8개로 두 배를 사야 합니다. 3 AZ에서는 3분의 2가 남으므로 AZ마다 2개, 총 6개로 1.5배면 됩니다. <mark>AZ가 많을수록 여유 용량이 싸지는</mark> 이유입니다.</p>
     </div>
   </div>
 </section>
@@ -1648,18 +2064,19 @@ $ aws ecs describe-tasks --cluster prod \
 <section class="slide">
   <h2>스케일 지표는 병목을 따라 고른다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>6개는 피크 기준입니다. 새벽까지 6개를 켜 둘 필요는 없으니, 부하에 따라 늘리고 줄이는 기준을 정합니다. 14장에서 본 대상 추적(Target Tracking) 정책은 "평균 CPU 50%"처럼 목표값을 정하면 그것을 유지하도록 태스크 수를 맞춥니다. 어려운 것은 <strong>어떤 지표를</strong> 목표로 삼느냐입니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">스케일 기준</th><th scope="col">잘 맞는 경우</th><th scope="col">함정</th></tr></thead>
       <tbody>
-        <tr><th scope="row">평균 CPU 사용률</th><td>계산이 많은 웹 서버</td><td>I/O 대기형 앱은 CPU가 낮은 채 느려짐</td></tr>
+        <tr><th scope="row">평균 CPU 사용률</th><td>계산이 많은 웹 서버</td><td>대기형 앱은 CPU가 낮은 채 느려짐</td></tr>
         <tr><th scope="row">대상당 요청 수</th><td>요청 비용이 고른 API</td><td>무거운 요청이 섞이면 왜곡</td></tr>
-        <tr><th scope="row">인스턴스당 큐 적체</th><td class="is-flow">SQS 비동기 워커</td><td>처리 시간 변화를 함께 봐야 함</td></tr>
+        <tr><th scope="row">태스크당 큐 적체</th><td class="is-flow">SQS 비동기 워커</td><td>처리 시간 변화를 함께 봐야 함</td></tr>
         <tr><th scope="row">응답 지연</th><td>사용자 체감과 직결</td><td class="is-key">원인이 DB면 증설이 악화시킴</td></tr>
       </tbody>
     </table>
-    <div class="prose">
-      <p>기본은 목표값을 정하면 알아서 맞추는 Target Tracking입니다(14장). 늘릴 때는 빠르게, 줄일 때는 천천히 해야 늘었다 줄었다를 반복하는 플래핑을 피합니다. 지연으로 스케일하면 DB가 병목일 때 앱 서버만 늘어 커넥션이 더 몰립니다. 예측 가능한 피크는 예약 스케일링으로 미리 늘립니다.</p>
-    </div>
+    <p class="small">늘릴 때는 빠르게, 줄일 때는 천천히 해야 늘었다 줄었다를 반복하는 플래핑을 피합니다. 저녁 피크처럼 예측 가능한 증가는 시각을 정해 미리 늘리는 예약 스케일링으로 대비합니다.</p>
   </div>
 </section>
 
@@ -1667,18 +2084,19 @@ $ aws ecs describe-tasks --cluster prod \
 <section class="slide">
   <h2>AWS 청구서는 네 가지 단위로 쌓인다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>이제 비용입니다. 주문 서비스의 월 청구서를 열어 보면 수십 개 서비스의 항목이 있지만, 과금 방식으로 묶으면 네 가지뿐입니다. 무엇을 얼마나 <strong>켜 두었나</strong>(컴퓨팅), 얼마나 <strong>쌓아 두었나</strong>(스토리지), 얼마나 <strong>옮겼나</strong>(전송), 몇 번 <strong>불렀나</strong>(요청)입니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">비용 축</th><th scope="col">과금 단위</th><th scope="col">대표 항목</th></tr></thead>
       <tbody>
         <tr><th scope="row">컴퓨팅</th><td>시간, vCPU·메모리 초, GB-초</td><td>EC2, Fargate, Lambda, RDS 인스턴스</td></tr>
-        <tr><th scope="row">스토리지</th><td>GB-월, 프로비저닝 IOPS</td><td>EBS, S3, 스냅숏, 로그 저장</td></tr>
+        <tr><th scope="row">스토리지</th><td>GB-월, 프로비저닝 IOPS</td><td>EBS, S3, 스냅샷, 로그 저장</td></tr>
         <tr><th scope="row">데이터 전송</th><td class="is-key">GB당, 방향과 경로별</td><td>인터넷 송신, AZ·리전 간, NAT 처리</td></tr>
         <tr><th scope="row">요청</th><td>요청 수, API 호출 수</td><td>S3 요청, API Gateway, CloudWatch API</td></tr>
       </tbody>
     </table>
-    <div class="prose">
-      <p>컴퓨팅은 눈에 잘 띄어 먼저 줄이지만, 예상 밖으로 커지는 쪽은 대개 <strong>데이터 전송</strong>입니다. 아키텍처 그림의 화살표 하나하나가 경로에 따라 GB당 요금을 가질 수 있기 때문입니다.</p>
-    </div>
+    <p class="small">컴퓨팅은 눈에 잘 띄어 먼저 줄이지만, 예상 밖으로 커지는 쪽은 대개 데이터 전송입니다. 아키텍처 그림의 화살표 하나하나가 경로에 따라 GB당 요금을 가질 수 있기 때문입니다.</p>
   </div>
 </section>
 
@@ -1687,8 +2105,8 @@ $ aws ecs describe-tasks --cluster prod \
   <h2>같은 1GB도 지나는 길에 따라 값이 다르다</h2>
   <div class="split split--center">
     <div class="prose">
-      <p>같은 AZ 안에서 사설 IP로 오가는 데이터는 무료지만, AZ를 건너면 양방향으로 GB당 요금이 붙습니다. Private Subnet의 서버가 NAT Gateway를 지나 S3를 부르면 NAT 데이터 처리 요금(미국 동부 오하이오 기준 GB당 0.045달러)이 붙습니다.</p>
-      <p>S3와 DynamoDB는 <dfn title="gateway endpoint">게이트웨이 엔드포인트</dfn>(13장)로 NAT를 우회하면 이 요금이 사라집니다. 대량 트래픽이 어느 화살표를 지나는지 그려 보는 것이 비용 최적화의 출발점입니다.</p>
+      <p>같은 AZ 안에서 사설 IP로 오가는 데이터는 무료지만, AZ를 건너면 양방향으로 GB당 요금이 붙습니다. Private Subnet의 주문 API가 NAT Gateway(13장)를 지나 S3를 부르면, NAT가 처리한 데이터에 GB당 요금이 붙습니다(미국 동부 오하이오 기준 0.045달러).</p>
+      <p>S3와 DynamoDB는 <strong>게이트웨이 엔드포인트</strong>(13장), 즉 VPC 라우팅 테이블에 추가하는 무료 전용 경로로 NAT를 우회하면 이 요금이 사라집니다. 대량 트래픽이 어느 화살표를 지나는지 그려 보는 것이 비용 최적화의 출발점입니다.</p>
     </div>
     <figure class="figure">
       <svg class="dg" viewBox="0 0 760 420" role="img" aria-labelledby="f-dt-t">
@@ -1696,7 +2114,7 @@ $ aws ecs describe-tasks --cluster prod \
         <rect class="dg-zone" x="20" y="20" width="440" height="380"/>
         <text class="dg-label--sm" x="40" y="46" text-anchor="start">VPC</text>
         <rect class="dg-box dg-box--flow" x="50" y="160" width="150" height="64"/>
-        <text x="125" y="192" text-anchor="middle">앱 서버</text>
+        <text x="125" y="192" text-anchor="middle">주문 API</text>
         <rect class="dg-box dg-box--key" x="280" y="70" width="160" height="64"/>
         <text x="360" y="102" text-anchor="middle">NAT Gateway</text>
         <rect class="dg-box" x="280" y="250" width="160" height="64"/>
@@ -1719,22 +2137,35 @@ $ aws ecs describe-tasks --cluster prod \
   </div>
 </section>
 
-<!-- ===== Cost visibility tools ======================================= -->
+<!-- ===== Cost visibility prose ======================================= -->
 <section class="slide">
-  <h2>비용도 지표처럼 보고 알람을 건다</h2>
+  <h2>비용도 지표처럼 보고, 나누고, 알람을 건다</h2>
+  <div class="prose prose--cols">
+    <p>4부에서 서비스 상태를 메트릭으로 보았듯, 비용도 같은 방식으로 다룹니다. 그래프로 보고, 팀별로 나누고, 이상하면 알림을 받습니다. AWS의 비용 도구는 이 세 동작에 대응합니다.</p>
+    <p><dfn>Cost Explorer</dfn>는 서비스, 계정, 태그별 비용을 그래프로 보여 주고 이번 달 예상치를 계산합니다. "지난달보다 왜 늘었나"를 물을 때 가장 먼저 엽니다.</p>
+    <p><dfn>Budgets</dfn>는 예산을 정해 두고 실제 비용이나 예측 비용이 그것을 넘으면 알립니다. 넘었을 때 특정 권한을 막는 조치를 연결할 수도 있습니다.</p>
+    <p><dfn title="Cost and Usage Report">CUR</dfn>은 가장 자세한 청구 원본입니다. 지금은 Data Exports 기능의 CUR 2.0으로 만들며, 줄 하나가 "어떤 자원이 어느 시간에 무엇을 얼마나 썼나"라서 S3에 쌓아 두고 Athena(S3의 파일에 SQL을 실행하는 서비스)로 팀별 정산을 합니다.</p>
+    <p><dfn>Cost Anomaly Detection</dfn>은 4부의 이상 탐지 알람처럼 평소 패턴에서 벗어난 비용 급증을 찾아 줍니다. 실수로 켜 둔 큰 인스턴스를 며칠 안에 잡습니다.</p>
+    <p>이 도구들이 "팀별, 서비스별"로 나눠 보려면 자원마다 소속을 알려 주는 표시가 필요합니다. 그것이 다음 슬라이드의 태그입니다.</p>
+  </div>
+</section>
+
+<!-- ===== Cost tools table ============================================ -->
+<section class="slide">
+  <h2>다섯 도구를 쓰는 장면으로 정리한다</h2>
   <div class="slide__body">
     <table class="compare">
       <thead><tr><th scope="col">도구</th><th scope="col">하는 일</th><th scope="col">쓰는 장면</th></tr></thead>
       <tbody>
         <tr><th scope="row">Cost Explorer</th><td>서비스·계정·태그별 비용 그래프와 예측</td><td>"지난달보다 왜 늘었나"</td></tr>
-        <tr><th scope="row">Budgets</th><td>예산 대비 실제·예측 비용 알림, 조치 연결</td><td class="is-flow">예측이 예산을 넘으면 경보</td></tr>
+        <tr><th scope="row">Budgets</th><td>예산 대비 실제·예측 비용 알림</td><td class="is-flow">예측이 예산을 넘으면 경보</td></tr>
         <tr><th scope="row">CUR 2.0(Data Exports)</th><td>자원·시간 단위 상세 내역을 S3로</td><td>Athena로 팀별 정산</td></tr>
         <tr><th scope="row">비용 할당 태그</th><td>태그를 청구서의 분류 축으로</td><td>팀, 서비스, 환경별 비용</td></tr>
         <tr><th scope="row">Cost Anomaly Detection</th><td>평소와 다른 비용 급증 감지</td><td>실수로 켜 둔 자원 발견</td></tr>
       </tbody>
     </table>
     <div class="prose">
-      <p>비용 및 사용 보고서(CUR)는 이제 Data Exports의 CUR 2.0으로 만듭니다. 줄 하나가 "어떤 자원이 어느 시간에 무엇을 얼마나 썼나"라서, 청구서의 숫자를 자원까지 추적할 수 있습니다.</p>
+      <p>주문 서비스 팀이 처음 할 일은 둘입니다. 계정 전체에 Budgets 알림을 걸어 예측 비용이 예산의 80%를 넘으면 팀 채널로 알림이 오게 하고, 모든 자원에 팀과 서비스 태그를 붙입니다. 태그에는 한 가지 함정이 있습니다.</p>
     </div>
   </div>
 </section>
@@ -1755,27 +2186,43 @@ $ aws ecs describe-tasks --cluster prod \
 }</code></pre>
     <div class="prose">
       <p>자원에 태그를 붙여도 청구서에 바로 나오지 않습니다. 결제 콘솔에서 그 태그 키를 <dfn title="cost allocation tag">비용 할당 태그</dfn>로 <strong>활성화</strong>해야 합니다. 새 태그 키가 활성화 목록에 보이기까지 최대 24시간, 활성화되기까지 다시 최대 24시간이 걸리고, 활성화 이전 비용에는 소급되지 않습니다.</p>
-      <p>그래서 태그 규칙은 첫날 정하고, IaC(11장)의 기본 태그 설정(Terraform의 default_tags)으로 빠짐없이 붙입니다.</p>
+      <p>그래서 태그 규칙은 첫날 정합니다. 왼쪽은 Terraform(11장)의 AWS 공급자 설정입니다. <code>default_tags</code> 블록에 적은 태그는 이 공급자로 만드는 모든 자원에 자동으로 붙으므로, 사람이 빠뜨릴 일이 없습니다.</p>
     </div>
   </div>
 </section>
 
 <!-- ===== Optimization levers 1 ======================================= -->
 <section class="slide">
-  <h2>컴퓨팅 비용은 크기, 약정, 칩으로 줄인다</h2>
+  <h2>컴퓨팅 비용은 크기, 약정, 칩 순서로 줄인다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>비용을 볼 수 있게 됐으니 줄일 차례입니다. 컴퓨팅에는 네 가지 레버가 있고, 순서가 중요합니다.</p>
+      <p>먼저 <dfn title="right-sizing">적정 크기 조정</dfn>입니다. 메모리 지표를 보니 4GB 태스크가 1GB만 쓰고 있다면 줄입니다. 그다음 남은 <strong>항상 켜져 있는 기준 부하</strong>에만 <dfn>Savings Plans</dfn>, 즉 1년이나 3년 동안 시간당 일정 금액을 쓰겠다고 약정하고 할인받는 상품을 적용합니다.</p>
+      <p>크기를 맞추기 전에 약정하면 낭비에 할인을 받는 셈입니다.</p>
+    </div>
+    <div class="prose">
+      <p>중단돼도 되는 정산 배치나 큐 워커는 <strong>Spot</strong>(14장)으로 돌립니다. AWS의 남는 용량을 싸게 쓰는 대신, 회수 통보를 받으면 2분 안에 내려가야 합니다. 큐 기반 워커는 메시지가 큐에 남으므로 이 중단을 견딥니다.</p>
+      <p>마지막으로 <strong>Graviton</strong>(14장), 즉 AWS가 설계한 Arm 칩 인스턴스는 같은 일을 더 싼 인스턴스로 합니다. Java처럼 JVM 위에서 도는 앱은 대개 그대로 옮겨지지만, 네이티브 라이브러리가 Arm을 지원하는지 확인해야 합니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Optimization levers 1 table ================================= -->
+<section class="slide">
+  <h2>할인 폭이 클수록 묶이는 조건도 크다</h2>
   <div class="slide__body">
     <table class="compare">
-      <thead><tr><th scope="col">레버</th><th scope="col">효과</th><th scope="col">주의</th></tr></thead>
+      <thead><tr><th scope="col">레버</th><th scope="col">효과</th><th scope="col">대가와 주의</th></tr></thead>
       <tbody>
         <tr><th scope="row">적정 크기 조정</th><td>과하게 큰 인스턴스·태스크 축소</td><td>메모리 지표(에이전트)가 있어야 판단</td></tr>
         <tr><th scope="row">Compute Savings Plans</th><td>최대 66% 할인, EC2·Fargate·Lambda</td><td>시간당 사용액을 1년·3년 약정</td></tr>
         <tr><th scope="row">EC2 Instance Savings Plans</th><td>최대 72% 할인</td><td>리전과 인스턴스 패밀리 고정</td></tr>
-        <tr><th scope="row">Spot</th><td>온디맨드 대비 최대 90% 할인</td><td class="is-key">회수 통보에 대비한 설계(14장)</td></tr>
+        <tr><th scope="row">Spot</th><td>온디맨드 대비 최대 90% 할인</td><td class="is-key">회수 통보에 대비한 설계</td></tr>
         <tr><th scope="row">Graviton(Arm)</th><td class="is-flow">같은 일을 더 싼 인스턴스로</td><td>네이티브 라이브러리 Arm 지원 확인</td></tr>
       </tbody>
     </table>
     <div class="prose">
-      <p>순서가 중요합니다. 먼저 크기를 맞추고, 남은 <strong>항상 켜져 있는 기준 부하</strong>만 약정하고, 중단돼도 되는 배치·워커는 Spot으로 돌립니다. 크기를 맞추기 전에 약정하면 낭비를 할인받는 셈입니다.</p>
+      <p>Compute Savings Plans는 할인이 작은 대신 EC2, Fargate, Lambda 어디에 써도 적용되어, 주문 API를 Fargate에서 EC2로 옮겨도 약정이 그대로 유효합니다. EC2 Instance Savings Plans는 할인이 크지만 리전과 인스턴스 패밀리가 고정됩니다. 1부의 컴퓨팅 선택이 아직 바뀔 수 있다면 유연한 쪽이 안전합니다.</p>
     </div>
   </div>
 </section>
@@ -1784,19 +2231,20 @@ $ aws ecs describe-tasks --cluster prod \
 <section class="slide">
   <h2>저장과 전송 비용은 수명과 경로로 줄인다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>스토리지와 전송은 한 번 설정해 두면 계속 효과가 나는 레버가 많습니다. 대부분 이 장과 앞 장에서 이미 본 것들입니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">레버</th><th scope="col">효과</th><th scope="col">방법</th></tr></thead>
       <tbody>
-        <tr><th scope="row">S3 수명 주기</th><td>오래된 객체를 싼 클래스로, 만료 삭제</td><td>규칙 또는 Intelligent-Tiering(15장)</td></tr>
-        <tr><th scope="row">로그 보존 기간</th><td class="is-flow">무기한 쌓이는 로그 저장비 제거</td><td>로그 그룹마다 보존 기간 지정</td></tr>
+        <tr><th scope="row">S3 수명 주기</th><td>오래된 객체를 싼 클래스로, 만료 삭제</td><td>수명 주기 규칙, Intelligent-Tiering(15장)</td></tr>
+        <tr><th scope="row">로그 보존 기간</th><td class="is-flow">무기한 쌓이는 로그 저장비 제거</td><td>로그 그룹마다 보존 기간 지정(4부)</td></tr>
         <tr><th scope="row">NAT 우회</th><td>NAT 처리 요금 제거</td><td>S3·DynamoDB 게이트웨이 엔드포인트</td></tr>
-        <tr><th scope="row">AZ 간 전송 줄이기</th><td>AZ 간 전송 요금 감소</td><td>같은 AZ 우선 라우팅, 수다스러운 호출 묶기</td></tr>
-        <tr><th scope="row">유휴 자원 정리</th><td>안 쓰는 EBS, 스냅숏, EIP 제거</td><td>태그 없는 자원 정기 점검</td></tr>
+        <tr><th scope="row">AZ 간 전송 줄이기</th><td>AZ 간 전송 요금 감소</td><td>같은 AZ 우선, 잦은 작은 호출 묶기</td></tr>
+        <tr><th scope="row">유휴 자원 정리</th><td>안 쓰는 EBS, 스냅샷, EIP 제거</td><td>태그 없는 자원 정기 점검</td></tr>
       </tbody>
     </table>
-    <div class="prose">
-      <p>AZ 간 전송을 줄이려고 고가용성을 포기해서는 안 됩니다. 복제처럼 꼭 필요한 AZ 간 트래픽은 남기고, 서비스끼리 잘게 자주 부르는 호출이나 디버그 로그 같은 <strong>불필요한 바이트</strong>를 줄입니다.</p>
-    </div>
+    <p class="small">AZ 간 전송을 줄이려고 고가용성을 포기해서는 안 됩니다. DB 복제처럼 꼭 필요한 AZ 간 트래픽은 남기고, 서비스끼리 잘게 자주 부르는 호출이나 과한 디버그 로그 같은 불필요한 바이트를 줄입니다.</p>
   </div>
 </section>
 
@@ -1804,10 +2252,13 @@ $ aws ecs describe-tasks --cluster prod \
 <section class="slide">
   <h2>운영 성숙도는 질문 몇 개로 점검한다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>여섯 부를 거치며 주문 서비스에 쌓은 장치들을 질문으로 바꾸면 아래 표가 됩니다. 1부에서 본 Well-Architected Tool의 질문이 이 표를 더 자세히 펼친 것입니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">영역</th><th scope="col">"예"라고 답할 수 있어야 하는 질문</th></tr></thead>
       <tbody>
-        <tr><th scope="row">변경</th><td>모든 인프라가 IaC이고, 배포는 자동 롤백되는가</td></tr>
+        <tr><th scope="row">변경</th><td>모든 인프라가 IaC이고, 배포는 알람으로 자동 롤백되는가</td></tr>
         <tr><th scope="row">관측</th><td>서비스마다 SLO와 소진 속도 알람, 대시보드가 있는가</td></tr>
         <tr><th scope="row">대응</th><td>모든 알람에 런북이 있고, 포스트모템 조치가 끝까지 처리되는가</td></tr>
         <tr><th scope="row">복원력</th><td class="is-flow">AZ 손실과 DR 전환을 최근에 실제로 연습했는가</td></tr>
@@ -1815,7 +2266,7 @@ $ aws ecs describe-tasks --cluster prod \
         <tr><th scope="row">비용</th><td>모든 자원에 태그가 있고, 예산 알람이 켜져 있는가</td></tr>
       </tbody>
     </table>
-    <p class="small">하나라도 "아니오"라면 그것이 다음 분기의 운영 개선 과제입니다. Well-Architected Tool의 질문이 이 표를 더 자세히 펼친 것입니다.</p>
+    <p class="small">하나라도 "아니오"라면 그것이 다음 분기의 운영 개선 과제입니다.</p>
   </div>
 </section>
 
@@ -1823,6 +2274,9 @@ $ aws ecs describe-tasks --cluster prod \
 <section class="slide" data-section="시리즈 마무리" data-depth="none">
   <h2>여섯 기둥으로 다시 보는 18개 장</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>이 장은 Well-Architected의 여섯 기둥으로 시작했습니다. 같은 기둥으로 시리즈 전체를 돌아보면, 각 기둥이 어느 층의 원리 위에 서 있는지 보입니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">기둥</th><th scope="col">이 시리즈에서 배운 곳</th></tr></thead>
       <tbody>
@@ -1834,9 +2288,7 @@ $ aws ecs describe-tasks --cluster prod \
         <tr><th scope="row">지속 가능성</th><td>적정 크기, Graviton, 서버리스로 유휴 자원 제거</td></tr>
       </tbody>
     </table>
-    <div class="prose">
-      <p>기둥 하나하나가 결국 아래층의 원리 위에 서 있습니다. 커넥션 풀 고갈을 이해하려면 4장이, 컨테이너 OOM을 이해하려면 5장과 9장이 필요했습니다. <strong>기둥 사이의 균형을 고르는 근거</strong>가 1장부터 쌓아 온 원리입니다.</p>
-    </div>
+    <p class="small">5부의 장애 사례가 증거입니다. 커넥션 풀 고갈에는 4장, 두 OOM의 구분에는 5·9장, 새벽의 502에는 2장이 필요했습니다.</p>
   </div>
 </section>
 
@@ -1844,43 +2296,51 @@ $ aws ecs describe-tasks --cluster prod \
 <section class="slide slide--summary" data-section="정리" data-depth="none">
   <h2>정리</h2>
   <ul class="summary">
+    <li><b>설계는 기둥 사이의 양보를 고르고 기록하는 일입니다.</b> 컴퓨팅도 구조도 서비스의 부분마다 성질에 맞춰 섞습니다.</li>
     <li><b>고가용성은 계층마다 SPOF를 없애고, 정적 안정성으로 완성합니다.</b> AZ 하나를 잃어도 새로 띄우지 않고 버틸 용량을 미리 둡니다.</li>
-    <li><b>Multi-AZ는 DR이 아닙니다.</b> RPO·RTO에 맞춰 Backup &amp; Restore부터 Active-Active까지 고르고, 전환을 연습합니다.</li>
+    <li><b>Multi-AZ는 DR이 아닙니다.</b> 사업이 정한 RPO·RTO에 맞춰 Backup &amp; Restore부터 Active-Active까지 고르고, 전환을 연습합니다.</li>
     <li><b>배포는 작게 넣고 알람으로 되돌립니다.</b> ECS 배포 전략, ALB·Route 53 가중치, Lambda 별칭이 11장의 전략을 구현합니다.</li>
     <li><b>알람은 증상과 에러 예산에, 조사는 원인 지표로 합니다.</b> 지표에서 트레이스, 로그, 덤프, 슬로 쿼리로 좁혀 들어갑니다.</li>
-    <li><b>비용은 크기, 약정, 경로로 줄입니다.</b> 태그와 예산 알람으로 비용도 지표처럼 관측합니다.</li>
+    <li><b>비용은 크기, 약정, 경로 순으로 줄입니다.</b> 태그와 예산 알람으로 비용도 지표처럼 관측합니다.</li>
   </ul>
 </section>
 
-<!-- ===== Self-check 1 =============================================== -->
+<!-- ===== Self-check 1 ===== -->
 <section class="slide" data-section="부록: 스스로 점검" data-depth="none">
-  <h2>스스로 점검</h2>
+  <h2>스스로 점검 (1)</h2>
   <ol class="selfcheck">
-    <li><details><summary>2개 AZ에 피크 기준 4대가 필요한 서비스라면 최소 몇 대를 둬야 할까요?</summary>
-      <div class="answer"><p>AZ 하나를 잃어도 버티려면 각 AZ에 4대씩 8대입니다. 3개 AZ로 나누면 각 2대씩 6대로 줄어듭니다.</p></div></details></li>
+    <li><details><summary>2개 AZ에 정상 시 태스크 4개가 필요한 서비스라면 최소 몇 개를 둬야 할까요?</summary>
+      <div class="answer"><p>AZ 하나를 잃어도 남은 쪽만으로 4개가 있어야 하므로 AZ마다 4개, 총 8개입니다. 3개 AZ로 나누면 AZ마다 2개, 총 6개로 줄어듭니다.</p></div></details></li>
     <li><details><summary>RDS Multi-AZ가 있는데도 교차 리전 백업이 필요한 이유는?</summary>
-      <div class="answer"><p>Multi-AZ는 잘못된 DELETE까지 그대로 복제하고 리전 장애에는 무력합니다. 되돌아갈 시점과 다른 리전의 복사본은 백업만 줍니다.</p></div></details></li>
+      <div class="answer"><p>Multi-AZ는 잘못된 DELETE까지 그대로 복제하고 리전 장애에는 무력합니다. 손상 이전 시점과 다른 리전의 복사본은 백업만 줍니다.</p></div></details></li>
     <li><details><summary>RDS 장애 조치는 끝났는데 앱이 몇 분째 DB 오류를 냅니다. 무엇을 의심하나요?</summary>
-      <div class="answer"><p>JVM이 옛 IP를 DNS 캐시로 쥐고 있거나 풀에 끊긴 연결이 남은 경우입니다. DNS TTL을 줄이고 풀 검증을 켜거나 RDS Proxy를 씁니다.</p></div></details></li>
+      <div class="answer"><p>JVM이 옛 IP를 DNS 캐시로 쥐고 있거나 풀에 끊긴 연결이 남은 경우입니다. DNS 캐시 시간을 줄이고 연결 최대 수명을 짧게 두거나 RDS Proxy를 씁니다.</p></div></details></li>
+  </ol>
+</section>
+
+<!-- ===== Self-check 2 ===== -->
+<section class="slide">
+  <h2>스스로 점검 (2)</h2>
+  <ol class="selfcheck">
     <li><details><summary>ALB 가중치로 green에 10%를 보내던 중 green이 전부 unhealthy가 되면?</summary>
       <div class="answer"><p>ALB는 다른 대상 그룹으로 자동으로 넘기지 않아 그 10%가 실패합니다. 에러율 알람으로 가중치를 0으로 되돌리는 롤백이 필요합니다.</p></div></details></li>
     <li><details><summary>배포 서킷 브레이커를 켰는데도 잘못된 응답을 내는 버전이 끝까지 배포됐습니다. 왜일까요?</summary>
       <div class="answer"><p>서킷 브레이커는 태스크가 정상 상태에 도달하는지만 봅니다. 응답 내용의 오류는 에러율 알람을 배포에 연결해야 잡힙니다.</p></div></details></li>
-  </ol>
-</section>
-
-<!-- ===== Self-check 2 =============================================== -->
-<section class="slide">
-  <h2>스스로 점검 (계속)</h2>
-  <ol class="selfcheck">
     <li><details><summary>5xx 개수 알람이 밤마다 INSUFFICIENT_DATA로 바뀝니다. 어떻게 고치나요?</summary>
       <div class="answer"><p>에러가 없으면 점이 찍히지 않는 메트릭이라 생기는 일입니다. 누락 데이터 처리를 notBreaching으로 바꿉니다.</p></div></details></li>
     <li><details><summary>CPU는 20%인데 응답이 느립니다. 서버를 늘리면 나아질까요?</summary>
       <div class="answer"><p>스레드가 커넥션, 락, 외부 호출을 기다리는 경우라 늘려도 안 나아지고, DB가 원인이면 오히려 악화됩니다. 스레드 덤프로 무엇을 기다리는지 봅니다.</p></div></details></li>
+  </ol>
+</section>
+
+<!-- ===== Self-check 3 ===== -->
+<section class="slide">
+  <h2>스스로 점검 (3)</h2>
+  <ol class="selfcheck">
     <li><details><summary>트래픽이 적은 새벽에만 드문드문 502가 납니다. 첫 의심 대상은?</summary>
-      <div class="answer"><p>앱의 keep-alive 제한 시간이 ALB 유휴 제한 시간보다 짧은 경우입니다. 앱 쪽 값을 ALB보다 길게 늘립니다.</p></div></details></li>
+      <div class="answer"><p>앱의 keep-alive 시간이 ALB 유휴 타임아웃보다 짧은 경우입니다. 앱 쪽 값을 ALB보다 길게 늘립니다.</p></div></details></li>
     <li><details><summary>SLO 99.9%(30일)에서 에러율이 1.44%로 1시간 지속되면 예산을 얼마나 쓰나요?</summary>
-      <div class="answer"><p>소진 속도 14.4배로 1시간이면 한 달 예산의 2%를 씁니다. 즉시 호출할 수준입니다.</p></div></details></li>
+      <div class="answer"><p>소진 속도 14.4배이고 30일은 720시간이므로 14.4 ÷ 720, 한 달 예산의 2%를 씁니다. 즉시 호출할 수준입니다.</p></div></details></li>
     <li><details><summary>NAT Gateway 비용이 급증했습니다. 가장 먼저 확인할 것은?</summary>
       <div class="answer"><p>Private Subnet에서 S3나 DynamoDB로 대량 트래픽이 NAT를 지나는지 봅니다. 게이트웨이 엔드포인트로 우회하면 처리 요금이 사라집니다.</p></div></details></li>
   </ol>
@@ -1890,7 +2350,7 @@ $ aws ecs describe-tasks --cluster prod \
 <section class="slide" data-section="시리즈를 마치며" data-depth="none">
   <h2>맨 아래층에서 클라우드 운영까지</h2>
   <div class="slide__body">
-    <p class="lede">CPU와 메모리에서 출발해 네트워크, 데이터베이스, JVM, 프레임워크, 분산 시스템, 컨테이너와 쿠버네티스를 거쳐 AWS 위의 운영까지 18개 층을 올라왔습니다. 장애가 났을 때 어느 층을 의심해야 하는지 아는 것, 그것이 이 시리즈가 쌓은 힘입니다.</p>
+    <p class="lede">CPU와 메모리에서 출발해 네트워크, 데이터베이스, JVM, 프레임워크, 분산 시스템, 컨테이너와 Kubernetes를 거쳐 AWS 위의 운영까지 18개 층을 올라왔습니다. 장애가 났을 때 어느 층을 의심해야 하는지 아는 것, 그것이 이 시리즈가 쌓은 힘입니다.</p>
     <div class="nav-pair">
       <a class="next" href="index.html">
         <span class="next__text">

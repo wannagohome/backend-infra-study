@@ -18,11 +18,11 @@
     <div class="cover__main">
       <p class="cover__chapter"><b>2장</b> 네트워크</p>
       <h1>URL 하나가 응답이 되기까지</h1>
-      <p class="cover__lede">상대를 찾고, 연결을 맺고, 믿을 수 있게 주고받고, 엿듣지 못하게 감싸는 과정을 계층별로 따라갑니다. 마지막에는 운영 서버의 네트워크 장애를 읽습니다.</p>
+      <p class="cover__lede">주문 조회 요청 하나를 따라가며 상대를 찾고, 연결을 맺고, 믿을 수 있고 안전하게 주고받는 과정을 계층별로 봅니다. 마지막에는 같은 서버들의 장애를 읽습니다.</p>
       <dl class="cover__meta">
         <div><dt>선수 지식</dt><dd>1장 소켓과 파일 디스크립터</dd></div>
-        <div><dt>슬라이드</dt><dd>52장</dd></div>
-        <div><dt>예상 학습 시간</dt><dd>150분</dd></div>
+        <div><dt>슬라이드</dt><dd>82장</dd></div>
+        <div><dt>예상 학습 시간</dt><dd>220분</dd></div>
       </dl>
     </div>
     <div class="cover__map">
@@ -33,42 +33,115 @@
 </section>
 
 <!-- ===== 1부: 기초 ==================================================== -->
-<section class="slide slide--divider" data-section="패킷이 길을 찾는 법" data-depth="basic">
+<section class="slide slide--divider" data-section="요청이 길을 찾는 법" data-depth="basic">
   <p class="divider__no">1부</p>
-  <h2>패킷은 어떻게 상대를 찾아가는가</h2>
-  <p class="lede">계층과 캡슐화, IP 주소와 서브넷, NAT, 포트, DNS, 그리고 HTTP 메시지의 생김새까지. 네트워크를 읽기 위한 기본 어휘를 갖춥니다.</p>
+  <h2>요청은 어떻게 상대를 찾아가는가</h2>
+  <p class="lede">1장은 프로세스가 소켓이라는 파일 디스크립터로 바깥과 이야기한다는 데서 끝났습니다. 이 부는 그 소켓에 쓴 데이터가 어떻게 바다 건너 다른 컴퓨터의, 그것도 정확히 한 프로세스에게 닿는지, 그리고 그 데이터가 어떤 모양의 요청인지를 묻습니다.</p>
 </section>
 
 <section class="slide">
   <h2>소켓 너머에는 다른 컴퓨터가 있다</h2>
   <div class="slide__body">
     <div class="prose">
-      <p>1장에서 프로세스는 파일, 파이프, 소켓을 모두 <strong>파일 디스크립터</strong> 하나로 다룬다는 것을 봤습니다. 그중 소켓은 같은 컴퓨터를 넘어 바다 건너 다른 컴퓨터의 프로세스와도 이어지는 통로입니다.</p>
-      <p>애플리케이션은 <code>write(fd, buf)</code> 한 줄만 호출합니다. 그 아래에서 커널은 데이터를 잘게 나누고, 주소를 붙이고, 수많은 장비를 거쳐 보냅니다. 이 장은 그 여정을 아래에서 위로 따라갑니다.</p>
+      <p>1장에서 본 것처럼 리눅스는 파일, 파이프, 소켓을 모두 <strong>파일 디스크립터(fd)</strong>라는 작은 정수 하나로 다룹니다. 그중 <strong>소켓</strong>은 커널이 관리하는 통신의 끝점으로, 같은 컴퓨터를 넘어 다른 컴퓨터의 프로세스와도 이어집니다.</p>
+      <p>애플리케이션이 하는 일은 <code>write(fd, buf)</code> 시스템 콜 한 번뿐입니다. 그 아래에서 커널 안의 네트워크 처리 코드 묶음, 즉 <dfn title="TCP/IP stack">TCP/IP 스택</dfn>이 데이터를 잘게 나누고 주소를 붙여 <dfn title="NIC">네트워크 카드</dfn>, 곧 컴퓨터를 케이블이나 전파에 잇는 장치로 내보냅니다. 그 뒤로는 여러 중계 장비를 거쳐 목적지에 닿습니다. 이 장은 그 여정을 아래에서 위로 따라갑니다.</p>
     </div>
     <ol class="flow">
       <li class="flow__node"><b>프로세스</b><span>write(fd) 호출</span></li>
-      <li class="flow__node is-flow"><b>소켓</b><span>커널의 연결 끝점</span></li>
+      <li class="flow__node is-flow"><b>소켓</b><span>커널의 통신 끝점</span></li>
       <li class="flow__node"><b>TCP/IP 스택</b><span>나누고 주소를 붙임</span></li>
-      <li class="flow__node"><b>네트워크 카드</b><span>전기 신호로 송출</span></li>
-      <li class="flow__node"><b>라우터들</b><span>목적지까지 중계</span></li>
+      <li class="flow__node"><b>네트워크 카드</b><span>신호로 내보냄</span></li>
+      <li class="flow__node"><b>중계 장비들</b><span>목적지까지 전달</span></li>
     </ol>
   </div>
 </section>
 
 <section class="slide">
-  <h2>계층을 나누면 각자 한 가지 일만 한다</h2>
+  <h2>이 장은 주문 조회 요청 하나를 따라간다</h2>
+  <div class="split split--center">
+    <div class="prose">
+      <p>개념을 매번 새 예로 설명하면 조각이 이어지지 않습니다. 그래서 이 장은 한 장면만 씁니다. 사용자가 집 노트북 브라우저에서 <code>https://shop.example.com/orders/42</code>를 열어 자기 주문을 확인합니다.</p>
+      <p>요청하는 쪽을 <dfn title="client">클라이언트</dfn>, 요청을 받아 답하는 쪽을 <dfn title="server">서버</dfn>라고 합니다. 주문 API 서버는 주문 정보를 다른 프로그램이 요청해 가져가도록 열어 둔 서버입니다(API는 프로그램끼리 기능을 주고받는 약속된 창구). 등장인물의 주소는 지금은 이름표로만 보고, 각 숫자의 뜻은 이 부에서 하나씩 풉니다.</p>
+    </div>
+    <figure class="figure">
+      <svg class="dg" viewBox="0 0 760 470" role="img" aria-labelledby="f3t">
+        <title id="f3t">사용자 노트북이 집 공유기를 거쳐 인터넷으로 나가고, 쇼핑몰의 공개 입구를 지나 웹 서버, 주문 API 서버, DB로 요청이 이어진다.</title>
+        <rect class="dg-zone" x="10" y="30" width="230" height="200"/>
+        <text class="dg-label--sm dg-label--muted" x="125" y="56" text-anchor="middle">사용자의 집</text>
+        <rect class="dg-box" x="30" y="68" width="190" height="58"/>
+        <text x="125" y="92" text-anchor="middle">노트북</text>
+        <text class="dg-label--sm dg-mono" x="125" y="115" text-anchor="middle">192.168.0.23</text>
+        <path class="dg-arrow dg-arrow--flow" d="M125,128 V142"/>
+        <rect class="dg-box dg-box--muted" x="30" y="150" width="190" height="64"/>
+        <text x="125" y="176" text-anchor="middle">공유기</text>
+        <text class="dg-label--sm dg-mono" x="125" y="200" text-anchor="middle">198.51.100.24</text>
+
+        <rect class="dg-box dg-box--ghost" x="270" y="150" width="170" height="64"/>
+        <text x="355" y="188" text-anchor="middle">인터넷</text>
+        <path class="dg-arrow dg-arrow--flow" d="M222,182 H262"/>
+
+        <rect class="dg-zone" x="470" y="30" width="280" height="430"/>
+        <text class="dg-label--sm dg-label--muted" x="610" y="56" text-anchor="middle">쇼핑몰 네트워크</text>
+        <rect class="dg-box dg-box--flow" x="490" y="150" width="240" height="64"/>
+        <text x="610" y="176" text-anchor="middle">공개 입구</text>
+        <text class="dg-label--sm dg-mono" x="610" y="200" text-anchor="middle">203.0.113.10</text>
+        <path class="dg-arrow dg-arrow--flow" d="M442,182 H482"/>
+        <rect class="dg-box" x="490" y="240" width="240" height="56"/>
+        <text x="610" y="268" text-anchor="middle">웹 서버 10.0.1.15</text>
+        <rect class="dg-box dg-box--solid" x="490" y="318" width="240" height="56"/>
+        <text class="dg-label--on" x="610" y="346" text-anchor="middle">주문 API 10.0.2.31</text>
+        <rect class="dg-box" x="490" y="396" width="240" height="56"/>
+        <text x="610" y="424" text-anchor="middle">DB 10.0.3.12</text>
+        <path class="dg-arrow dg-arrow--flow" d="M610,216 V232"/>
+        <path class="dg-arrow dg-arrow--flow" d="M610,298 V310"/>
+        <path class="dg-arrow dg-arrow--flow" d="M610,376 V388"/>
+        <text class="dg-label--sm dg-label--muted" x="355" y="250" text-anchor="middle">주소는 이 부에서 풉니다</text>
+      </svg>
+      <figcaption>공개 입구의 정체(리버스 프록시, 로드 밸런서)는 2부에서 밝힙니다.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>데이터는 패킷으로 잘려 따로 여행한다</h2>
+  <div class="prose prose--cols">
+    <p>전화가 처음 생겼을 때는 통화하는 동안 두 사람 사이의 선 하나를 통째로 붙잡았습니다. 이 방식은 말이 없는 순간에도 선을 놀리므로, 수많은 컴퓨터가 띄엄띄엄 데이터를 보내는 인터넷에는 맞지 않습니다.</p>
+    <p>그래서 인터넷은 데이터를 수백~천여 바이트 크기의 조각으로 잘라, 조각마다 받는 쪽 주소를 적어 따로 보냅니다. 이 조각을 넓은 뜻으로 <dfn title="packet">패킷</dfn>이라고 부릅니다. 여러 사용자의 패킷이 같은 선을 번갈아 쓰므로 선이 놀지 않습니다.</p>
+    <p>패킷 안에는 실어 나르는 데이터 앞에 "누가 누구에게, 어떤 방식으로"를 적은 머리말이 붙는데, 이것을 <dfn title="header">헤더</dfn>라고 합니다. 편지 봉투에 적는 주소와 같습니다.</p>
+    <p>패킷을 받아 다음 장비로 넘기는 중계 장비는 두 종류입니다. 같은 건물이나 같은 네트워크 안의 장비끼리 이어 주는 것이 <dfn title="switch">스위치</dfn>이고, 서로 다른 네트워크 사이에서 길을 골라 넘기는 것이 <dfn title="router">라우터</dfn>입니다. 집 공유기는 작은 라우터입니다.</p>
+    <p>대가도 있습니다. 조각은 각자 여행하므로 <mark>도중에 사라지거나, 순서가 뒤바뀌거나, 두 번 도착할 수 있습니다</mark>. 이 장의 많은 부분이 이 불확실한 조각들 위에 확실한 대화를 만드는 이야기입니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>통신 규칙을 층으로 나누면 각자 한 가지 일만 한다</h2>
+  <div class="prose prose--cols">
+    <p>두 컴퓨터가 대화하려면 데이터를 어떤 순서와 형식으로 주고받을지 미리 정한 약속이 필요합니다. 이 약속을 <dfn title="protocol">프로토콜</dfn>이라고 합니다. 문제는 약속할 것이 너무 많다는 점입니다. 전기 신호, 주소, 유실 복구, 요청 형식을 한 규칙에 다 넣으면 하나만 바꿔도 전부를 고쳐야 합니다.</p>
+    <p>그래서 통신을 <dfn>계층</dfn>으로 나누고, 각 계층은 바로 아래 계층이 제공하는 기능만 쓰게 했습니다. 와이파이가 유선 랜으로 바뀌어도 브라우저 코드가 그대로인 이유입니다. 인터넷이 실제로 쓰는 TCP/IP 모델은 네 층입니다.</p>
+    <ul>
+      <li><strong>네트워크 액세스</strong>: 같은 네트워크 안의 바로 옆 장비에게 신호를 전달합니다. 유선 랜 규격인 이더넷이 대표입니다.</li>
+      <li><strong>인터넷</strong>: 여러 네트워크를 건너 최종 목적지 컴퓨터까지 패킷을 배달합니다. IP가 이 일을 합니다.</li>
+      <li><strong>전송</strong>: 그 컴퓨터 안의 어느 프로그램에게 줄지 가르고, 필요하면 유실을 복구합니다. TCP와 UDP입니다.</li>
+      <li><strong>응용</strong>: 주고받는 내용의 의미를 정합니다. 웹의 HTTP, 이름을 주소로 바꾸는 DNS가 여기 속합니다.</li>
+    </ul>
+    <p>각 프로토콜은 이 부와 다음 부에서 차례로 풉니다. 지금은 아래층일수록 "가까이, 단순하게", 위층일수록 "멀리, 의미 있게"라는 방향만 잡으면 됩니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>L4, L7이라는 번호는 OSI 7계층에서 왔다</h2>
   <div class="slide__body">
-    <p class="prose">와이파이가 유선으로 바뀌어도 브라우저 코드는 그대로입니다. 통신을 <dfn>계층</dfn>으로 나누고 각 계층이 바로 아래 계층의 기능만 쓰게 했기 때문입니다. 실무에서 쓰는 모델은 TCP/IP 4계층이지만, "L4", "L7" 같은 번호는 OSI 7계층에서 왔습니다.</p>
+    <p class="prose">TCP/IP와 별도로, 국제표준화기구가 만든 <dfn title="Open Systems Interconnection">OSI 7계층</dfn> 모델이 있습니다. 실제 인터넷은 TCP/IP로 굴러가지만, 업계는 계층을 부를 때 OSI 번호를 씁니다. 그래서 TCP 수준을 보는 장비를 "L4", HTTP 수준을 보는 장비를 "L7"이라고 부릅니다. 계층마다 다루는 데이터 덩어리의 이름(PDU)도 다른데, 이 이름들은 다음 슬라이드의 캡슐화에서 생기는 이유를 봅니다.</p>
     <table class="compare">
       <thead><tr><th scope="col">OSI 7계층</th><th scope="col">TCP/IP 4계층</th><th scope="col">PDU(데이터 단위)</th><th scope="col">대표 프로토콜, 장비</th></tr></thead>
       <tbody>
         <tr><th scope="row">응용·표현·세션 (L5~7)</th><td>응용</td><td>메시지</td><td>HTTP, DNS, SSH</td></tr>
         <tr><th scope="row">전송 (L4)</th><td class="is-flow">전송</td><td>세그먼트</td><td>TCP, UDP</td></tr>
-        <tr><th scope="row">네트워크 (L3)</th><td>인터넷</td><td>패킷</td><td>IP, ICMP, 라우터</td></tr>
-        <tr><th scope="row">데이터 링크 (L2)</th><td rowspan="2">네트워크 액세스</td><td>프레임</td><td>이더넷, ARP, 스위치</td></tr>
+        <tr><th scope="row">네트워크 (L3)</th><td>인터넷</td><td>패킷</td><td>IP, 라우터</td></tr>
+        <tr><th scope="row">데이터 링크 (L2)</th><td rowspan="2">네트워크 액세스</td><td>프레임</td><td>이더넷, 스위치</td></tr>
         <tr><th scope="row">물리 (L1)</th><td>비트</td><td>케이블, 전파</td></tr>
       </tbody>
+      <caption>SSH는 원격 서버에 접속하는 암호화 터미널 프로토콜입니다. OSI의 표현·세션 계층은 TCP/IP에서 응용 계층 하나로 합쳐졌습니다.</caption>
     </table>
   </div>
 </section>
@@ -77,13 +150,12 @@
   <h2>아래층은 위층 데이터를 봉투에 넣는다</h2>
   <div class="split split--center">
     <div class="prose">
-      <p>보내는 쪽에서 데이터는 계층을 내려갈 때마다 그 계층의 헤더로 한 겹씩 감싸집니다. 이것을 <dfn title="encapsulation">캡슐화</dfn>라고 합니다.</p>
-      <p>헤더에는 그 계층에 필요한 정보만 있습니다. TCP는 포트와 순서 번호, IP는 출발지와 목적지 IP, 이더넷은 바로 다음 장비의 MAC 주소입니다.</p>
-      <p>중간 라우터는 <mark>IP 헤더까지만 열어 보고</mark> 안쪽은 보지 않습니다. 받는 쪽은 역순으로 헤더를 벗겨 냅니다.</p>
+      <p>보내는 쪽에서 데이터는 계층을 내려갈 때마다 그 계층의 헤더로 한 겹씩 감싸집니다. 이것을 <dfn title="encapsulation">캡슐화</dfn>라고 하고, 감싼 결과에 계층별 이름(세그먼트, 패킷, 프레임)이 붙습니다.</p>
+      <p>TCP 헤더에는 포트와 순서 번호, IP 헤더에는 출발지와 목적지 IP 주소, 이더넷 헤더에는 바로 다음 장비의 <dfn title="Media Access Control">MAC 주소</dfn>, 즉 네트워크 카드마다 제조 때 새겨지는 48비트 주소가 들어갑니다. 중간 라우터는 <mark>IP 헤더까지만 열어 보고</mark>, 받는 쪽은 역순으로 헤더를 벗겨 냅니다.</p>
     </div>
     <figure class="figure">
-      <svg class="dg" viewBox="0 0 760 400" role="img" aria-labelledby="f5t">
-        <title id="f5t">HTTP 데이터가 TCP 헤더, IP 헤더, 이더넷 헤더로 차례로 감싸져 세그먼트, 패킷, 프레임이 된다.</title>
+      <svg class="dg" viewBox="0 0 760 400" role="img" aria-labelledby="f7t">
+        <title id="f7t">HTTP 데이터가 TCP 헤더, IP 헤더, 이더넷 헤더로 차례로 감싸져 세그먼트, 패킷, 프레임이 된다.</title>
         <text class="dg-label--sm" x="0" y="68" text-anchor="start">메시지</text>
         <rect class="dg-box dg-box--flow" x="450" y="40" width="190" height="56"/>
         <text x="545" y="68" text-anchor="middle">HTTP 데이터</text>
@@ -114,7 +186,7 @@
         <rect class="dg-box dg-box--muted" x="648" y="310" width="72" height="56"/>
         <text class="dg-label--sm" x="684" y="338" text-anchor="middle">FCS</text>
       </svg>
-      <figcaption>층을 내려갈수록 앞에 헤더가 붙습니다. 이더넷은 오류 검출용 FCS를 끝에도 붙입니다.</figcaption>
+      <figcaption>이더넷은 끝에도 FCS를 붙입니다. 내용으로 계산한 검사값이라, 받는 쪽이 다시 계산해 다르면 전송 중 깨진 프레임으로 보고 버립니다.</figcaption>
     </figure>
   </div>
 </section>
@@ -123,12 +195,12 @@
   <h2>IP 주소는 네트워크와 호스트로 나뉜다</h2>
   <div class="slide__body">
     <div class="prose">
-      <p>IPv4 주소는 32비트 숫자를 8비트씩 끊어 <code>192.168.10.37</code>처럼 씁니다. 앞부분은 어느 <strong>네트워크</strong>인지, 뒷부분은 그 안의 어느 <strong>호스트</strong>인지를 뜻하고, 경계는 <dfn title="subnet mask">서브넷 마스크</dfn>가 정합니다.</p>
-      <p>주소와 마스크를 비트 AND 하면 네트워크 주소가 나옵니다. 두 주소의 네트워크 주소가 같으면 <mark>라우터 없이 직접 전달할 수 있는 같은 네트워크</mark>입니다.</p>
+      <p>라우터가 세상의 모든 컴퓨터 주소를 하나하나 외울 수는 없습니다. 그래서 IP 주소는 우편번호와 번지처럼 앞부분은 어느 <strong>네트워크</strong>인지, 뒷부분은 그 안의 어느 <strong>호스트</strong>(주소를 가진 컴퓨터)인지를 뜻하게 만들었고, 라우터는 앞부분만 보고 길을 고릅니다.</p>
+      <p>IPv4 주소는 32비트 숫자를 8비트씩 끊어 십진수로 씁니다. 둘의 경계는 <dfn title="subnet mask">서브넷 마스크</dfn>가 1인 비트까지입니다. 주소와 마스크를 비트 AND(둘 다 1일 때만 1) 하면 네트워크 주소가 나오고, 이것이 같은 두 주소는 <mark>라우터 없이 직접 주고받을 수 있는 같은 네트워크</mark>, 즉 <dfn title="subnet">서브넷</dfn>에 있습니다.</p>
     </div>
-    <pre class="code" data-file="비트로 본 주소"><code>IP 주소     192.168.10.37    11000000.10101000.00001010.00100101
+    <pre class="code" data-file="비트로 본 주문 API 서버의 주소"><code>IP 주소     10.0.2.31        00001010.00000000.00000010.00011111
 마스크      255.255.255.0    11111111.11111111.11111111.00000000
-<span class="hl">네트워크    192.168.10.0     11000000.10101000.00001010.00000000</span>
+<span class="hl">네트워크    10.0.2.0         00001010.00000000.00000010.00000000</span>
 <span class="c">            앞 24비트 = 네트워크 부분, 뒤 8비트 = 호스트 부분</span></code></pre>
   </div>
 </section>
@@ -136,39 +208,121 @@
 <section class="slide">
   <h2>CIDR은 네트워크 크기를 비트 수로 말한다</h2>
   <div class="slide__body">
-    <p class="prose"><dfn title="Classless Inter-Domain Routing">CIDR</dfn> 표기 <code>10.0.1.0/24</code>의 <code>/24</code>는 앞 24비트가 네트워크라는 뜻입니다. 호스트에 남는 비트가 8개이므로 주소는 2⁸ = 256개이고, 숫자가 클수록 작은 네트워크입니다. 맨 앞(네트워크 주소)과 맨 뒤(브로드캐스트) 주소는 호스트에 쓰지 않습니다.</p>
+    <p class="prose">마스크를 매번 255.255.255.0처럼 쓰는 대신 앞에서부터 1인 비트 수만 적는 표기가 <dfn title="Classless Inter-Domain Routing">CIDR</dfn>입니다. <code>10.0.2.0/24</code>는 앞 24비트가 네트워크라는 뜻이고, 호스트에 남는 8비트로 2⁸ = 256개 주소를 만듭니다. 숫자가 클수록 작은 네트워크입니다. 맨 앞 주소는 네트워크 자체의 이름으로, 맨 뒤 주소는 그 네트워크 전원에게 한꺼번에 보내는 <dfn title="broadcast">브로드캐스트</dfn>용으로 예약되어 호스트에게 주지 않습니다.</p>
     <table class="compare">
       <thead><tr><th scope="col">CIDR</th><th scope="col">서브넷 마스크</th><th scope="col">주소 개수</th><th scope="col">쓰임</th></tr></thead>
       <tbody>
-        <tr><th scope="row">10.0.0.0/8</th><td>255.0.0.0</td><td class="num">16,777,216</td><td>사설 대역(가장 큼)</td></tr>
-        <tr><th scope="row">172.16.0.0/12</th><td>255.240.0.0</td><td class="num">1,048,576</td><td>사설 대역</td></tr>
-        <tr><th scope="row">192.168.0.0/16</th><td>255.255.0.0</td><td class="num">65,536</td><td>사설 대역(가정용 공유기)</td></tr>
-        <tr><th scope="row">10.0.1.0/24</th><td>255.255.255.0</td><td class="num">256</td><td class="is-flow">서브넷 하나로 흔한 크기</td></tr>
+        <tr><th scope="row">10.0.0.0/16</th><td>255.255.0.0</td><td class="num">65,536</td><td>쇼핑몰 네트워크 전체</td></tr>
+        <tr><th scope="row">10.0.1.0/24</th><td>255.255.255.0</td><td class="num">256</td><td class="is-flow">웹 서버들의 서브넷</td></tr>
+        <tr><th scope="row">10.0.2.0/24</th><td>255.255.255.0</td><td class="num">256</td><td>주문 API 서버들의 서브넷</td></tr>
+        <tr><th scope="row">10.0.3.0/24</th><td>255.255.255.0</td><td class="num">256</td><td>DB 서브넷</td></tr>
         <tr><th scope="row">10.0.1.0/28</th><td>255.255.255.240</td><td class="num">16</td><td>아주 작은 서브넷</td></tr>
       </tbody>
-      <caption>위 세 개는 RFC 1918이 정한 사설 대역으로, 인터넷에서 라우팅되지 않습니다. 13장의 VPC 설계는 큰 대역(/16)을 잡고 겹치지 않는 서브넷(/24)으로 쪼개는 일입니다.</caption>
+      <caption>큰 대역(/16)을 잡고 겹치지 않는 서브넷(/24)으로 쪼개는 것이 네트워크 설계의 첫걸음입니다.</caption>
     </table>
   </div>
 </section>
 
 <section class="slide">
-  <h2>같은 네트워크면 ARP, 밖이면 게이트웨이</h2>
+  <h2>사설 주소는 안에서만 쓰는 주소다</h2>
   <div class="split split--even">
-    <ol class="steps">
-      <li><b>목적지 판정</b><p>목적지 IP에 내 마스크를 AND 해서 같은 네트워크인지 봅니다.</p></li>
-      <li><b>같은 네트워크</b><p>ARP 브로드캐스트로 "이 IP의 MAC 주소는?"을 묻고 직접 보냅니다.</p></li>
-      <li class="is-key"><b>다른 네트워크</b><p>기본 게이트웨이(라우터)의 MAC을 알아내 그쪽으로 프레임을 보냅니다.</p></li>
-      <li><b>라우터 중계</b><p>라우팅 테이블로 다음 홉을 고르고 새 이더넷 헤더로 다시 감쌉니다.</p></li>
-    </ol>
+    <div class="prose">
+      <p>IPv4 주소는 약 43억 개뿐이라 모든 기기에 하나씩 주기에는 모자랍니다. 그래서 인터넷 표준 문서 RFC 1918은 세 대역을 <dfn title="private address">사설 주소</dfn>로 정했습니다. 누구나 자기 네트워크 안에서 자유롭게 쓰되, 인터넷의 라우터는 이 대역으로 가는 패킷을 전달하지 않습니다.</p>
+      <p>반대로 인터넷 어디서나 도달할 수 있게 유일하게 배정된 주소가 <dfn title="public address">공인 주소</dfn>입니다. 우리 예에서 노트북(192.168.0.23)과 쇼핑몰 서버들(10.0.x.x)은 사설, 공유기(198.51.100.24)와 쇼핑몰 입구(203.0.113.10)는 공인 주소입니다.</p>
+    </div>
     <div class="slide__body">
-      <div class="prose">
-        <p>IP 주소는 <strong>최종 목적지</strong>, MAC 주소는 <strong>바로 다음 장비</strong>를 가리킵니다. 그래서 라우터를 지날 때마다 IP 헤더는 그대로이고 이더넷 헤더만 바뀝니다.</p>
-        <p><dfn title="routing table">라우팅 테이블</dfn>은 "이 대역은 저쪽으로"라는 규칙 목록입니다. 13장의 VPC 라우팅 테이블이 바로 이것입니다.</p>
-      </div>
+      <table class="compare">
+        <thead><tr><th scope="col">사설 대역</th><th scope="col">주소 개수</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">10.0.0.0/8</th><td class="num">16,777,216</td></tr>
+          <tr><th scope="row">172.16.0.0/12</th><td class="num">1,048,576</td></tr>
+          <tr><th scope="row">192.168.0.0/16</th><td class="num">65,536</td></tr>
+        </tbody>
+      </table>
       <aside class="callout callout--note">
-        <p>IP, 마스크, 게이트웨이, DNS 서버 주소는 부팅 때 <strong>DHCP</strong>로 받습니다. 아직 내 IP가 없으므로 UDP 브로드캐스트로 요청합니다.</p>
+        <p>13장에서 볼 AWS의 <strong>VPC</strong>는 클라우드 안에 만드는 나만의 사설 네트워크입니다. 이 슬라이드와 앞 슬라이드의 CIDR 계산이 그대로 쓰입니다.</p>
       </aside>
     </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>같은 네트워크 안에서는 MAC 주소로 건넨다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>IP 주소는 <strong>최종 목적지</strong>를 가리키지만, 실제로 선 위에 프레임을 실어 보내려면 <strong>바로 다음 장비</strong>의 MAC 주소가 필요합니다. 스위치는 MAC 주소만 보고 프레임을 자기의 어느 연결 단자(케이블을 꽂는 구멍)로 내보낼지 정하기 때문입니다.</p>
+      <p>그런데 내가 아는 것은 상대의 IP뿐입니다. 이 간극을 메우는 것이 <dfn title="Address Resolution Protocol">ARP</dfn>입니다. 서브넷 전체에 브로드캐스트로 "10.0.1.20을 가진 분, MAC 주소를 알려 주세요"라고 묻고, 주인만 답합니다. 답은 잠시 캐시해 두어 매번 묻지 않습니다.</p>
+    </div>
+    <div class="seq" role="img" aria-label="웹 서버가 ARP 브로드캐스트로 같은 서브넷 10.0.1.20의 MAC을 묻고 해당 서버만 답한 뒤 프레임을 직접 보낸다">
+      <div class="seq__head"><span>웹 서버</span><span></span><span>서브넷 전원</span></div>
+      <div class="seq__row seq__row--r">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>ARP 요청</b> 10.0.1.20은 누구?<small>모두에게 브로드캐스트</small></span>
+        <span class="seq__state"></span>
+      </div>
+      <div class="seq__row seq__row--l is-back">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>ARP 응답</b> 내 MAC은 0a:1b:…<small>주인 한 대만 답함</small></span>
+        <span class="seq__state"></span>
+      </div>
+      <div class="seq__row seq__row--note">
+        <span></span><span class="seq__msg"><span>결과를 ARP 캐시에 보관</span></span><span></span>
+      </div>
+      <div class="seq__row seq__row--r is-key">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>프레임</b> 목적지 MAC을 채워 전송</span>
+        <span class="seq__state"></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>다른 네트워크로는 게이트웨이에 맡긴다</h2>
+  <div class="split split--even">
+    <ol class="steps">
+      <li><b>목적지 판정</b><p>목적지 IP에 내 마스크를 AND 해서 내 서브넷인지 봅니다.</p></li>
+      <li><b>같은 서브넷</b><p>앞 슬라이드처럼 ARP로 상대 MAC을 알아내 직접 보냅니다.</p></li>
+      <li class="is-key"><b>다른 서브넷</b><p>기본 게이트웨이(내 서브넷의 출구 라우터) MAC으로 프레임을 보냅니다.</p></li>
+      <li><b>라우터 중계</b><p>라우팅 테이블로 다음 홉을 고르고 새 이더넷 헤더로 다시 감쌉니다.</p></li>
+    </ol>
+    <div class="prose">
+      <p>웹 서버(10.0.1.15)가 주문 API(10.0.2.31)를 부르면 네트워크 주소가 10.0.1.0과 10.0.2.0으로 다르므로 3번 길로 갑니다. <dfn title="default gateway">기본 게이트웨이</dfn>는 "모르는 곳은 일단 여기로"라고 정해 둔 라우터입니다.</p>
+      <p>라우터는 <dfn title="routing table">라우팅 테이블</dfn>, 즉 "이 대역은 저쪽 이웃 라우터로"라는 규칙 목록에서 바로 다음 중계 지점(<dfn title="next hop">다음 홉</dfn>)을 고릅니다. 그래서 <mark>IP 헤더는 끝까지 그대로이고 이더넷 헤더만 구간마다 바뀝니다</mark>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>라우팅 테이블은 가장 구체적인 규칙을 따른다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="웹 서버 10.0.1.15의 터미널"><code><span class="prompt">$ </span>ip route
+<span class="hl">default via 10.0.1.1 dev eth0</span>
+10.0.1.0/24 dev eth0 scope link
+<span class="prompt">$ </span>ip route get 10.0.2.31
+10.0.2.31 via 10.0.1.1 dev eth0 src 10.0.1.15
+<span class="prompt">$ </span>ip route get 10.0.1.20
+10.0.1.20 dev eth0 src 10.0.1.15</code></pre>
+    <div class="prose">
+      <p><code>ip route</code>는 이 컴퓨터의 라우팅 테이블을 보여 줍니다. 둘째 줄은 "10.0.1.0/24는 네트워크 카드 <code>eth0</code>로 직접 닿는다(link)"는 뜻이고, 첫 줄 <code>default</code>는 나머지 전부를 게이트웨이 10.0.1.1로 보내라는 규칙입니다.</p>
+      <p>여러 규칙이 겹치면 <strong>/ 숫자가 가장 큰, 즉 가장 구체적인 규칙</strong>이 이깁니다. <code>ip route get</code>으로 물어보면 10.0.2.31은 게이트웨이를 거치고(via), 같은 서브넷의 10.0.1.20은 직접 갑니다. <code>src</code>는 그때 출발지로 쓸 내 주소입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>주소와 게이트웨이는 DHCP로 빌려 온다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>노트북을 카페 와이파이에 연결하면 IP 주소, 서브넷 마스크, 기본 게이트웨이, 그리고 뒤에서 볼 DNS 서버 주소까지 저절로 설정됩니다. 이것을 나눠 주는 규칙이 <dfn title="Dynamic Host Configuration Protocol">DHCP</dfn>입니다.</p>
+      <p>막 연결한 노트북은 아직 IP가 없으므로 누구에게 물어야 할지도 모릅니다. 그래서 네트워크 전원에게 브로드캐스트로 외치고, DHCP 서버(집에서는 공유기)가 답합니다. 주소는 영구 소유가 아니라 기한이 있는 <strong>임대</strong>라서, 쓰지 않는 주소는 회수되어 다른 기기에 돌아갑니다.</p>
+    </div>
+    <ol class="steps">
+      <li><b>Discover</b><p>노트북: "DHCP 서버 계신가요?" 전원에게 브로드캐스트합니다.</p></li>
+      <li><b>Offer</b><p>서버: "192.168.0.23을 쓰세요"라고 제안합니다.</p></li>
+      <li><b>Request</b><p>노트북: 그 주소를 쓰겠다고 알립니다(서버가 여럿일 때 하나를 고름).</p></li>
+      <li class="is-key"><b>Ack</b><p>서버가 확정하며 마스크, 게이트웨이, DNS 서버, 임대 기간을 함께 줍니다.</p></li>
+    </ol>
   </div>
 </section>
 
@@ -176,25 +330,25 @@
   <h2>NAT는 사설 주소를 공인 주소로 바꿔 내보낸다</h2>
   <div class="split split--center">
     <div class="prose">
-      <p>사설 IP는 인터넷에서 길을 찾을 수 없습니다. <dfn title="Network Address Translation">NAT</dfn> 장비는 나가는 패킷의 출발지 주소와 포트를 자신의 공인 주소와 새 포트로 바꾸고, 그 짝을 변환 표에 적어 둡니다.</p>
-      <p>응답이 돌아오면 표를 보고 원래 주소로 되돌립니다. 표에 없는 연결, 즉 <mark>밖에서 먼저 시작한 연결은 들어올 수 없습니다</mark>. 13장의 Private Subnet과 NAT Gateway가 이 원리입니다.</p>
+      <p>사설 주소 패킷은 인터넷에서 버려집니다. 그런데 노트북도 주문 API 서버도 밖과 이야기해야 합니다. <dfn title="Network Address Translation">NAT</dfn> 장비는 나가는 패킷의 출발지 주소와 포트(곧 설명)를 자기 공인 주소와 새 포트로 바꾸고, 그 짝을 변환 표에 적어 둡니다. 집 공유기가 하는 일이 바로 이것입니다.</p>
+      <p>응답이 오면 표를 보고 되돌립니다. 그래서 <mark>밖에서 먼저 시작한 연결은 표에 없어 들어올 수 없습니다</mark>. 13장의 Private Subnet(밖에서 직접 닿지 않는 서브넷)과 NAT Gateway가 이 원리입니다.</p>
     </div>
     <figure class="figure">
-      <svg class="dg" viewBox="0 0 760 400" role="img" aria-labelledby="f9t">
-        <title id="f9t">사설 네트워크의 서버가 보낸 패킷의 출발지를 NAT가 공인 주소와 새 포트로 바꿔 외부로 보내고, 변환 표로 응답을 되돌린다.</title>
+      <svg class="dg" viewBox="0 0 760 400" role="img" aria-labelledby="f15t">
+        <title id="f15t">주문 API 서버가 보낸 패킷의 출발지를 NAT가 공인 주소와 새 포트로 바꿔 외부 결제 API로 보내고, 변환 표로 응답을 되돌린다.</title>
         <rect class="dg-zone" x="10" y="40" width="230" height="170"/>
-        <text class="dg-label--sm" x="125" y="72" text-anchor="middle">사설 대역 10.0.1.0/24</text>
+        <text class="dg-label--sm" x="125" y="72" text-anchor="middle">사설 대역 10.0.2.0/24</text>
         <rect class="dg-box" x="40" y="110" width="170" height="64"/>
-        <text x="125" y="134" text-anchor="middle">서버</text>
-        <text class="dg-label--sm dg-mono" x="125" y="158" text-anchor="middle">10.0.1.15</text>
+        <text x="125" y="134" text-anchor="middle">주문 API</text>
+        <text class="dg-label--sm dg-mono" x="125" y="158" text-anchor="middle">10.0.2.31</text>
 
         <rect class="dg-box dg-box--solid" x="300" y="110" width="160" height="64"/>
         <text class="dg-label--on" x="380" y="134" text-anchor="middle">NAT</text>
         <text class="dg-label--on dg-label--sm dg-mono" x="380" y="158" text-anchor="middle">203.0.113.7</text>
 
         <rect class="dg-box" x="560" y="110" width="180" height="64"/>
-        <text x="650" y="134" text-anchor="middle">외부 API</text>
-        <text class="dg-label--sm dg-mono" x="650" y="158" text-anchor="middle">198.51.100.20</text>
+        <text x="650" y="134" text-anchor="middle">외부 결제 API</text>
+        <text class="dg-label--sm dg-mono" x="650" y="158" text-anchor="middle">192.0.2.80</text>
 
         <path class="dg-arrow dg-arrow--flow" d="M212,128 H292"/>
         <path class="dg-arrow dg-arrow--flow" d="M462,128 H552"/>
@@ -202,65 +356,102 @@
         <path class="dg-arrow dg-arrow--back" d="M298,158 H218"/>
 
         <text class="dg-label--sm dg-label--muted" x="125" y="244" text-anchor="middle">나가는 패킷 출발지</text>
-        <text class="dg-label--sm dg-mono" x="125" y="270" text-anchor="middle">10.0.1.15:51000</text>
+        <text class="dg-label--sm dg-mono" x="125" y="270" text-anchor="middle">10.0.2.31:51000</text>
         <text class="dg-label--sm dg-label--muted" x="650" y="244" text-anchor="middle">바뀐 출발지</text>
         <text class="dg-label--sm dg-mono dg-label--flow" x="650" y="270" text-anchor="middle">203.0.113.7:62001</text>
 
         <line class="dg-line dg-line--thin" x1="380" y1="174" x2="380" y2="290"/>
         <rect class="dg-box dg-box--muted" x="260" y="290" width="240" height="96"/>
         <text class="dg-label--sm" x="380" y="316" text-anchor="middle">변환 표</text>
-        <text class="dg-label--sm dg-mono" x="380" y="344" text-anchor="middle">10.0.1.15:51000</text>
+        <text class="dg-label--sm dg-mono" x="380" y="344" text-anchor="middle">10.0.2.31:51000</text>
         <text class="dg-label--sm dg-mono" x="380" y="368" text-anchor="middle">↔ 203.0.113.7:62001</text>
       </svg>
-      <figcaption>응답(점선)은 변환 표를 거쳐 원래 서버로 돌아갑니다.</figcaption>
+      <figcaption>응답(점선)은 변환 표를 거쳐 원래 서버로 돌아갑니다. 결제 API는 NAT의 공인 주소만 봅니다.</figcaption>
     </figure>
   </div>
 </section>
 
 <section class="slide">
   <h2>IP는 컴퓨터까지, 포트는 프로세스까지</h2>
+  <div class="prose prose--cols">
+    <p>IP 주소로 웹 서버 10.0.1.15에 도착했다고 끝이 아닙니다. 그 컴퓨터에는 Nginx, 모니터링 에이전트, SSH 서버처럼 여러 프로세스가 네트워크를 씁니다. 도착한 데이터를 누구에게 줄지 가리는 번호가 <dfn>포트</dfn>입니다.</p>
+    <p>포트는 0~65535 범위의 16비트 숫자이고 TCP·UDP 헤더에 들어 있습니다. 서버 프로세스는 약속된 번호를 미리 차지하고 기다립니다. HTTPS는 443, HTTP는 80, PostgreSQL DB는 5432가 관례입니다. 주문 API가 쓰는 8080처럼 서비스가 정한 번호도 씁니다.</p>
+    <p>클라이언트 쪽은 번호를 미리 정할 이유가 없습니다. 연결을 시작할 때 OS가 비어 있는 번호 하나를 골라 주고, 연결이 끝나면 반납합니다. 이것이 <dfn title="ephemeral port">임시 포트</dfn>이고, 리눅스 기본 범위는 32768~60999입니다.</p>
+    <p>그래서 우리 노트북의 브라우저는 예컨대 <code>192.168.0.23:51544</code>에서 <code>203.0.113.10:443</code>으로 연결합니다. 앞쪽이 임시 포트, 뒤쪽이 서버가 기다리는 포트입니다. 이 임시 포트 범위가 한정되어 있다는 사실은 3부에서 장애의 씨앗으로 다시 등장합니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>연결 하나는 다섯 값의 조합으로 구별된다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>16비트 <dfn>포트</dfn>는 한 컴퓨터 안에서 어느 프로세스인지를 가립니다. 서버는 정해진 포트(443, 5432)에서 기다리고, 클라이언트는 OS가 고른 <dfn title="ephemeral port">임시 포트</dfn>를 씁니다. 리눅스 기본 범위는 32768~60999입니다.</p>
-      <p>TCP 연결은 <mark>프로토콜, 출발지 IP·포트, 목적지 IP·포트의 5-tuple</mark>로 구별됩니다. 그래서 서버 443 포트 하나에 수만 개의 연결이 붙을 수 있고, 각 연결은 프로세스에게 fd 하나입니다.</p>
+      <p>서버 443 포트 하나에 수만 명이 동시에 붙어도 섞이지 않는 이유는, 커널이 연결을 <mark>프로토콜, 출발지 IP·포트, 목적지 IP·포트의 다섯 값(5-tuple)</mark>으로 구별하기 때문입니다. 다섯 중 하나만 달라도 다른 연결이고, 각 연결은 프로세스에게 fd 하나입니다.</p>
+      <p><code>ss</code>는 커널의 소켓 목록을 보여 주는 리눅스 명령입니다. <code>-t</code>는 TCP만, <code>-n</code>은 이름 대신 숫자로 보라는 뜻입니다. <code>ESTAB</code>은 연결이 맺어져 데이터를 주고받는 상태입니다(2부).</p>
     </div>
-    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>ss -tn
-State  Local:Port       Peer:Port
-ESTAB  10.0.1.15:443    203.0.113.9:51544
-ESTAB  10.0.1.15:443    203.0.113.9:51546
-ESTAB  10.0.1.15:443    198.51.100.4:40312
-<span class="c"># 서버 쪽 주소는 같고, 상대 포트가 다르다</span></code></pre>
+    <pre class="code" data-file="웹 서버의 터미널"><code><span class="prompt">$ </span>ss -tn
+State  Local:Port      Peer:Port
+ESTAB  10.0.1.15:443   198.51.100.24:51544
+ESTAB  10.0.1.15:443   198.51.100.24:51546
+ESTAB  10.0.1.15:443   192.0.2.44:40312
+<span class="c"># 내 쪽(Local)은 같고 상대(Peer)가 다르다</span></code></pre>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>IP는 배달만 하고 아무것도 약속하지 않는다</h2>
+  <div class="slide__body">
+    <div class="prose">
+      <p>지금까지 IP가 패킷을 목적지 컴퓨터까지 데려가는 방법을 봤습니다. 그런데 IP는 "최선을 다해 보내 볼게"라는 수준만 약속합니다. 라우터가 바쁘면 패킷을 버리고, 경로가 바뀌면 순서가 뒤집히고, 재시도 과정에서 같은 패킷이 두 번 도착하기도 합니다. 그리고 IP는 이 중 어느 것도 보내는 쪽에 알려 주지 않습니다.</p>
+      <p>주문 내역을 받는데 중간 바이트가 빠지거나 뒤섞이면 쓸 수 없습니다. 반면 화상 통화는 0.1초 늦게 온 화면 조각을 기다리느니 버리는 편이 낫습니다. 그래서 전송 계층에는 성격이 정반대인 두 프로토콜이 있습니다. 하나는 이 불확실함을 전부 숨겨 주는 TCP, 다른 하나는 포트만 얹고 그대로 내보내는 UDP입니다.</p>
+    </div>
+    <ol class="flow">
+      <li class="flow__node is-key"><b>유실</b><span>혼잡한 라우터가 버림</span></li>
+      <li class="flow__node is-key"><b>순서 뒤바뀜</b><span>패킷마다 경로가 다름</span></li>
+      <li class="flow__node is-key"><b>중복</b><span>같은 패킷이 두 번</span></li>
+      <li class="flow__node is-key"><b>손상</b><span>전송 중 비트 오류</span></li>
+    </ol>
   </div>
 </section>
 
 <section class="slide">
   <h2>TCP는 보장을 사고, UDP는 속도를 산다</h2>
   <div class="slide__body">
-    <p class="prose">전송 계층에는 두 선택지가 있습니다. TCP는 연결을 맺고 도착과 순서를 보장하는 대신 왕복과 상태를 치르고, UDP는 IP 위에 포트만 얹어 바로 보냅니다.</p>
+    <p class="prose"><dfn title="Transmission Control Protocol">TCP</dfn>는 데이터를 보내기 전에 양쪽이 먼저 인사를 주고받아 연결을 맺고(핸드셰이크), 받은 쪽이 확인 신호(ACK)를 돌려주며, 확인이 없으면 다시 보냅니다(재전송). <dfn title="User Datagram Protocol">UDP</dfn>는 이 모든 절차 없이 데이터 한 덩어리(데이터그램)를 바로 보냅니다. 각 장치의 동작은 2부에서 자세히 봅니다.</p>
     <table class="compare">
       <thead><tr><th scope="col">항목</th><th scope="col">TCP</th><th scope="col">UDP</th></tr></thead>
       <tbody>
         <tr><th scope="row">연결</th><td>핸드셰이크로 먼저 수립</td><td>없음, 바로 전송</td></tr>
         <tr><th scope="row">신뢰성</th><td class="is-flow">ACK와 재전송으로 도착 보장</td><td>유실되면 그만</td></tr>
-        <tr><th scope="row">순서</th><td>순서 번호로 재조립</td><td>도착한 순서 그대로</td></tr>
-        <tr><th scope="row">흐름·혼잡 제어</th><td>있음</td><td>없음(앱이 알아서)</td></tr>
-        <tr><th scope="row">경계</th><td>바이트 스트림(경계 없음)</td><td>데이터그램 단위 유지</td></tr>
-        <tr><th scope="row">쓰임</th><td>HTTP/1.1·2, DB, SSH</td><td>DNS, 영상·음성, QUIC</td></tr>
+        <tr><th scope="row">순서</th><td>번호로 재조립해 순서대로</td><td>도착한 순서 그대로</td></tr>
+        <tr><th scope="row">속도 조절</th><td>상대와 네트워크에 맞춤</td><td>없음(앱이 알아서)</td></tr>
+        <tr><th scope="row">경계</th><td>바이트 스트림(경계 없음)</td><td>보낸 덩어리 단위 유지</td></tr>
+        <tr><th scope="row">쓰임</th><td>웹, DB 접속, SSH</td><td>DNS, 영상·음성 통화</td></tr>
       </tbody>
+      <caption>"경계 없음"은 write()를 두 번 해도 받는 쪽은 한 번에 이어 붙여 읽을 수 있다는 뜻입니다. 메시지의 끝은 HTTP 같은 윗 계층이 표시합니다.</caption>
     </table>
   </div>
 </section>
 
 <section class="slide">
-  <h2>DNS는 이름을 단계적으로 물어 찾는다</h2>
+  <h2>사람은 이름을, 네트워크는 주소를 쓴다</h2>
+  <div class="prose prose--cols">
+    <p>지금까지는 서버의 IP 주소를 안다고 가정했습니다. 그러나 사용자가 입력한 것은 <code>shop.example.com</code>이라는 이름입니다. 이름은 외우기 쉽고, 서버를 옮겨 주소가 바뀌어도 그대로 둘 수 있습니다. 이 이름을 <dfn title="domain name">도메인 이름</dfn>, 이름을 IP 주소로 바꿔 주는 시스템을 <dfn title="Domain Name System">DNS</dfn>라고 합니다.</p>
+    <p>세상의 모든 이름을 한 서버에 두면 그 서버가 무너질 때 인터넷이 멈춥니다. 그래서 DNS는 이름을 오른쪽부터 읽는 나무 구조로 나눠 관리합니다. 맨 위는 이름이 없는 <strong>루트</strong>, 그 아래 <code>com</code>, <code>kr</code> 같은 <dfn title="Top-Level Domain">TLD</dfn>, 그 아래 <code>example.com</code> 같은 각 조직의 영역입니다.</p>
+    <p>각 단계는 자기 바로 아래 단계가 어느 서버에 있는지만 압니다. 루트 서버는 "com은 저 서버에 물어보라"고만 답하고, 실제 <code>shop.example.com</code>의 주소는 그 영역을 맡은 <dfn title="authoritative name server">권한 네임서버</dfn>만 압니다. 각자 자기 영역만 책임지므로 전 세계가 이름을 나눠 관리할 수 있습니다.</p>
+    <p>루트 서버는 이름으로는 13개(a~m)이지만, 같은 주소를 여러 곳에서 동시에 응답하는 방식으로 실제로는 전 세계 수백 곳에 흩어져 있습니다. 다음 슬라이드는 이 나무를 따라 답을 찾는 과정입니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>리졸버가 나무를 타고 내려가 답을 찾는다</h2>
   <div class="split split--center">
     <div class="prose">
-      <p>브라우저는 먼저 자기 캐시, OS 캐시와 hosts 파일을 봅니다. 없으면 <dfn title="recursive resolver">재귀 리졸버</dfn>에게 "답을 끝까지 찾아 달라"고 <strong>재귀 질의</strong>를 보냅니다.</p>
-      <p>리졸버는 루트, TLD, 권한 서버 순으로 <strong>반복 질의</strong>하며 "다음엔 어디로"를 따라가고 결과를 캐시합니다. 보통 UDP 53번을 쓰고, 응답이 크면 TCP로 다시 묻습니다.</p>
+      <p>브라우저는 먼저 자기 캐시(최근 답을 잠시 보관한 곳), OS 캐시와 hosts 파일(이름과 주소를 직접 적어 두는 설정 파일)을 봅니다. 없으면 DHCP로 받은 <dfn title="recursive resolver">재귀 리졸버</dfn>에게 "끝까지 찾아서 답만 달라"는 <strong>재귀 질의</strong>를 한 번 보냅니다.</p>
+      <p>리졸버는 루트, TLD, 권한 서버에 차례로 <strong>반복 질의</strong>하며 "다음엔 어디로"를 따라가고, 얻은 답을 캐시해 다음 사람에게 바로 줍니다. 질의는 보통 UDP 53번을 쓰고, 답이 너무 크면 TCP로 다시 묻습니다.</p>
     </div>
     <figure class="figure">
-      <svg class="dg" viewBox="0 0 760 440" role="img" aria-labelledby="f12t">
-        <title id="f12t">클라이언트는 재귀 리졸버에 한 번 묻고, 리졸버는 루트, TLD, 권한 네임서버에 차례로 반복 질의한다.</title>
+      <svg class="dg" viewBox="0 0 760 440" role="img" aria-labelledby="f21t">
+        <title id="f21t">브라우저는 재귀 리졸버에 한 번 묻고, 리졸버는 루트, TLD, 권한 네임서버에 차례로 반복 질의한다.</title>
         <rect class="dg-box" x="10" y="186" width="140" height="64"/>
         <text x="80" y="218" text-anchor="middle">브라우저</text>
         <rect class="dg-box dg-box--flow" x="240" y="186" width="180" height="64"/>
@@ -268,9 +459,9 @@ ESTAB  10.0.1.15:443    198.51.100.4:40312
 
         <rect class="dg-box" x="540" y="30" width="210" height="72"/>
         <text x="645" y="58" text-anchor="middle">루트 서버</text>
-        <text class="dg-label--sm dg-label--muted" x="645" y="84" text-anchor="middle">".com은 저쪽"</text>
+        <text class="dg-label--sm dg-label--muted" x="645" y="84" text-anchor="middle">"com은 저쪽"</text>
         <rect class="dg-box" x="540" y="182" width="210" height="72"/>
-        <text x="645" y="210" text-anchor="middle">.com TLD 서버</text>
+        <text x="645" y="210" text-anchor="middle">com TLD 서버</text>
         <text class="dg-label--sm dg-label--muted" x="645" y="236" text-anchor="middle">"example.com은 저쪽"</text>
         <rect class="dg-box dg-box--solid" x="540" y="334" width="210" height="72"/>
         <text class="dg-label--on" x="645" y="362" text-anchor="middle">권한 네임서버</text>
@@ -288,7 +479,7 @@ ESTAB  10.0.1.15:443    198.51.100.4:40312
         <path class="dg-arrow dg-arrow--back" d="M534,370 L424,248"/>
         <text class="dg-label--sm" x="400" y="320" text-anchor="end">반복</text>
       </svg>
-      <figcaption>리졸버가 일을 대신하므로 클라이언트는 한 번만 묻습니다. 답은 TTL 동안 곳곳에 캐시됩니다.</figcaption>
+      <figcaption>리졸버가 일을 대신하므로 브라우저는 한 번만 묻습니다.</figcaption>
     </figure>
   </div>
 </section>
@@ -296,23 +487,46 @@ ESTAB  10.0.1.15:443    198.51.100.4:40312
 <section class="slide">
   <h2>레코드는 답의 종류, TTL은 답의 유효기간</h2>
   <div class="slide__body">
+    <p class="prose">권한 네임서버는 이름마다 <dfn title="resource record">레코드</dfn>라는 답을 종류별로 저장합니다. 주소만 있는 것이 아니라 "이 이름은 저 이름의 별칭"이나 "이 도메인의 메일은 저 서버로" 같은 답도 있습니다. AAAA의 IPv6는 주소 부족을 근본적으로 풀려고 만든 128비트 주소 체계입니다.</p>
     <table class="compare">
       <thead><tr><th scope="col">레코드</th><th scope="col">의미</th><th scope="col">예</th></tr></thead>
       <tbody>
-        <tr><th scope="row">A</th><td>이름 → IPv4 주소</td><td>api.example.com → 203.0.113.10</td></tr>
-        <tr><th scope="row">AAAA</th><td>이름 → IPv6 주소</td><td>api.example.com → 2001:db8::10</td></tr>
-        <tr><th scope="row">CNAME</th><td>이름 → 다른 이름(별칭)</td><td>www → shop.cdn.example.net</td></tr>
+        <tr><th scope="row">A</th><td>이름 → IPv4 주소</td><td>shop.example.com → 203.0.113.10</td></tr>
+        <tr><th scope="row">AAAA</th><td>이름 → IPv6 주소</td><td>shop.example.com → 2001:db8::10</td></tr>
+        <tr><th scope="row">CNAME</th><td>이름 → 다른 이름(별칭)</td><td>img.example.com → d1.cdn.example.net</td></tr>
         <tr><th scope="row">NS</th><td>이 영역의 권한 서버</td><td>example.com → ns1.example.net</td></tr>
         <tr><th scope="row">MX</th><td>메일을 받을 서버</td><td>example.com → mail.example.com</td></tr>
       </tbody>
     </table>
-    <div class="split split--even">
-      <p class="prose">모든 레코드에는 <dfn>TTL</dfn>(초)이 붙고, 리졸버와 브라우저는 그동안 답을 재사용합니다. TTL이 길면 조회가 줄지만 바뀐 주소가 늦게 퍼집니다.</p>
+    <p class="small">CNAME 예의 cdn은 이미지 같은 파일을 사용자 가까운 곳에 복제해 두는 서비스(CDN)로, 8장과 16장에서 다룹니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>TTL이 길면 빠르고, 짧으면 바꾸기 쉽다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="노트북의 터미널"><code><span class="prompt">$ </span>dig +noall +answer shop.example.com
+<span class="hl">shop.example.com.  <span class="n">300</span>  IN  A  203.0.113.10</span>
+<span class="c"># 2분 뒤 다시 물으면 리졸버 캐시에서 온다</span>
+<span class="prompt">$ </span>dig +noall +answer shop.example.com
+shop.example.com.  <span class="n">180</span>  IN  A  203.0.113.10</code></pre>
+    <div class="slide__body">
+      <p class="prose">모든 레코드에는 유효 시간 <dfn title="Time To Live">TTL</dfn>이 초 단위로 붙어, 리졸버와 브라우저가 그 시간 동안 답을 재사용합니다. <code>dig</code>는 DNS에 직접 묻는 명령인데, 두 번째 답의 300이 180으로 줄었다는 것은 리졸버가 캐시한 답을 남은 시간과 함께 준 것입니다. TTL이 길면 조회가 줄지만 주소를 바꿨을 때 늦게 퍼집니다.</p>
       <aside class="callout callout--note">
         <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>IP를 옮기기 전에 TTL부터 낮추세요</p>
-        <p>이전 TTL이 지나야 모두가 새 값을 묻습니다. 하루 전 TTL을 60초로 내리고 옮깁니다.</p>
+        <p>옛 TTL이 지나야 모두가 새 값을 묻습니다. 하루 전 TTL을 60초로 내려 두고 옮깁니다.</p>
       </aside>
     </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>HTTP는 묻고 답하는 텍스트 약속이다</h2>
+  <div class="prose prose--cols">
+    <p>이제 브라우저는 203.0.113.10의 443번 포트로 TCP 연결을 맺을 수 있습니다. 그 연결 위에서 무엇을 어떤 형식으로 말할지 정한 응용 계층 프로토콜이 <dfn title="HyperText Transfer Protocol">HTTP</dfn>입니다. 원래 웹 문서를 가져오려고 만들었지만 지금은 앱과 서버, 서버와 서버 사이의 거의 모든 API 호출이 HTTP를 씁니다.</p>
+    <p>HTTP의 규칙은 단순합니다. 클라이언트가 <strong>요청</strong> 하나를 보내면 서버가 <strong>응답</strong> 하나를 돌려줍니다. 서버가 먼저 말을 거는 일은 없습니다. 이 성질 때문에 생기는 한계와 해법은 2부 끝에서 봅니다.</p>
+    <p>HTTP/1.1까지 메시지는 사람이 읽을 수 있는 텍스트입니다. 그래서 디버깅할 때 오간 내용을 그대로 읽을 수 있고, 다음 슬라이드처럼 생김새를 줄 단위로 따라갈 수 있습니다.</p>
+    <p>주소창의 <code>https</code>는 HTTP를 2부에서 볼 TLS 암호화로 감싼 것이고, 암호를 풀고 나면 안의 내용은 같은 HTTP 메시지입니다. 이 부에서는 암호화를 잠시 잊고 메시지 자체만 봅니다.</p>
   </div>
 </section>
 
@@ -331,15 +545,27 @@ Cache-Control: no-store
 
 <span class="s">{"id":42,"status":"PAID"}</span></code></pre>
     <div class="prose">
-      <p>HTTP/1.1은 사람이 읽을 수 있는 텍스트입니다. 시작줄, 헤더들, 빈 줄, 본문 순서이고, <code>Host</code> 헤더 덕분에 IP 하나에 여러 도메인을 올릴 수 있습니다.</p>
-      <p>HTTP는 <dfn title="stateless">무상태</dfn>입니다. 요청 하나하나가 독립적이고 서버는 이전 요청을 기억하지 않습니다. 확장은 쉽지만 "로그인 상태"는 따로 만들어야 하며, 그것이 2부의 쿠키입니다.</p>
+      <p>요청 첫 줄은 "무엇을 할지(메서드), 어느 자원에, 어떤 버전으로"입니다. 이어지는 <code>이름: 값</code> 줄들이 헤더이고, 빈 줄 뒤가 본문입니다. <code>Host</code> 덕분에 IP 하나에 여러 도메인을 올릴 수 있고, <code>Accept</code>는 원하는 형식, <code>Cookie</code>는 2부의 로그인 단서입니다.</p>
+      <p>응답 첫 줄의 <code>200</code>은 결과를 뜻하는 상태 코드입니다. <code>Content-Length</code>는 본문 바이트 수로, 경계 없는 TCP 스트림에서 메시지 끝을 알려 줍니다. 본문은 JSON(키와 값의 텍스트 형식)입니다.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <h2>메서드의 성질은 재시도해도 되는지를 정한다</h2>
+  <h2>HTTP는 요청끼리 서로를 기억하지 않는다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>HTTP는 <dfn title="stateless">무상태</dfn> 프로토콜입니다. 서버는 요청 하나를 처리하고 나면 그 요청에 대해 아무것도 기억하지 않고, 다음 요청은 처음 보는 요청처럼 다룹니다. 요청에 필요한 정보는 전부 그 요청 안에 들어 있어야 합니다.</p>
+      <p>이렇게 만든 이유는 확장성입니다. 서버가 아무것도 기억하지 않으면 어느 요청이든 아무 서버나 처리할 수 있으므로, 사용자가 늘면 같은 서버를 옆에 더 놓기만 하면 됩니다. 서버 한 대가 죽어도 다른 서버가 이어받습니다.</p>
+      <p>대가는 <mark>"아까 로그인한 그 사용자"를 HTTP 자체로는 알 수 없다</mark>는 점입니다. 앞 슬라이드 요청의 <code>Cookie</code> 헤더가 바로 이 빈틈을 메우는 장치이고, 그 동작은 2부에서 봅니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>메서드의 성질이 재시도해도 되는지를 정한다</h2>
+  <div class="slide__body">
+    <p class="prose">요청 첫 줄의 메서드는 "이 요청이 서버에 무엇을 하려는가"를 밝힙니다. 메서드마다 두 성질이 정해져 있습니다. <dfn>안전</dfn>은 서버 상태를 바꾸지 않는다는 뜻이고, <dfn title="idempotency">멱등성</dfn>은 같은 요청을 여러 번 보내도 서버 상태가 한 번 보낸 것과 같다는 뜻입니다. "주문 42를 삭제"는 두 번 해도 결과가 같지만 "주문을 하나 생성"은 두 번 하면 주문이 둘이 됩니다.</p>
     <table class="compare">
       <thead><tr><th scope="col">메서드</th><th scope="col">용도</th><th scope="col">안전</th><th scope="col">멱등</th></tr></thead>
       <tbody>
@@ -350,23 +576,23 @@ Cache-Control: no-store
         <tr><th scope="row">DELETE</th><td>삭제</td><td>아니오</td><td>예</td></tr>
       </tbody>
     </table>
-    <p class="prose"><dfn>안전</dfn>은 서버 상태를 바꾸지 않는다는 뜻이고, <dfn>멱등성</dfn>은 같은 요청을 여러 번 보내도 서버 상태가 한 번 보낸 것과 같다는 뜻입니다. 응답이 오기 전에 연결이 끊기면 <mark>멱등한 요청만 안심하고 다시 보낼 수 있습니다</mark>. POST 중복을 막는 설계는 7장에서 다룹니다.</p>
+    <p class="prose">응답이 오기 전에 연결이 끊기면 요청이 처리됐는지 알 수 없습니다. 그때 <mark>멱등한 요청만 안심하고 다시 보낼 수 있습니다</mark>. POST 결제의 중복을 막는 설계는 7장에서 다룹니다.</p>
   </div>
 </section>
 
 <section class="slide">
   <h2>상태 코드의 첫 자리는 책임 소재다</h2>
   <div class="slide__body">
-    <p class="prose">2xx는 성공, 3xx는 다른 곳을 보라는 안내, 4xx는 요청한 쪽의 잘못, 5xx는 서버 쪽 잘못입니다. 헷갈리기 쉬운 짝은 무엇을 구분하는지로 기억합니다.</p>
+    <p class="prose">응답의 세 자리 상태 코드는 첫 자리로 큰 갈래를 나눕니다. 2xx는 성공, 3xx는 "다른 곳을 보라"는 안내(리다이렉트), 4xx는 요청한 쪽의 잘못, 5xx는 서버 쪽 잘못입니다. 첫 자리만 봐도 고칠 쪽이 클라이언트인지 서버인지 갈립니다. 헷갈리기 쉬운 짝은 무엇을 구분하는지로 기억합니다.</p>
     <table class="compare">
       <thead><tr><th scope="col">코드</th><th scope="col">의미</th><th scope="col">구분하는 기준</th></tr></thead>
       <tbody>
-        <tr><th scope="row">200 / 201 / 204</th><td>성공 / 생성됨 / 본문 없음</td><td>새 리소스가 생겼는가</td></tr>
-        <tr><th scope="row">301 / 302</th><td>영구 이동 / 임시 이동</td><td>브라우저, 검색엔진이 기억하는가</td></tr>
-        <tr><th scope="row">304</th><td>캐시를 그대로 써도 됨</td><td>조건부 요청의 결과</td></tr>
+        <tr><th scope="row">200 / 201 / 204</th><td>성공 / 생성됨 / 본문 없음</td><td>새 자원이 생겼는가</td></tr>
+        <tr><th scope="row">301 / 302</th><td>영구 이동 / 임시 이동</td><td>브라우저가 새 주소를 기억하는가</td></tr>
+        <tr><th scope="row">304</th><td>가진 사본을 그대로 쓰라</td><td>"바뀌었으면 달라"는 요청의 답</td></tr>
         <tr><th scope="row">401 / 403</th><td>인증 필요 / 권한 없음</td><td>누군지 모름 vs 알지만 불허</td></tr>
         <tr><th scope="row">429</th><td>요청이 너무 많음</td><td>요청 빈도 제한에 걸림</td></tr>
-        <tr><th scope="row">502 / 503 / 504</th><td>게이트웨이 계열 오류</td><td class="is-key">3부에서 프록시 관점으로</td></tr>
+        <tr><th scope="row">502 / 503 / 504</th><td>중간 서버가 대신 만든 오류</td><td class="is-key">2부의 프록시를 알고 3부에서</td></tr>
       </tbody>
     </table>
   </div>
@@ -375,8 +601,8 @@ Cache-Control: no-store
 <!-- ===== 2부: 원리 ==================================================== -->
 <section class="slide slide--divider" data-section="연결, 신뢰, 보안의 원리" data-depth="core">
   <p class="divider__no">2부</p>
-  <h2>연결과 신뢰와 보안은 어떻게 만들어지나</h2>
-  <p class="lede">TCP가 연결을 맺고 끊는 과정, 유실과 혼잡을 견디는 방법, HTTP의 진화, TLS와 쿠키, 그리고 요청이 지나는 프록시와 서버의 역할까지 내부를 봅니다.</p>
+  <h2>믿을 수 없는 길 위에 믿을 수 있는 대화를</h2>
+  <p class="lede">1부에서 요청이 상대 프로세스까지 가는 길과 요청의 모양을 봤습니다. 남은 질문은 셋입니다. 잃고 뒤섞이는 패킷 위에서 TCP는 어떻게 온전한 대화를 만드는가, 엿듣는 사람이 있는 길에서 어떻게 안전하게 말하는가, 그리고 1부에서 "공개 입구"라고만 부른 것의 정체는 무엇인가.</p>
   <div class="depth-shift" aria-label="깊이 전환: 기초에서 원리로">
     <span class="depth-shift__step"><span class="depth" data-depth="basic"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>기초</span>
     <span class="depth-shift__line" aria-hidden="true"></span>
@@ -386,10 +612,28 @@ Cache-Control: no-store
 </section>
 
 <section class="slide">
+  <h2>TCP 헤더는 번호와 신호를 싣는다</h2>
+  <div class="slide__body">
+    <p class="prose">TCP가 유실, 순서, 중복을 다루는 모든 장치는 세그먼트 헤더의 몇 개 칸에서 나옵니다. 앞으로 계속 나올 칸들을 먼저 봅니다. 그리고 이 부 내내 쓸 시간 단위가 <dfn title="Round-Trip Time">RTT</dfn>입니다. 패킷이 상대에게 갔다가 답이 돌아오기까지의 왕복 시간으로, 같은 도시 안은 1ms 안팎, 서울과 미국 동부 사이는 약 180ms입니다. 네트워크 비용은 대개 "몇 RTT가 드나"로 셉니다.</p>
+    <table class="compare">
+      <thead><tr><th scope="col">헤더 칸</th><th scope="col">담는 것</th><th scope="col">쓰이는 곳</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">출발지·목적지 포트</th><td>어느 프로세스끼리인가</td><td>1부의 5-tuple</td></tr>
+        <tr><th scope="row">순서 번호 (seq)</th><td>이 데이터 첫 바이트의 번호</td><td>순서 맞추기, 중복 제거</td></tr>
+        <tr><th scope="row">확인 번호 (ack)</th><td>다음에 받을 바이트 번호</td><td>도착 확인, 재전송 판단</td></tr>
+        <tr><th scope="row">플래그</th><td class="is-flow">SYN, ACK, FIN, RST</td><td>연결 시작, 확인, 종료, 강제 끊기</td></tr>
+        <tr><th scope="row">윈도우</th><td>내가 더 받을 수 있는 양</td><td>흐름 제어</td></tr>
+        <tr><th scope="row">체크섬</th><td>내용으로 계산한 검사값</td><td>손상 검출</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
   <h2>연결이란 서로의 시작 번호를 아는 상태다</h2>
   <div class="split split--wide-left">
     <div class="seq" role="img" aria-label="클라이언트가 SYN, 서버가 SYN+ACK, 클라이언트가 ACK를 보내 양쪽이 ESTABLISHED가 된다">
-      <div class="seq__head"><span>클라이언트</span><span></span><span>서버</span></div>
+      <div class="seq__head"><span>브라우저</span><span></span><span>서버</span></div>
       <div class="seq__row seq__row--r">
         <span class="seq__state">SYN_SENT</span>
         <span class="seq__msg"><b>SYN</b> seq=x (내 ISN)</span>
@@ -410,8 +654,8 @@ Cache-Control: no-store
       </div>
     </div>
     <div class="prose">
-      <p>TCP는 바이트마다 번호를 매기므로, 양쪽이 서로의 시작 번호(ISN)를 알고 상대가 그것을 받았는지 확인해야 합니다. 두 번만 주고받으면 서버는 <mark>자기 ISN이 도착했는지 모른 채</mark> 연결을 열게 됩니다.</p>
-      <p>ISN을 0이 아닌 난수로 고르는 이유는 이전 연결의 늦은 패킷과 섞이지 않게 하고, 공격자가 번호를 맞혀 끼어들지 못하게 하기 위해서입니다.</p>
+      <p>TCP는 바이트마다 번호를 매기므로 양쪽이 서로의 시작 번호(<dfn title="Initial Sequence Number">ISN</dfn>)를 알아야 합니다. 두 번만 주고받으면 서버는 <mark>자기 ISN이 도착했는지 모른 채</mark> 연결을 엽니다. 그래서 세 번, 3-way handshake입니다. 왼쪽과 오른쪽 끝의 대문자 이름은 커널이 연결마다 기록하는 상태입니다.</p>
+      <p>ISN을 0이 아닌 난수로 고르는 것은 이전 연결의 늦은 패킷과 섞이지 않고, 공격자가 번호를 맞혀 끼어들지 못하게 하기 위해서입니다.</p>
     </div>
   </div>
 </section>
@@ -420,14 +664,24 @@ Cache-Control: no-store
   <h2>핸드셰이크는 커널의 두 큐에서 일어난다</h2>
   <div class="split split--even">
     <ol class="steps">
-      <li><b>listen()</b><p>소켓을 LISTEN으로 바꾸고 SYN 큐와 accept 큐를 만듭니다.</p></li>
-      <li class="is-key"><b>SYN 도착</b><p>반쯤 열린 연결을 SYN 큐에 두고 SYN+ACK를 보냅니다.</p></li>
-      <li><b>ACK 도착</b><p>완성된 연결을 accept 큐로 옮깁니다.</p></li>
-      <li><b>accept()</b><p>애플리케이션이 꺼내 갈 때 새 fd가 생깁니다.</p></li>
+      <li><b>listen()</b><p>서버가 소켓을 LISTEN 상태로 바꾸면 커널이 SYN 큐와 accept 큐를 만듭니다.</p></li>
+      <li class="is-key"><b>SYN 도착</b><p>커널이 반쯤 열린 연결을 SYN 큐에 두고 SYN+ACK를 보냅니다.</p></li>
+      <li><b>ACK 도착</b><p>완성된 연결을 accept 큐로 옮깁니다. 아직 앱은 모릅니다.</p></li>
+      <li><b>accept()</b><p>앱이 큐에서 꺼내 갈 때 그 연결의 새 fd가 생깁니다.</p></li>
     </ol>
     <div class="prose">
-      <p><dfn title="SYN Flooding">SYN 플러딩</dfn>은 위조한 출발지로 SYN만 대량으로 보내 SYN 큐를 채우는 공격입니다. 마지막 ACK는 오지 않으니 정상 사용자가 들어올 자리가 사라집니다.</p>
-      <p>방어책인 <strong>SYN 쿠키</strong>는 큐에 상태를 저장하지 않고, 그 정보를 서버의 ISN 안에 암호학적으로 담아 보냅니다. ACK가 돌아오면 그 번호로 검증해 연결을 복원합니다.</p>
+      <p>핸드셰이크는 애플리케이션 코드가 아니라 커널이 처리합니다. 앱은 완성된 연결을 <code>accept()</code> 시스템 콜로 받아 갈 뿐입니다. 그래서 앱이 바빠 꺼내 가지 못하면 완성된 연결이 accept 큐에 쌓입니다.</p>
+      <p>accept 큐의 길이는 <code>listen(fd, backlog)</code>의 backlog와 커널 상한 <code>net.core.somaxconn</code>(리눅스 5.4부터 기본 4096) 중 작은 값입니다. 큐가 차면 새 연결은 받아들여지지 않고, 클라이언트는 연결이 느리거나 실패한다고 느낍니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>SYN 플러딩은 반쯤 열린 연결로 큐를 채운다</h2>
+  <div class="slide__body">
+    <div class="prose">
+      <p>앞 슬라이드의 SYN 큐에는 약점이 있습니다. 서버는 SYN 하나만 받고도 자리를 내주고 마지막 ACK를 기다립니다. <dfn title="SYN flooding">SYN 플러딩</dfn>은 이 점을 노려 SYN만 대량으로 보내는 공격입니다. 출발지 IP는 헤더의 숫자일 뿐이라 공격자가 아무 값으로나 거짓으로 채울 수 있고, 서버의 SYN+ACK는 엉뚱한 곳으로 가므로 마지막 ACK는 영영 오지 않습니다. 큐가 가득 차면 정상 사용자가 들어올 자리가 사라집니다.</p>
+      <p>방어책인 <dfn title="SYN cookie">SYN 쿠키</dfn>는 자리를 아예 잡지 않는 방법입니다. 큐에 저장했어야 할 정보(상대 주소, 포트, 시각)를 비밀 키와 함께 섞어 계산한 값을 서버의 ISN으로 써서 SYN+ACK에 실어 보냅니다. 진짜 클라이언트라면 ack=ISN+1로 답하므로, 서버는 그 번호를 다시 계산해 맞는지 확인하고 그때 연결을 만듭니다. <mark>상태를 상대에게 맡겨 두는 발상</mark>이라 큐가 넘쳐도 정상 연결은 받습니다. 리눅스는 큐가 넘칠 때 자동으로 SYN 쿠키를 씁니다(<code>tcp_syncookies</code> 기본 1).</p>
     </div>
   </div>
 </section>
@@ -454,7 +708,7 @@ Cache-Control: no-store
       </div>
       <div class="seq__row seq__row--l">
         <span class="seq__state"></span>
-        <span class="seq__msg"><b>FIN</b> 나도 끝</span>
+        <span class="seq__msg"><b>FIN</b> 나도 끝<small>상대 앱이 close()를 호출한 시점</small></span>
         <span class="seq__state">LAST_ACK</span>
       </div>
       <div class="seq__row seq__row--r is-key">
@@ -464,8 +718,8 @@ Cache-Control: no-store
       </div>
     </div>
     <div class="prose">
-      <p>TCP 연결은 두 방향의 통로가 따로 닫힙니다. FIN은 "나는 더 보낼 게 없다"는 뜻일 뿐이고, 상대는 아직 보낼 데이터가 남았을 수 있습니다(<dfn title="half-close">half-close</dfn>).</p>
-      <p>그래서 상대는 ACK는 바로 보내되 자기 FIN은 일을 마친 뒤 따로 보냅니다. 수립 때처럼 SYN과 ACK를 합쳐 한 번에 보낼 수 없는 이유입니다.</p>
+      <p>TCP 연결은 두 방향의 통로가 따로 닫힙니다. 앱이 <code>close()</code>를 부르면 커널이 FIN을 보내는데, 이는 "나는 더 보낼 게 없다"는 뜻일 뿐 상대는 아직 보낼 것이 있을 수 있습니다(<dfn title="half-close">half-close</dfn>).</p>
+      <p>그래서 상대 커널은 ACK를 바로 보내고 CLOSE_WAIT에서 <mark>자기 앱이 close()하기를 기다립니다</mark>. 연결 수립 때처럼 둘을 합쳐 보낼 수 없는 이유입니다.</p>
     </div>
   </div>
 </section>
@@ -474,12 +728,12 @@ Cache-Control: no-store
   <h2>TIME_WAIT는 마지막을 책임지는 대기다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>마지막 ACK를 보낸 쪽은 바로 사라지지 않고 TIME_WAIT로 기다립니다. 이유는 두 가지입니다.</p>
-      <p>첫째, 마지막 ACK가 유실되면 상대가 FIN을 다시 보내는데, 그때 응답할 주체가 남아 있어야 합니다. 둘째, 네트워크를 떠돌던 옛 연결의 패킷이 <mark>같은 주소와 포트를 쓰는 새 연결에 섞이지 않도록</mark> 패킷 수명의 두 배(2MSL)만큼 기다립니다.</p>
+      <p>마지막 ACK를 보낸 쪽은 바로 사라지지 않고 TIME_WAIT로 기다립니다. 첫째, 그 ACK가 유실되면 상대가 FIN을 다시 보내는데, 그때 답할 주체가 남아 있어야 합니다.</p>
+      <p>둘째, 길에서 늦어진 옛 연결의 패킷이 <mark>같은 주소와 포트를 다시 쓰는 새 연결에 섞이지 않도록</mark> 기다립니다. 패킷이 네트워크에 머물 수 있는 최대 시간을 <dfn title="Maximum Segment Lifetime">MSL</dfn>이라 하고, 가는 길과 오는 길을 합쳐 2MSL을 기다리면 옛 패킷은 모두 사라졌다고 봅니다.</p>
     </div>
     <div class="slide__body">
       <aside class="callout">
-        <p>리눅스는 TIME_WAIT를 <strong>60초</strong>로 고정해 둡니다. 이 값은 sysctl로 바꿀 수 없습니다.</p>
+        <p>리눅스는 TIME_WAIT를 <strong>60초</strong>로 커널 코드에 고정해 둡니다. 커널 동작을 조정하는 파라미터를 바꾸는 <code>sysctl</code> 명령으로도 이 값은 바꿀 수 없습니다.</p>
       </aside>
       <aside class="callout callout--key">
         <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>TIME_WAIT는 먼저 닫은 쪽에 생깁니다</p>
@@ -490,29 +744,77 @@ Cache-Control: no-store
 </section>
 
 <section class="slide">
-  <h2>신뢰성은 번호, 확인, 재전송으로 만든다</h2>
+  <h2>RST는 인사 없이 연결을 끊는 신호다</h2>
   <div class="slide__body">
-    <p class="prose">IP는 패킷을 잃고, 늦추고, 순서를 바꾸고, 가끔 망가뜨립니다. TCP는 네 가지 장치로 이것을 연속된 바이트 흐름으로 바꿔 애플리케이션에 건넵니다.</p>
-    <table class="compare">
-      <thead><tr><th scope="col">장치</th><th scope="col">동작</th><th scope="col">막는 문제</th></tr></thead>
-      <tbody>
-        <tr><th scope="row">순서 번호</th><td>보낸 바이트마다 번호를 매김</td><td>순서 뒤바뀜, 중복</td></tr>
-        <tr><th scope="row">누적 ACK</th><td>"다음에 받을 번호"를 알림</td><td>도착 여부 불명</td></tr>
-        <tr><th scope="row">재전송</th><td class="is-flow">타임아웃 또는 중복 ACK 3개</td><td>유실</td></tr>
-        <tr><th scope="row">체크섬</th><td>손상된 세그먼트를 버림</td><td>비트 오류(재전송으로 복구)</td></tr>
-      </tbody>
-    </table>
-    <p class="small">재전송 타임아웃(RTO)은 고정값이 아니라 측정한 RTT로 계속 다시 계산합니다. 같은 ACK가 세 번 겹쳐 오면 타임아웃을 기다리지 않고 바로 다시 보냅니다(빠른 재전송).</p>
+    <div class="prose">
+      <p>FIN이 "할 말을 다 했으니 정리하자"는 정중한 종료라면, RST 플래그를 켠 세그먼트는 "이 연결은 없다, 당장 끊어라"는 통보입니다. RST를 받은 쪽은 남은 데이터를 버리고 연결을 즉시 지우며, 그 소켓을 쓰던 앱은 <code>Connection reset by peer</code> 같은 오류를 받습니다. TIME_WAIT도 거치지 않습니다.</p>
+      <p>커널이 RST를 보내는 대표적인 경우는 세 가지입니다. 아무도 기다리지 않는 포트로 SYN이 오면 "여기 없다"는 뜻으로 RST를 보내고, 이것이 클라이언트에게는 <code>Connection refused</code>로 보입니다. 이미 닫아 버린 연결로 데이터가 오면 역시 RST로 답합니다. 앱이 읽지 않은 데이터를 남긴 채 소켓을 닫아도 RST가 나갑니다.</p>
+      <p>두 번째 경우를 기억해 두세요. <mark>한쪽이 닫았는데 다른 쪽이 그 사실을 모르고 요청을 보내는 순간</mark>이 3부에서 보는 간헐적 502 오류의 정체입니다.</p>
+    </div>
   </div>
 </section>
 
 <section class="slide">
-  <h2>흐름 제어는 받는 쪽 버퍼를 지킨다</h2>
+  <h2>번호와 확인으로 빠진 바이트를 안다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>연결이 맺어지면 데이터가 흐릅니다. 1부에서 본 IP의 네 가지 문제 중 순서와 중복은 순서 번호로 풉니다. 받는 쪽은 번호를 보고 제자리에 끼워 넣고, 이미 받은 번호는 버립니다. 손상은 체크섬으로 찾아 그 세그먼트를 버리므로 결국 유실과 같은 문제가 됩니다.</p>
+      <p>남은 유실은 확인 번호로 드러납니다. TCP의 ACK는 <dfn title="cumulative ACK">누적 ACK</dfn>, 즉 "여기까지는 빠짐없이 받았으니 다음엔 이 번호를 달라"는 뜻입니다. 1000바이트씩 보내다 1001~2000이 빠지면, 뒤 조각이 아무리 와도 받는 쪽은 계속 <code>ack=1001</code>만 외칩니다.</p>
+    </div>
+    <div class="seq" role="img" aria-label="두 번째 세그먼트가 유실되자 받는 쪽이 같은 ACK 1001을 세 번 보내고, 보내는 쪽이 그 세그먼트를 바로 재전송해 ACK 5001을 받는다">
+      <div class="seq__head"><span>보내는 쪽</span><span></span><span>받는 쪽</span></div>
+      <div class="seq__row seq__row--r">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>seq=1</b> 1~1000번 바이트</span>
+        <span class="seq__state"></span>
+      </div>
+      <div class="seq__row seq__row--r is-key">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>seq=1001</b> 도중에 유실</span>
+        <span class="seq__state"></span>
+      </div>
+      <div class="seq__row seq__row--r">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>seq=2001, 3001, 4001</b><small>뒤 조각은 도착해 버퍼에 보관</small></span>
+        <span class="seq__state"></span>
+      </div>
+      <div class="seq__row seq__row--l is-back">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>ack=1001</b> 같은 ACK가 여러 번</span>
+        <span class="seq__state"></span>
+      </div>
+      <div class="seq__row seq__row--r is-key">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>seq=1001</b> 빠진 조각 재전송</span>
+        <span class="seq__state"></span>
+      </div>
+      <div class="seq__row seq__row--l is-back">
+        <span class="seq__state"></span>
+        <span class="seq__msg"><b>ack=5001</b> 한 번에 모두 확인</span>
+        <span class="seq__state"></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>재전송은 타이머와 중복 ACK가 깨운다</h2>
+  <div class="slide__body">
+    <div class="prose">
+      <p>보내는 쪽이 "잃어버렸다"고 판단하는 길은 두 가지입니다. 첫째는 타이머입니다. 세그먼트를 보낼 때 시계를 켜 두고, 정해진 시간 안에 ACK가 안 오면 다시 보냅니다. 이 시간을 <dfn title="Retransmission TimeOut">RTO</dfn>라고 합니다.</p>
+      <p>RTO를 고정값으로 두면 곤란합니다. 서울 안 연결(RTT 1ms)에 1초를 기다리면 너무 굼뜨고, 해외 연결(RTT 180ms)에 100ms를 두면 멀쩡한 패킷까지 다시 보냅니다. 그래서 TCP는 ACK가 올 때마다 RTT를 재고 그 평균과 흔들림으로 RTO를 계속 다시 계산합니다. 리눅스에서 RTO는 최소 200ms이고, 재전송이 실패할 때마다 두 배로 늘립니다.</p>
+      <p>둘째는 앞 슬라이드의 중복 ACK입니다. 같은 ACK가 세 번 더 오면 "뒤 조각은 도착하는데 하나만 빠졌다"는 강한 신호이므로, 타이머를 기다리지 않고 바로 다시 보냅니다. 이것을 <dfn title="fast retransmit">빠른 재전송</dfn>이라고 하며, <mark>타임아웃보다 훨씬 빨리 회복</mark>합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>확인을 기다리며 한 개씩 보내면 느리다</h2>
   <div class="slide__body">
     <figure class="figure">
-      <svg class="dg" viewBox="0 0 1400 280" role="img" aria-labelledby="f23t">
-        <title id="f23t">송신 윈도우 안의 바이트만 ACK 없이 보낼 수 있고, ACK가 오면 윈도우가 오른쪽으로 미끄러진다.</title>
-        <text class="dg-label--flow" x="560" y="40" text-anchor="middle">송신 윈도우 = min(rwnd, cwnd)</text>
+      <svg class="dg" viewBox="0 0 1400 280" role="img" aria-labelledby="f39t">
+        <title id="f39t">송신 윈도우 안의 바이트만 ACK 없이 보낼 수 있고, ACK가 오면 윈도우가 오른쪽으로 미끄러진다.</title>
+        <text class="dg-label--flow" x="560" y="40" text-anchor="middle">송신 윈도우 = 확인 없이 보내도 되는 양</text>
         <rect class="dg-zone" x="314" y="56" width="494" height="100"/>
         <rect class="dg-box dg-box--muted" x="40" y="72" width="80" height="68"/>
         <rect class="dg-box dg-box--muted" x="132" y="72" width="80" height="68"/>
@@ -534,20 +836,39 @@ Cache-Control: no-store
         <text class="dg-label--sm" x="520" y="246" text-anchor="start">ACK가 오면 윈도우 전체가 오른쪽으로 이동</text>
       </svg>
     </figure>
-    <p class="prose">받는 쪽은 ACK마다 남은 버퍼 크기 <code>rwnd</code>를 알려 줍니다. 보내는 쪽은 확인받지 못한 데이터를 이 크기까지만 내보내므로 수신 버퍼가 넘치지 않습니다. 애플리케이션이 <code>read()</code>를 늦게 하면 rwnd가 0이 되어 <mark>보내는 쪽이 멈춥니다</mark>.</p>
+    <p class="prose">세그먼트 하나(이더넷에서 보통 1460바이트)를 보내고 ACK를 기다리면, RTT 180ms 구간에서 초당 8KB밖에 못 보냅니다. 그래서 TCP는 확인받지 않은 데이터를 <dfn title="window">윈도우</dfn> 크기까지 한꺼번에 띄워 두고, ACK가 오는 만큼 윈도우를 앞으로 밀며 계속 보냅니다. 문제는 이 윈도우를 얼마나 크게 잡느냐이고, 두 가지가 그 상한을 정합니다.</p>
   </div>
 </section>
 
 <section class="slide">
-  <h2>혼잡 제어는 네트워크 전체를 지킨다</h2>
+  <h2>흐름 제어는 받는 쪽 버퍼를 지킨다</h2>
+  <div class="split split--even">
+    <div class="prose">
+      <p>첫 번째 상한은 받는 쪽 사정입니다. 도착한 데이터는 앱이 <code>read()</code>로 가져갈 때까지 커널의 수신 버퍼에 머뭅니다. 보내는 쪽이 너무 빨리 쏟아부으면 버퍼가 넘쳐 애써 보낸 데이터를 버리게 됩니다.</p>
+      <p>그래서 받는 쪽은 ACK마다 헤더의 윈도우 칸에 남은 버퍼 크기 <code>rwnd</code>를 적어 보내고, 보내는 쪽은 확인받지 못한 데이터를 그 크기까지만 내보냅니다. 이것이 <dfn title="flow control">흐름 제어</dfn>입니다.</p>
+    </div>
+    <div class="slide__body">
+      <aside class="callout callout--key">
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>읽지 않는 앱은 보내는 쪽을 멈춘다</p>
+        <p>앱이 바빠 read()를 늦게 하면 rwnd가 0이 되고 보내는 쪽은 멈춘 채 가끔 탐침만 보냅니다. 네트워크는 멀쩡한데 전송이 멎었다면 받는 앱부터 봅니다.</p>
+      </aside>
+      <aside class="callout callout--note">
+        <p>먼 거리에서 빠르려면 윈도우가 커야 합니다. 100Mbps로 RTT 180ms를 채우려면 약 2.25MB가 떠 있어야 하므로, 리눅스는 수신 버퍼를 자동으로 키웁니다.</p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>혼잡 제어는 중간 네트워크를 지킨다</h2>
   <div class="split split--center">
     <div class="prose">
-      <p>흐름 제어가 상대를 보호한다면, 혼잡 제어는 중간 네트워크를 보호합니다. 보내는 쪽은 스스로 <dfn title="congestion window">혼잡 윈도우</dfn>(cwnd)를 정합니다.</p>
-      <p>새 연결은 작게 시작해 RTT마다 두 배로 늘리고(Slow Start), 임계값을 넘으면 1씩 늘립니다. 유실을 감지하면 크게 줄입니다. <mark>더할 때는 조금, 뺄 때는 크게</mark> 하는 AIMD 방식입니다.</p>
+      <p>두 번째 상한은 중간 라우터의 사정입니다. 모두가 받는 쪽 버퍼만 믿고 최대로 쏘면 라우터가 넘쳐 패킷을 버리고, 다들 재전송해 더 막히는 악순환에 빠집니다. 그래서 보내는 쪽은 스스로 <dfn title="congestion window, cwnd">혼잡 윈도우</dfn>를 정하고, 실제 윈도우는 <code>min(rwnd, cwnd)</code>입니다.</p>
+      <p>새 연결은 세그먼트 10개로 작게 시작해 RTT마다 두 배로 늘리고(Slow Start), 임계값(지난 유실 때 정해 둔 경계)을 넘으면 1씩 늘립니다. 유실을 감지하면 크게 줄입니다. <mark>늘릴 때는 조금, 줄일 때는 크게</mark>, 이것이 <dfn title="Additive Increase, Multiplicative Decrease">AIMD</dfn>입니다.</p>
     </div>
     <figure class="figure">
-      <svg class="dg" viewBox="0 0 760 430" role="img" aria-labelledby="f24t">
-        <title id="f24t">cwnd가 Slow Start에서 지수적으로 늘다가 임계값 이후 선형으로 늘고, 유실 감지 시 절반으로 줄어든 뒤 다시 선형 증가한다.</title>
+      <svg class="dg" viewBox="0 0 760 430" role="img" aria-labelledby="f41t">
+        <title id="f41t">cwnd가 Slow Start에서 지수적으로 늘다가 임계값 이후 선형으로 늘고, 유실 감지 시 절반으로 줄어든 뒤 다시 선형 증가한다.</title>
         <line class="dg-line" x1="70" y1="40" x2="70" y2="380"/>
         <line class="dg-line" x1="70" y1="380" x2="730" y2="380"/>
         <text class="dg-label--sm" x="60" y="34" text-anchor="end">cwnd</text>
@@ -561,7 +882,7 @@ Cache-Control: no-store
         <text class="dg-label--sm dg-label--key" x="446" y="60" text-anchor="start">유실 감지(중복 ACK 3개)</text>
         <text class="dg-label--sm" x="446" y="270" text-anchor="start">절반으로 줄이고 다시 선형 증가</text>
       </svg>
-      <figcaption>리눅스 기본 알고리즘은 CUBIC으로, 증가 곡선 모양은 다르지만 줄이고 늘리는 원리는 같습니다.</figcaption>
+      <figcaption>리눅스 기본 알고리즘은 CUBIC으로, 증가 곡선 모양은 다르지만 줄이고 늘리는 원리는 같습니다. 새 연결이 처음엔 느린 이유가 Slow Start입니다.</figcaption>
     </figure>
   </div>
 </section>
@@ -570,19 +891,37 @@ Cache-Control: no-store
   <h2>HTTP/1.1은 연결을 재사용하지만 줄을 선다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>HTTP/1.0은 요청마다 TCP 연결을 새로 열었습니다. 매번 핸드셰이크 왕복을 치르는 셈입니다. HTTP/1.1은 응답 뒤에도 연결을 열어 두는 <dfn title="persistent connection">지속 연결</dfn>(keep-alive)이 기본입니다.</p>
-      <p>하지만 한 연결에서는 응답이 순서대로 하나씩 옵니다. 앞 응답이 느리면 뒤 요청이 모두 기다리는 <mark>HOL 블로킹</mark>(Head-of-Line)입니다. 그래서 브라우저는 도메인마다 연결을 여러 개 엽니다.</p>
+      <p>지금까지 보니 TCP 연결은 비쌉니다. 맺는 데 1 RTT, 새 연결은 Slow Start로 느리게 출발하고, 닫으면 TIME_WAIT가 남습니다. HTTP/1.0은 요청마다 이 값을 치렀습니다. HTTP/1.1은 응답 뒤에도 연결을 열어 두고 다음 요청에 다시 쓰는 <dfn title="persistent connection, keep-alive">지속 연결</dfn>을 기본으로 했습니다.</p>
+      <p>하지만 한 연결에서 응답은 순서대로 하나씩 옵니다. 앞 응답이 느리면 뒤 요청이 모두 기다리는 <mark>HOL 블로킹</mark>(Head-of-Line, 줄 맨 앞이 막힘)입니다. 그래서 브라우저는 도메인마다 연결을 6개쯤 따로 엽니다.</p>
     </div>
     <aside class="callout callout--note">
       <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>이름만 같은 두 keep-alive</p>
-      <p>HTTP keep-alive는 연결을 재사용하는 것이고, TCP keepalive는 유휴 연결에 탐침을 보내 살아 있는지 보는 커널 기능입니다. 리눅스 기본값은 2시간 유휴 후 탐침입니다.</p>
+      <p>HTTP keep-alive는 연결을 재사용하는 것이고, TCP keepalive는 오래 조용한 연결에 탐침을 보내 상대가 살아 있는지 보는 커널 기능입니다. 리눅스 기본값은 2시간 유휴 후 탐침입니다.</p>
     </aside>
   </div>
 </section>
 
 <section class="slide">
-  <h2>HTTP/2는 다중화하고, HTTP/3는 TCP를 떠났다</h2>
+  <h2>HTTP/2는 한 연결 위에 요청을 섞어 보낸다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>연결 6개는 미봉책입니다. 연결마다 핸드셰이크와 Slow Start를 따로 치르고, 서버 자원도 그만큼 씁니다. HTTP/2(2015)는 발상을 바꿔 연결 하나에서 여러 요청을 동시에 오가게 했습니다.</p>
+      <p>방법은 이렇습니다. 요청과 응답을 텍스트 대신 작은 <strong>바이너리 프레임</strong>(길이와 종류가 정해진 이진 데이터 조각)으로 자르고, 각 프레임에 어느 요청-응답 쌍에 속하는지 <dfn title="stream">스트림</dfn> 번호를 붙입니다. 그러면 주문 정보 응답의 프레임과 상품 이미지 응답의 프레임을 한 연결 위에 번갈아 실을 수 있고, 받는 쪽은 번호로 다시 모읍니다. 이것을 <dfn title="multiplexing">다중화</dfn>라고 합니다.</p>
+      <p>요청마다 거의 같은 헤더(Host, Cookie 등)를 반복해 보내던 낭비도 줄였습니다. 한 번 보낸 헤더를 양쪽이 표에 기억하고 이후엔 표의 번호만 보내는 압축 방식(HPACK)입니다.</p>
+    </div>
+    <ol class="flow">
+      <li class="flow__node"><b>요청 A, B, C</b><span>동시에 시작</span></li>
+      <li class="flow__node is-flow"><b>프레임으로 자름</b><span>스트림 1, 3, 5 번호</span></li>
+      <li class="flow__node"><b>TCP 연결 하나</b><span>번갈아 실어 보냄</span></li>
+      <li class="flow__node"><b>번호로 재조립</b><span>느린 응답이 막지 않음</span></li>
+    </ol>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>HTTP/2도 TCP의 줄서기는 피하지 못했다</h2>
+  <div class="slide__body">
+    <p class="prose">HTTP/2의 스트림도 결국 TCP라는 <strong>하나의 바이트 흐름</strong>에 실립니다. 앞에서 본 것처럼 TCP는 빠진 바이트가 재전송될 때까지 뒤의 바이트를 앱에 넘기지 않습니다. 패킷 하나가 유실되면 그 패킷과 상관없는 스트림까지 모두 멈추는 것입니다. 줄서기가 HTTP 층에서 TCP 층으로 내려갔을 뿐입니다. 세 버전을 나란히 놓으면 이렇습니다.</p>
     <table class="compare">
       <thead><tr><th scope="col">항목</th><th scope="col">HTTP/1.1</th><th scope="col">HTTP/2</th><th scope="col">HTTP/3</th></tr></thead>
       <tbody>
@@ -591,10 +930,9 @@ Cache-Control: no-store
         <tr><th scope="row">동시 요청</th><td>연결을 여러 개</td><td class="is-flow">한 연결에 스트림 다중화</td><td>한 연결에 스트림 다중화</td></tr>
         <tr><th scope="row">HOL 블로킹</th><td>HTTP 수준에서 발생</td><td class="is-key">TCP 수준에서 남음</td><td>스트림별로 독립</td></tr>
         <tr><th scope="row">헤더 압축</th><td>없음</td><td>HPACK</td><td>QPACK</td></tr>
-        <tr><th scope="row">연결 수립</th><td>TCP + TLS</td><td>TCP + TLS</td><td>QUIC이 TLS 1.3 내장</td></tr>
+        <tr><th scope="row">연결 수립</th><td>TCP 후 TLS</td><td>TCP 후 TLS</td><td>QUIC이 TLS 1.3 내장</td></tr>
       </tbody>
     </table>
-    <p class="prose">HTTP/2는 요청과 응답을 프레임으로 잘라 스트림 번호를 붙이고, 한 연결 위에 섞어 보냅니다. 느린 응답 하나가 다른 응답을 막지 않습니다. 적어도 HTTP 수준에서는 그렇습니다.</p>
   </div>
 </section>
 
@@ -602,34 +940,44 @@ Cache-Control: no-store
   <h2>HTTP/3가 UDP 위에 TCP를 다시 지은 이유</h2>
   <div class="split split--even">
     <div class="prose">
-      <p>HTTP/2의 스트림도 결국 TCP라는 <strong>하나의 바이트 흐름</strong>에 실립니다. 패킷 하나가 유실되면 TCP는 재전송이 올 때까지 뒤의 모든 바이트를 붙잡으므로 모든 스트림이 같이 멈춥니다.</p>
-      <p>TCP는 커널과 수많은 중간 장비에 박혀 있어 고치기 어렵습니다. 그래서 QUIC은 UDP 위에서 순서와 재전송을 <mark>스트림별로</mark> 직접 구현하고, TLS 1.3을 합쳐 연결 수립을 1 RTT로 줄였습니다.</p>
+      <p>TCP는 OS 커널과 인터넷 곳곳의 중간 장비에 박혀 있어, 동작을 바꾸려면 전 세계 장비가 바뀌길 기다려야 합니다. 그래서 HTTP/3(2022)는 장비들이 그냥 통과시키는 UDP 위에 <dfn>QUIC</dfn>이라는 새 전송 프로토콜을 앱 쪽 코드로 지었습니다.</p>
+      <p>QUIC은 순서와 재전송을 <mark>스트림별로</mark> 따로 관리하므로 한 스트림의 유실이 다른 스트림을 막지 않습니다. 또 뒤에서 볼 TLS 1.3을 연결 수립에 합쳐, TCP와 TLS가 따로 치르던 왕복을 1 RTT로 줄였습니다.</p>
     </div>
     <div class="slide__body">
       <aside class="callout callout--note">
         <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>네트워크가 바뀌어도 연결이 이어집니다</p>
-        <p>QUIC은 연결을 IP와 포트가 아닌 연결 ID로 구별합니다. 와이파이에서 LTE로 바뀌어도 다시 연결하지 않습니다.</p>
+        <p>QUIC은 연결을 5-tuple이 아닌 연결 ID로 구별합니다. 와이파이에서 LTE로 바뀌어 IP가 달라져도 다시 연결하지 않습니다.</p>
       </aside>
       <aside class="callout callout--key">
-        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>0-RTT 데이터는 재전송 공격에 열려 있습니다</p>
-        <p>재연결 때 첫 패킷에 싣는 요청은 공격자가 복사해 다시 보낼 수 있습니다. 멱등한 요청에만 허용합니다.</p>
+        <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>0-RTT 데이터는 재생 공격에 열려 있습니다</p>
+        <p>재접속 때 첫 패킷에 요청을 실어 왕복을 0으로 줄일 수 있지만, 엿본 사람이 그 패킷을 복사해 다시 보내도 막지 못합니다. 그래서 멱등한 요청에만 씁니다.</p>
       </aside>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <h2>HTTPS는 두 종류의 암호를 섞어 쓴다</h2>
+  <h2>평문 HTTP는 길 위의 누구에게나 열려 있다</h2>
   <div class="slide__body">
     <div class="prose">
-      <p>평문 HTTP는 경로 위의 누구든 읽고(도청), 고치고(변조), 서버인 척할(사칭) 수 있습니다. <dfn title="Transport Layer Security">TLS</dfn>는 TCP와 HTTP 사이에서 기밀성, 무결성, 서버 인증을 제공합니다. SSL은 TLS의 전신으로 모든 버전이 폐기되었고, 지금은 TLS 1.2와 1.3을 씁니다.</p>
-      <p>공개키 방식은 미리 비밀을 나누지 않아도 되지만 느리고, 대칭키 방식은 빠르지만 키를 안전하게 나눌 방법이 없습니다. 그래서 <mark>핸드셰이크에서 공개키 기법으로 대칭 세션 키를 합의하고, 데이터는 대칭키로</mark> 암호화합니다. 각 기법의 원리는 7장에서 다룹니다.</p>
+      <p>1부에서 본 것처럼 패킷은 공유기, 통신사 라우터, 카페 와이파이 장비를 거칩니다. 평문 HTTP라면 이 경로 위의 누구든 세 가지를 할 수 있습니다. 주문 내역과 세션 쿠키를 읽고(<strong>도청</strong>), 응답 속 계좌번호를 바꾸고(<strong>변조</strong>), 아예 쇼핑몰 서버인 척 가짜 응답을 줄 수 있습니다(<strong>사칭</strong>).</p>
+      <p><dfn title="Transport Layer Security">TLS</dfn>는 TCP와 HTTP 사이에 끼어 이 세 가지를 막습니다. 내용을 암호화해 기밀성을, 변조를 검출해 무결성을, 인증서로 상대가 진짜인지 확인해 인증을 제공합니다. HTTP를 TLS로 감싼 것이 HTTPS이고 기본 포트는 443입니다. SSL은 TLS의 옛 이름으로 모든 버전이 폐기되었고, 지금은 TLS 1.2와 1.3을 씁니다.</p>
     </div>
     <ol class="flow">
       <li class="flow__node"><b>TCP 연결</b><span>3-way handshake</span></li>
-      <li class="flow__node is-flow"><b>TLS 핸드셰이크</b><span>키 합의, 인증서 검증</span></li>
-      <li class="flow__node"><b>암호화된 HTTP</b><span>대칭키로 빠르게</span></li>
+      <li class="flow__node is-flow"><b>TLS 핸드셰이크</b><span>키 합의, 인증서 확인</span></li>
+      <li class="flow__node"><b>암호화된 HTTP</b><span>같은 메시지, 암호문으로</span></li>
     </ol>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>HTTPS는 두 종류의 암호를 섞어 쓴다</h2>
+  <div class="prose prose--cols">
+    <p>암호화에는 두 계열이 있습니다. <dfn title="symmetric key">대칭키</dfn> 방식은 잠글 때와 열 때 같은 키를 씁니다. 빠르지만, 처음 만난 브라우저와 서버가 그 키를 어떻게 나눠 갖느냐가 문제입니다. 키를 평문으로 보내면 도청자도 함께 받습니다.</p>
+    <p><dfn title="public key">공개키</dfn> 방식은 키가 짝으로 있어서, 누구에게나 공개하는 키와 주인만 가진 개인키가 서로 다른 역할을 합니다. 비밀을 미리 나누지 않아도 안전하게 시작할 수 있지만, 대칭키보다 수백~수천 배 느려 대용량 데이터에는 맞지 않습니다.</p>
+    <p>그래서 TLS는 둘을 섞습니다. <mark>연결 초반의 핸드셰이크에서만 공개키 기법으로 이번 연결 전용 대칭키(세션 키)를 합의하고, 실제 데이터는 그 세션 키로 빠르게</mark> 암호화합니다. 비싼 연산은 연결당 한 번만 치르는 셈입니다.</p>
+    <p>각 암호 기법이 왜 안전한지, 해시와 서명이 무엇을 보장하는지는 7장에서 다룹니다. 이 장에서는 TLS가 그 도구들을 어떤 순서로 쓰는지만 따라갑니다.</p>
   </div>
 </section>
 
@@ -637,7 +985,7 @@ Cache-Control: no-store
   <h2>TLS 1.3은 첫 왕복에 키 재료를 싣는다</h2>
   <div class="split split--wide-left">
     <div class="seq" role="img" aria-label="ClientHello에 키 공유를 담아 보내고, 서버가 ServerHello와 인증서, Finished로 답하면 클라이언트가 Finished와 함께 첫 HTTP 요청을 보낸다">
-      <div class="seq__head"><span>클라이언트</span><span></span><span>서버</span></div>
+      <div class="seq__head"><span>브라우저</span><span></span><span>서버</span></div>
       <div class="seq__row seq__row--r">
         <span class="seq__state"></span>
         <span class="seq__msg"><b>ClientHello</b> 암호 목록, key_share</span>
@@ -665,28 +1013,39 @@ Cache-Control: no-store
       </div>
     </div>
     <div class="prose">
-      <p>TLS 1.2는 키 교환까지 2 RTT가 걸렸습니다. 1.3은 클라이언트가 서버가 고를 법한 방식의 키 재료(key_share)를 <strong>첫 메시지에 미리</strong> 담아 1 RTT로 줄였습니다.</p>
-      <p>키 교환은 매번 새 임시 키를 쓰는 ECDHE만 남았습니다. 서버 개인키가 나중에 유출되어도 지난 대화는 풀 수 없는 <dfn title="forward secrecy">전방 비밀성</dfn>이 기본입니다.</p>
+      <p>키 합의는 ECDHE라는 방식으로 합니다. 양쪽이 각자 일회용 비밀 값을 만들고 거기서 나온 공개 값(key_share)만 교환하면, 둘은 같은 세션 키를 계산하지만 공개 값만 엿본 사람은 계산하지 못합니다.</p>
+      <p>TLS 1.2는 이 합의까지 2 RTT였습니다. 1.3은 클라이언트가 key_share를 <strong>첫 메시지에 미리</strong> 실어 1 RTT로 줄였습니다. 매번 새 비밀 값을 쓰므로 서버 개인키가 나중에 새도 지난 대화는 풀리지 않는데, 이를 <dfn title="forward secrecy">전방 비밀성</dfn>이라 합니다.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
   <h2>인증서는 "이 키가 이 도메인 것"이라는 보증이다</h2>
+  <div class="slide__body">
+    <div class="prose">
+      <p>키 합의만으로는 상대가 진짜 쇼핑몰인지 모릅니다. 카페 와이파이 장비가 브라우저에게는 쇼핑몰인 척, 쇼핑몰에게는 브라우저인 척하며 양쪽과 각각 키를 합의하면 모든 내용을 풀어 볼 수 있습니다. 이것을 <dfn title="man-in-the-middle">중간자 공격</dfn>이라고 합니다.</p>
+      <p>막는 방법은 신뢰할 제3자의 보증입니다. 서버는 "shop.example.com의 공개키는 이것이고, 유효기간은 언제까지"라는 문서를 내미는데, 이 문서에 <dfn title="Certificate Authority, CA">인증 기관</dfn>이 자기 개인키로 <strong>서명</strong>해 둔 것이 <dfn title="certificate">인증서</dfn>입니다. 서명은 CA의 공개키로만 맞는지 확인할 수 있고, 내용을 한 글자라도 바꾸면 맞지 않게 되는 값입니다.</p>
+      <p>중간자는 shop.example.com 이름의 인증서를 CA에게서 받을 수 없으므로 사칭이 드러납니다. 그리고 서버는 핸드셰이크 내용에 그 인증서 속 공개키의 짝인 개인키로 서명해, <mark>인증서를 훔쳐 온 것이 아니라 진짜 주인</mark>임을 보입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>브라우저는 서명 사슬을 루트까지 따라간다</h2>
   <div class="split split--even">
     <div class="slide__body">
-      <p class="prose">키 합의만으로는 상대가 진짜 서버인지 모릅니다. 중간자가 양쪽과 각각 키를 합의하면 그만입니다. 그래서 서버는 신뢰받는 <dfn title="Certificate Authority">CA</dfn>가 서명한 인증서를 내밉니다.</p>
+      <p class="prose">세상의 모든 서버 인증서에 몇 안 되는 최상위 CA가 직접 서명하지는 않습니다. 최상위 <strong>루트 CA</strong>가 <strong>중간 CA</strong>에 서명하고, 중간 CA가 서버 인증서에 서명하는 사슬 구조입니다. 루트 CA의 인증서는 OS와 브라우저에 미리 심어져 있어 사슬의 출발점이 됩니다.</p>
       <aside class="callout callout--key">
         <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>브라우저는 되는데 서버 간 호출만 실패한다면</p>
-        <p>서버가 중간 인증서를 빠뜨린 경우가 흔합니다. 브라우저는 스스로 보충하지만 curl이나 Java 클라이언트는 검증에 실패합니다.</p>
+        <p>서버가 중간 인증서를 빠뜨린 경우가 흔합니다. 브라우저는 스스로 보충하지만 curl 명령이나 Java 클라이언트는 검증에 실패합니다.</p>
       </aside>
     </div>
     <ol class="steps">
-      <li><b>체인 전송</b><p>서버가 자기 인증서와 중간 CA 인증서를 보냅니다.</p></li>
-      <li><b>내용 확인</b><p>도메인 이름 일치, 유효기간, 폐기 여부를 봅니다.</p></li>
-      <li class="is-key"><b>서명 따라 올라가기</b><p>각 인증서의 서명을 윗단계 공개키로 검증합니다.</p></li>
-      <li><b>루트 대조</b><p>OS나 브라우저에 미리 심어진 루트 CA와 맞춰 봅니다.</p></li>
-      <li><b>소유 증명</b><p>서버가 개인키로 핸드셰이크에 서명해 키 주인임을 증명합니다.</p></li>
+      <li><b>체인 전송</b><p>서버가 자기 인증서와 중간 CA 인증서를 함께 보냅니다.</p></li>
+      <li><b>내용 확인</b><p>도메인 이름 일치, 유효기간, 폐기(도난 등으로 미리 무효화)되지 않았는지 봅니다.</p></li>
+      <li class="is-key"><b>서명 따라 올라가기</b><p>각 인증서의 서명을 한 단계 위 CA의 공개키로 검증합니다.</p></li>
+      <li><b>루트 대조</b><p>맨 위가 미리 심어진 루트 CA 중 하나인지 맞춰 봅니다.</p></li>
+      <li><b>소유 증명</b><p>서버의 핸드셰이크 서명을 인증서 속 공개키로 확인합니다.</p></li>
     </ol>
   </div>
 </section>
@@ -711,18 +1070,18 @@ Cache-Control: no-store
       </div>
       <div class="seq__row seq__row--r">
         <span class="seq__state"></span>
-        <span class="seq__msg"><b>GET /orders</b> Cookie: SESSION=8f3a2c</span>
+        <span class="seq__msg"><b>GET /orders/42</b> Cookie: SESSION=8f3a2c</span>
         <span class="seq__state"></span>
       </div>
       <div class="seq__row seq__row--l is-back">
         <span class="seq__state"></span>
-        <span class="seq__msg"><b>200 OK</b> 내 주문 목록</span>
+        <span class="seq__msg"><b>200 OK</b> 주문 42의 내용</span>
         <span class="seq__state"></span>
       </div>
     </div>
     <div class="prose">
-      <p>무상태인 HTTP에서 "아까 그 사용자"를 알아보려면 클라이언트가 매 요청에 단서를 실어 와야 합니다. 서버는 <code>Set-Cookie</code> 헤더로 단서를 맡기고, 브라우저는 도메인, 경로, 만료 조건이 맞는 요청마다 <mark>자동으로</mark> <code>Cookie</code> 헤더에 붙입니다.</p>
-      <p>이 "자동"이 편리함이자 CSRF 공격의 뿌리입니다(7장).</p>
+      <p>이제 암호화된 연결 위에서 1부의 숙제를 풉니다. 무상태인 HTTP에서 "아까 그 사용자"를 알아보려면 클라이언트가 매 요청에 단서를 실어 와야 합니다. 서버가 응답의 <code>Set-Cookie</code> 헤더로 단서(<dfn title="cookie">쿠키</dfn>)를 맡기면, 브라우저는 조건이 맞는 요청마다 <mark>자동으로</mark> <code>Cookie</code> 헤더에 붙입니다.</p>
+      <p>이 "자동"은 편리함이자 위험입니다. 7장에서 볼 CSRF는 다른 사이트가 사용자 몰래 요청을 보내게 해 이 자동 첨부를 악용하는 공격입니다.</p>
     </div>
   </div>
 </section>
@@ -730,6 +1089,7 @@ Cache-Control: no-store
 <section class="slide">
   <h2>쿠키 속성은 언제, 어디로 보낼지를 정한다</h2>
   <div class="slide__body">
+    <p class="prose">Set-Cookie 값 뒤에 세미콜론으로 붙이는 속성이 쿠키를 어디로, 언제까지 보낼지와 누가 읽을지를 정합니다. 표의 XSS는 남이 심은 스크립트가 페이지에서 실행되는 공격(7장)으로, 그 스크립트는 <code>document.cookie</code>로 쿠키를 읽습니다.</p>
     <table class="compare">
       <thead><tr><th scope="col">속성</th><th scope="col">의미</th><th scope="col">빠뜨리면</th></tr></thead>
       <tbody>
@@ -740,7 +1100,7 @@ Cache-Control: no-store
         <tr><th scope="row">SameSite</th><td>다른 사이트발 요청 첨부 제한</td><td>브라우저마다 기본값이 다름</td></tr>
       </tbody>
     </table>
-    <p class="prose">세션 ID를 담는 쿠키라면 <code>HttpOnly; Secure; SameSite=Lax</code>가 출발점입니다. <code>SameSite</code>는 Strict, Lax, None 세 값이 있고, None을 쓰려면 Secure가 반드시 함께 있어야 합니다. 속성이 없을 때 Chrome, Edge 같은 Chromium 계열은 Lax로 취급하지만 Firefox와 Safari는 기본으로 그렇게 하지 않으므로, 항상 명시합니다.</p>
+    <p class="prose">SameSite 값은 <code>Strict</code>(다른 사이트발 요청엔 안 붙임), <code>Lax</code>(링크로 이동하는 GET에만 붙임), <code>None</code>(항상, Secure 필수)입니다. 생략 시 Chromium 계열만 Lax로 보므로 세션 쿠키는 <code>HttpOnly; Secure; SameSite=Lax</code>를 명시합니다.</p>
   </div>
 </section>
 
@@ -748,12 +1108,12 @@ Cache-Control: no-store
   <h2>세션은 쿠키에 열쇠만 두고 상태는 서버에 둔다</h2>
   <div class="slide__body">
     <div class="prose">
-      <p>쿠키에 사용자 정보를 직접 담으면 노출과 변조 위험이 있고 크기도 4KB 남짓으로 작습니다. 그래서 쿠키에는 <strong>추측할 수 없는 무작위 세션 ID</strong>만 넣고, 실제 데이터는 서버의 세션 저장소에 둡니다.</p>
-      <p>무상태 프로토콜 위에 상태를 얹는 것은 모순이 아닙니다. HTTP는 여전히 무상태이고 상태는 애플리케이션이 서버에 보관할 뿐입니다. 대신 <mark>서버가 여러 대면 다른 서버는 그 세션을 모릅니다</mark>. 이 문제는 8장, 토큰 방식과의 비교는 7장에서 다룹니다.</p>
+      <p>쿠키에 "사용자 7번, 관리자 아님" 같은 정보를 직접 담으면 사용자가 값을 고쳐 보낼 수 있고, 크기도 4KB 남짓으로 작습니다. 그래서 쿠키에는 <strong>추측할 수 없는 무작위 문자열</strong>인 <dfn title="session ID">세션 ID</dfn>만 넣고, 실제 정보는 서버 쪽 <dfn title="session store">세션 저장소</dfn>에 둡니다. 서버는 요청의 세션 ID로 저장소를 찾아 사용자를 알아봅니다.</p>
+      <p>HTTP가 무상태라는 말과 모순은 아닙니다. 프로토콜은 여전히 무상태이고, 상태는 애플리케이션이 서버에 보관할 뿐입니다. 대신 1부에서 말한 무상태의 장점 일부를 내줍니다. <mark>서버가 여러 대면 다른 서버는 그 세션을 모릅니다</mark>. 이 문제의 해법은 8장, 세션 대신 토큰을 쓰는 방식과의 비교는 7장에서 다룹니다.</p>
     </div>
     <ol class="flow">
       <li class="flow__node"><b>브라우저</b><span>SESSION=8f3a2c</span></li>
-      <li class="flow__node is-flow"><b>서버</b><span>세션 ID로 조회</span></li>
+      <li class="flow__node is-flow"><b>주문 API</b><span>세션 ID로 조회</span></li>
       <li class="flow__node"><b>세션 저장소</b><span>8f3a2c → 사용자 7</span></li>
     </ol>
   </div>
@@ -763,12 +1123,12 @@ Cache-Control: no-store
   <h2>프록시는 누구 편에 서느냐로 나뉜다</h2>
   <div class="split split--center">
     <div class="prose">
-      <p><dfn title="forward proxy">포워드 프록시</dfn>는 클라이언트 편입니다. 사내망의 요청을 모아 대신 보내며 접근 통제와 캐시를 맡고, 외부 서버는 프록시만 봅니다.</p>
-      <p><dfn>리버스 프록시</dfn>는 서버 편입니다. 서비스의 단일 입구로서 <mark>TLS 종료, 부하 분산, 캐시, 압축</mark>을 맡고, 클라이언트는 뒤의 실제 서버를 모릅니다. Nginx가 대표적이며 원래 클라이언트 IP는 <code>X-Forwarded-For</code>로 넘깁니다.</p>
+      <p>이제 1부에서 "공개 입구"라고만 부른 203.0.113.10의 정체를 밝힐 차례입니다. 통신의 중간에서 한쪽을 대신해 요청을 받아 다시 보내는 서버를 <dfn title="proxy">프록시</dfn>라고 합니다.</p>
+      <p><dfn title="forward proxy">포워드 프록시</dfn>는 클라이언트 편입니다. 회사 직원들의 요청을 모아 대신 내보내며 접근을 통제하고, 외부 서버는 프록시만 봅니다. <dfn title="reverse proxy">리버스 프록시</dfn>는 서버 편입니다. 서비스의 단일 입구가 되어 뒤의 실제 서버들을 숨깁니다. 쇼핑몰 입구가 바로 이것입니다.</p>
     </div>
     <figure class="figure">
-      <svg class="dg" viewBox="0 0 760 440" role="img" aria-labelledby="f34t">
-        <title id="f34t">위쪽은 사내망 클라이언트가 포워드 프록시를 거쳐 외부 서버로 가는 구조, 아래쪽은 클라이언트가 리버스 프록시를 거쳐 내부 WAS 여러 대로 분배되는 구조다.</title>
+      <svg class="dg" viewBox="0 0 760 440" role="img" aria-labelledby="f55t">
+        <title id="f55t">위쪽은 사내망 클라이언트가 포워드 프록시를 거쳐 외부 서버로 가는 구조, 아래쪽은 클라이언트가 리버스 프록시를 거쳐 내부 서버 여러 대로 분배되는 구조다.</title>
         <text class="dg-label--sm dg-label--muted" x="10" y="24" text-anchor="start">사내망</text>
         <rect class="dg-zone" x="6" y="34" width="460" height="116"/>
         <rect class="dg-box" x="20" y="60" width="150" height="64"/>
@@ -781,32 +1141,51 @@ Cache-Control: no-store
         <path class="dg-arrow dg-arrow--flow" d="M452,92 H552"/>
         <text class="dg-label--sm dg-label--muted" x="650" y="150" text-anchor="middle">프록시 IP만 보임</text>
 
-        <text class="dg-label--sm dg-label--muted" x="240" y="222" text-anchor="start">서비스 내부망</text>
+        <text class="dg-label--sm dg-label--muted" x="240" y="222" text-anchor="start">쇼핑몰 네트워크</text>
         <rect class="dg-zone" x="236" y="232" width="518" height="204"/>
         <rect class="dg-box" x="20" y="302" width="150" height="64"/>
-        <text x="95" y="334" text-anchor="middle">클라이언트</text>
+        <text x="95" y="334" text-anchor="middle">브라우저</text>
         <rect class="dg-box dg-box--solid" x="250" y="302" width="200" height="64"/>
         <text class="dg-label--on" x="350" y="334" text-anchor="middle">리버스 프록시</text>
         <rect class="dg-box" x="560" y="250" width="180" height="52"/>
-        <text x="650" y="276" text-anchor="middle">WAS 1</text>
+        <text x="650" y="276" text-anchor="middle">서버 1</text>
         <rect class="dg-box" x="560" y="310" width="180" height="52"/>
-        <text x="650" y="336" text-anchor="middle">WAS 2</text>
+        <text x="650" y="336" text-anchor="middle">서버 2</text>
         <rect class="dg-box" x="560" y="370" width="180" height="52"/>
-        <text x="650" y="396" text-anchor="middle">WAS 3</text>
+        <text x="650" y="396" text-anchor="middle">서버 3</text>
         <path class="dg-arrow dg-arrow--flow" d="M172,334 H242"/>
         <path class="dg-arrow dg-arrow--flow" d="M452,326 L552,278"/>
         <path class="dg-arrow dg-arrow--flow" d="M452,334 H552"/>
         <path class="dg-arrow dg-arrow--flow" d="M452,342 L552,392"/>
-        <text class="dg-label--sm dg-label--muted" x="95" y="396" text-anchor="middle">프록시만 보임</text>
+        <text class="dg-label--sm dg-label--muted" x="95" y="396" text-anchor="middle">입구만 보임</text>
       </svg>
-      <figcaption>둘 다 중간에서 대신 요청하지만, 무엇을 숨기고 누구를 대리하는지가 반대입니다.</figcaption>
+      <figcaption>둘 다 중간에서 대신 요청하지만, 누구를 대리하고 무엇을 숨기는지가 반대입니다.</figcaption>
     </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>리버스 프록시는 입구에서 공통 일을 맡는다</h2>
+  <div class="slide__body">
+    <p class="prose">서버가 여러 대일 때 모든 서버가 각자 해야 할 일을 입구 한곳에 모으면 관리가 쉬워집니다. 리버스 프록시가 흔히 맡는 일은 다섯 가지입니다. 대표적인 소프트웨어가 1장에서 이벤트 루프 서버로 본 Nginx입니다.</p>
+    <table class="compare">
+      <thead><tr><th scope="col">역할</th><th scope="col">하는 일</th><th scope="col">얻는 것</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">TLS 종료</th><td class="is-flow">입구에서 암호를 풀고 안쪽은 평문</td><td>인증서를 한곳에서 관리</td></tr>
+        <tr><th scope="row">부하 분산</th><td>요청을 여러 서버에 나눔</td><td>서버 추가, 장애 서버 제외</td></tr>
+        <tr><th scope="row">캐시</th><td>같은 응답을 저장해 대신 답함</td><td>뒤 서버의 일을 줄임</td></tr>
+        <tr><th scope="row">압축</th><td>응답을 gzip 등으로 줄임</td><td>전송량과 시간 절약</td></tr>
+        <tr><th scope="row">원래 IP 전달</th><td>X-Forwarded-For 헤더에 기록</td><td>뒤 서버가 실제 사용자 IP를 앎</td></tr>
+      </tbody>
+    </table>
+    <p class="small">마지막 줄이 필요한 이유: 뒤 서버 입장에서 TCP 연결의 상대는 프록시이므로, 5-tuple만 보면 모든 사용자가 프록시 IP로 보입니다.</p>
   </div>
 </section>
 
 <section class="slide">
   <h2>웹 서버는 연결을, WAS는 로직을 맡는다</h2>
   <div class="slide__body">
+    <p class="prose">우리 예의 웹 서버(Nginx)와 주문 API(WAS)는 왜 따로 있을까요. <dfn>웹 서버</dfn>는 HTTP 연결을 받아 이미지·CSS처럼 미리 만들어진 정적 파일을 돌려주거나 요청을 뒤로 넘기는 서버입니다. <dfn title="Web Application Server">WAS</dfn>는 요청마다 우리 코드를 실행해 DB를 조회하고 그때그때 다른 동적 응답을 만드는 서버입니다. Java 진영의 Tomcat이 대표적입니다.</p>
     <table class="compare">
       <thead><tr><th scope="col">항목</th><th scope="col">웹 서버</th><th scope="col">WAS</th></tr></thead>
       <tbody>
@@ -816,22 +1195,33 @@ Cache-Control: no-store
         <tr><th scope="row">비싼 자원</th><td>거의 없음</td><td class="is-key">스레드, DB 커넥션</td></tr>
       </tbody>
     </table>
-    <p class="prose">WAS 앞에 웹 서버를 두면 느린 클라이언트의 업로드나 응답 전송을 웹 서버가 버퍼링해 줍니다. 1장에서 본 이벤트 루프가 값싼 연결 관리를 맡고, <mark>비싼 WAS 스레드는 실제 로직을 도는 동안만</mark> 쓰입니다. Tomcat 스레드 풀은 6장에서 다룹니다.</p>
+    <p class="prose">앞에 웹 서버를 두면 느린 사용자의 업로드나 응답 전송을 웹 서버가 받아 모아 줍니다(버퍼링). 그러면 <mark>비싼 WAS 스레드는 실제 로직을 도는 동안만</mark> 쓰입니다. Tomcat 스레드 풀은 6장에서 다룹니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>로드 밸런서는 요청을 건강한 서버에 나눈다</h2>
+  <div class="slide__body">
+    <div class="prose">
+      <p>주문 API 서버 한 대가 감당할 수 있는 요청 수에는 한계가 있고, 그 한 대가 죽으면 서비스 전체가 멈춥니다. 그래서 같은 서버를 여러 대 두고, 앞에서 요청을 나눠 주는 장치를 둡니다. 이것이 <dfn title="load balancer">로드 밸런서</dfn>입니다. 앞 슬라이드의 리버스 프록시가 맡는 "부하 분산"을 전문으로 하는 장치라고 보면 됩니다.</p>
+      <p>로드 밸런서는 서버가 살아 있는지 스스로 확인합니다. 몇 초마다 각 서버에 <code>GET /health</code> 같은 요청을 보내 정상 응답이 오는지 보는 <dfn title="health check">헬스 체크</dfn>로, 연속해 실패한 서버는 분배 대상에서 빼고 회복하면 다시 넣습니다. <mark>사용자는 서버 한 대가 죽은 것을 모른 채</mark> 다른 서버의 답을 받습니다.</p>
+      <p>어떤 순서로 나눌지(분배 알고리즘)와 서버를 늘리는 전략은 8장에서 다룹니다. 이 장에서는 로드 밸런서가 요청을 얼마나 깊이 들여다보느냐에 따른 구분만 봅니다.</p>
+    </div>
   </div>
 </section>
 
 <section class="slide">
   <h2>L4는 주소를 보고, L7은 내용을 본다</h2>
   <div class="slide__body">
-    <p class="prose">로드 밸런서는 패킷 봉투를 어디까지 열어 보느냐로 나뉩니다. 앞서 본 캡슐화에서 L4는 TCP 헤더까지, L7은 HTTP 메시지까지 엽니다. 분배 알고리즘은 8장, AWS 구현체는 13장에서 다룹니다.</p>
+    <p class="prose">1부의 캡슐화를 떠올리면 로드 밸런서는 봉투를 어디까지 여느냐로 나뉩니다. <strong>L4 로드 밸런서</strong>는 TCP 헤더까지만 열어 IP와 포트만 보고 연결을 통째로 서버에 넘깁니다. <strong>L7 로드 밸런서</strong>는 TLS를 풀고 HTTP 메시지까지 읽어 경로나 헤더를 보고 요청마다 보낼 곳을 정합니다. AWS의 NLB와 ALB가 각각의 예로, 13장에서 다룹니다.</p>
     <table class="compare">
       <thead><tr><th scope="col">기준</th><th scope="col">L4 로드 밸런서</th><th scope="col">L7 로드 밸런서</th></tr></thead>
       <tbody>
         <tr><th scope="row">보는 정보</th><td>IP, 포트</td><td>URL 경로, 헤더, 쿠키</td></tr>
-        <tr><th scope="row">라우팅 예</th><td>443 포트 → 서버 그룹</td><td class="is-flow">/api → API, /img → 정적</td></tr>
+        <tr><th scope="row">라우팅 예</th><td>443 포트 → 서버 그룹</td><td class="is-flow">/api → API 서버군, /img → 정적</td></tr>
         <tr><th scope="row">TLS</th><td>대개 그대로 통과</td><td>종료하고 내용을 읽음</td></tr>
         <tr><th scope="row">분배 단위</th><td>TCP 연결</td><td>HTTP 요청</td></tr>
-        <tr><th scope="row">비용</th><td>가볍고 빠름</td><td>파싱 비용, 기능 많음</td></tr>
+        <tr><th scope="row">비용</th><td>가볍고 빠름</td><td>메시지 해석 비용, 기능 많음</td></tr>
         <tr><th scope="row">AWS 예</th><td>NLB</td><td>ALB</td></tr>
       </tbody>
     </table>
@@ -840,35 +1230,49 @@ Cache-Control: no-store
 
 <section class="slide">
   <h2>서버가 먼저 말하려면 연결을 열어 둬야 한다</h2>
+  <div class="prose prose--cols">
+    <p>지금까지의 HTTP는 클라이언트가 묻고 서버가 답하는 구조였습니다. 그런데 "주문 42가 배송을 시작했습니다" 같은 알림은 서버 쪽에서 먼저 생깁니다. 서버는 먼저 말을 걸 수 없으니 방법을 우회해야 하고, 네 가지 선택지가 있습니다.</p>
+    <p><strong>폴링</strong>은 클라이언트가 몇 초마다 "새 소식 있나요?"를 다시 묻는 것입니다. 가장 단순하지만 대부분의 요청이 "없음"으로 끝나 낭비이고, 간격만큼 늦게 압니다.</p>
+    <p><strong>롱 폴링</strong>은 서버가 새 소식이 생길 때까지 응답을 보류했다가 생기면 답하는 방식입니다. 클라이언트는 답을 받자마자 다시 묻습니다. 지연은 줄지만 소식마다 요청이 하나씩 듭니다.</p>
+    <p><dfn title="Server-Sent Events">SSE</dfn>는 서버가 응답을 끝내지 않고 열어 둔 채 이벤트가 생길 때마다 한 줄씩 흘려보내는 방식입니다. 평범한 HTTP 응답이라 프록시를 잘 통과하지만 서버에서 클라이언트 한 방향뿐입니다.</p>
+    <p><dfn>WebSocket</dfn>은 HTTP 요청으로 시작해 <code>Upgrade: websocket</code> 헤더로 전환을 청하고, 서버가 <code>101 Switching Protocols</code>로 답하면 같은 TCP 연결을 HTTP가 아닌 양방향 메시지 통로로 씁니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>실시간 방식은 방향과 빈도로 고른다</h2>
   <div class="slide__body">
-    <p class="prose">HTTP는 클라이언트가 묻고 서버가 답하는 구조라, 서버가 먼저 알릴 방법이 없습니다. 채팅이나 알림처럼 실시간이 필요하면 네 가지 방법 중에서 고릅니다.</p>
+    <p class="prose">앞 슬라이드의 네 방식을 나란히 놓으면, 서버에서만 알리면 되는지 양쪽이 수시로 주고받아야 하는지가 선택의 첫 기준입니다.</p>
     <table class="compare">
       <thead><tr><th scope="col">방식</th><th scope="col">동작</th><th scope="col">방향</th><th scope="col">어울리는 곳</th></tr></thead>
       <tbody>
         <tr><th scope="row">폴링</th><td>주기적으로 다시 요청</td><td>클라이언트 → 서버</td><td>변화가 드문 상태 확인</td></tr>
-        <tr><th scope="row">롱 폴링</th><td>새 소식이 생길 때까지 응답 보류</td><td>클라이언트 → 서버</td><td>단순한 알림</td></tr>
+        <tr><th scope="row">롱 폴링</th><td>소식이 생길 때까지 응답 보류</td><td>클라이언트 → 서버</td><td>단순한 알림</td></tr>
         <tr><th scope="row">SSE</th><td>응답을 끝내지 않고 이벤트를 흘림</td><td>서버 → 클라이언트</td><td>피드, 진행률, 토큰 스트리밍</td></tr>
-        <tr><th scope="row">WebSocket</th><td class="is-flow">101 응답 후 양방향 프레임</td><td>양방향</td><td>채팅, 게임, 협업 편집</td></tr>
+        <tr><th scope="row">WebSocket</th><td class="is-flow">101 응답 후 양방향 메시지</td><td>양방향</td><td>채팅, 게임, 협업 편집</td></tr>
       </tbody>
     </table>
-    <p class="small">WebSocket은 <code>Upgrade: websocket</code> 헤더를 단 HTTP 요청으로 시작해 같은 TCP 연결을 넘겨받습니다. 연결을 오래 붙잡으므로 프록시의 Upgrade 헤더 전달과 유휴 타임아웃 설정이 함께 필요합니다.</p>
+    <aside class="callout callout--key">
+      <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>오래 열린 연결은 중간 장비가 끊습니다</p>
+      <p>SSE와 WebSocket은 연결을 오래 붙잡으므로, 프록시가 Upgrade 헤더를 전달하게 하고 유휴 타임아웃(조용한 연결을 끊는 시간, 3부)을 함께 조정해야 합니다.</p>
+    </aside>
   </div>
 </section>
 
 <section class="slide" data-section="종합: URL을 입력하면">
   <h2>브라우저에 URL을 입력하면 생기는 일</h2>
   <div class="slide__body">
-    <p class="prose">지금까지 본 모든 계층이 요청 하나에 다 등장합니다. <code>https://shop.example.com/orders</code>를 입력했을 때 요청이 거치는 길을 먼저 지도로 보고, 다음 두 슬라이드에서 단계별로 따라갑니다.</p>
+    <p class="prose">이제 장면 전체를 다시 그릴 수 있습니다. 1부의 "공개 입구"는 L7 로드 밸런서였고, 그 뒤에 웹 서버, 주문 API, DB가 있습니다. <code>https://shop.example.com/orders/42</code>가 거치는 길을 지도로 먼저 보고, 다음 두 슬라이드에서 단계별로 따라갑니다.</p>
     <figure class="figure">
-      <svg class="dg" viewBox="0 0 1400 360" role="img" aria-labelledby="f38t">
-        <title id="f38t">브라우저가 DNS 리졸버로 IP를 얻은 뒤, TCP와 TLS로 로드 밸런서에 연결하고, 요청이 웹 서버, WAS, DB를 차례로 거친다.</title>
+      <svg class="dg" viewBox="0 0 1400 360" role="img" aria-labelledby="f62t">
+        <title id="f62t">브라우저가 DNS 리졸버로 IP를 얻은 뒤, TCP와 TLS로 로드 밸런서에 연결하고, 요청이 웹 서버, 주문 API, DB를 차례로 거친다.</title>
         <rect class="dg-box dg-box--muted" x="300" y="20" width="200" height="64"/>
         <text x="400" y="52" text-anchor="middle">DNS 리졸버</text>
         <path class="dg-arrow dg-arrow--back dg-arrow--both" d="M150,170 Q150,52 292,52"/>
-        <text class="dg-label--sm" x="300" y="112" text-anchor="start">이름 → IP</text>
+        <text class="dg-label--sm" x="300" y="112" text-anchor="start">이름 → 203.0.113.10</text>
 
         <rect class="dg-zone" x="276" y="140" width="1110" height="200"/>
-        <text class="dg-label--sm dg-label--muted" x="1370" y="330" text-anchor="end">서비스 네트워크(13장의 VPC)</text>
+        <text class="dg-label--sm dg-label--muted" x="1370" y="330" text-anchor="end">쇼핑몰 네트워크 10.0.0.0/16</text>
 
         <rect class="dg-box" x="20" y="180" width="180" height="72"/>
         <text class="dg-label--lg" x="110" y="216" text-anchor="middle">브라우저</text>
@@ -877,7 +1281,7 @@ Cache-Control: no-store
         <rect class="dg-box" x="600" y="180" width="180" height="72"/>
         <text x="690" y="216" text-anchor="middle">웹 서버</text>
         <rect class="dg-box dg-box--solid" x="880" y="180" width="180" height="72"/>
-        <text class="dg-label--on" x="970" y="216" text-anchor="middle">WAS</text>
+        <text class="dg-label--on" x="970" y="216" text-anchor="middle">주문 API</text>
         <rect class="dg-box" x="1160" y="180" width="200" height="72"/>
         <text x="1260" y="216" text-anchor="middle">DB</text>
 
@@ -888,7 +1292,7 @@ Cache-Control: no-store
         <rect class="dg-fill-paper" x="210" y="148" width="74" height="28"/>
         <text class="dg-label--sm" x="247" y="166" text-anchor="middle">TCP+TLS</text>
 
-        <text class="dg-label--sm dg-label--muted" x="110" y="284" text-anchor="middle">캐시 확인, 렌더링</text>
+        <text class="dg-label--sm dg-label--muted" x="110" y="284" text-anchor="middle">캐시 확인, 화면 그리기</text>
         <text class="dg-label--sm dg-label--muted" x="400" y="284" text-anchor="middle">TLS 종료, 경로 분배</text>
         <text class="dg-label--sm dg-label--muted" x="690" y="284" text-anchor="middle">정적 파일, 버퍼링</text>
         <text class="dg-label--sm dg-label--muted" x="970" y="284" text-anchor="middle">스레드가 로직 실행</text>
@@ -899,18 +1303,18 @@ Cache-Control: no-store
 </section>
 
 <section class="slide">
-  <h2>연결이 열리기까지: 이름, 주소, 핸드셰이크</h2>
+  <h2>연결이 열리기까지 왕복이 쌓인다</h2>
   <div class="split split--even">
     <ol class="steps">
-      <li><b>URL 해석과 캐시</b><p>스킴, 호스트, 경로를 나누고 캐시에 쓸 만한 응답이 있는지 봅니다.</p></li>
-      <li><b>DNS 조회</b><p>브라우저, OS 캐시를 거쳐 리졸버가 반복 질의로 IP를 찾습니다.</p></li>
-      <li><b>패킷 경로</b><p>게이트웨이로 나가 공유기에서 NAT되고, 라우터를 거쳐 갑니다.</p></li>
+      <li><b>URL 해석과 캐시</b><p>스킴(https), 호스트, 경로(/orders/42)로 나누고 쓸 만한 캐시가 있는지 봅니다.</p></li>
+      <li><b>DNS 조회</b><p>캐시에 없으면 리졸버가 루트부터 반복 질의해 203.0.113.10을 얻습니다.</p></li>
+      <li><b>패킷 경로</b><p>노트북은 게이트웨이(공유기)로 보내고, 공유기가 NAT해 라우터들을 거칩니다.</p></li>
       <li class="is-key"><b>TCP 3-way</b><p>임시 포트에서 443으로 연결을 맺습니다. 1 RTT.</p></li>
-      <li><b>TLS 1.3</b><p>키를 합의하고 인증서 체인을 검증합니다. 1 RTT.</p></li>
+      <li><b>TLS 1.3</b><p>키를 합의하고 인증서 사슬을 검증합니다. 1 RTT.</p></li>
     </ol>
     <div class="prose">
-      <p>첫 요청을 보내기도 전에 DNS, TCP, TLS 왕복이 쌓입니다. 서울에서 미국 동부까지 RTT가 약 180ms라면 <mark>왕복 비용만 수백 ms</mark>입니다.</p>
-      <p>그래서 두 번째 요청부터는 빠릅니다. DNS 결과는 캐시되고, keep-alive로 연결과 TLS 세션을 재사용합니다. 서버 간 호출에서 커넥션 풀을 쓰는 이유도 같습니다.</p>
+      <p>쇼핑몰 서버가 미국 동부에 있어 RTT가 180ms라고 해 봅시다. TCP 1 RTT, TLS 1 RTT, 그리고 HTTP 요청·응답 1 RTT로 DNS를 빼고도 <mark>첫 응답까지 최소 540ms</mark>입니다. 서버의 처리 시간은 아직 넣지도 않았습니다.</p>
+      <p>그래서 두 번째 요청부터 빠른 것이 중요합니다. DNS 답은 캐시되고, keep-alive로 연결과 TLS 세션을 다시 씁니다. 서버끼리 부를 때 연결을 미리 열어 두고 빌려 쓰는 커넥션 풀(4장)도 같은 이유입니다.</p>
     </div>
   </div>
 </section>
@@ -919,15 +1323,15 @@ Cache-Control: no-store
   <h2>요청이 서버 안을 지나 화면이 되기까지</h2>
   <div class="split split--even">
     <ol class="steps">
-      <li><b>로드 밸런서</b><p>TLS를 종료하고 경로를 보고 건강한 대상 하나를 고릅니다.</p></li>
-      <li><b>웹 서버</b><p>정적 파일이면 바로 답하고, 아니면 WAS로 프록시합니다.</p></li>
-      <li class="is-key"><b>WAS</b><p>스레드가 세션 쿠키로 사용자를 찾고 로직을 돌려 DB를 조회합니다.</p></li>
-      <li><b>응답 귀환</b><p>응답이 역순으로 돌아오고 브라우저가 HTML을 파싱합니다.</p></li>
-      <li><b>추가 리소스</b><p>CSS, JS, 이미지를 같은 연결의 스트림으로 받아 그립니다.</p></li>
+      <li><b>로드 밸런서</b><p>TLS를 풀고 경로 /orders를 보고 건강한 웹 서버 하나를 고릅니다.</p></li>
+      <li><b>웹 서버</b><p>정적 파일이 아니므로 주문 API로 프록시합니다.</p></li>
+      <li class="is-key"><b>주문 API</b><p>스레드가 세션 쿠키로 사용자를 찾고 DB에서 주문 42를 조회합니다.</p></li>
+      <li><b>응답 귀환</b><p>응답이 같은 길을 역순으로 돌아오고 브라우저가 화면을 그립니다.</p></li>
+      <li><b>추가 리소스</b><p>CSS, JS, 이미지를 같은 연결의 다른 스트림으로 받습니다.</p></li>
     </ol>
     <div class="prose">
-      <p>이 경로는 이후 장의 지도이기도 합니다. DB 안쪽은 4장, WAS 내부는 5장과 6장, 인증은 7장, 서버를 늘리는 법은 8장입니다.</p>
-      <p>이 구성을 AWS의 ALB, EC2, RDS로 옮긴 모습은 13~15장과 18장에서 봅니다. 3부에서는 이 경로가 실제로 <strong>어디서 끊기는지</strong>를 봅니다.</p>
+      <p>이 경로는 이후 장의 지도이기도 합니다. DB 안쪽은 4장, 주문 API가 도는 JVM과 Spring은 5장과 6장, 로그인과 토큰은 7장, 서버를 늘리는 법은 8장입니다.</p>
+      <p>이 구성을 AWS로 옮긴 모습은 13~15장과 18장에서 봅니다. 그런데 이 경로의 연결 하나하나에는 타임아웃과 상태가 있습니다. 3부는 이 경로가 실제 운영에서 <strong>어디서 끊기는지</strong>를 봅니다.</p>
     </div>
   </div>
 </section>
@@ -935,8 +1339,8 @@ Cache-Control: no-store
 <!-- ===== 3부: 실무 ==================================================== -->
 <section class="slide slide--divider" data-section="운영에서 만나는 네트워크" data-depth="practice">
   <p class="divider__no">3부</p>
-  <h2>운영 서버에서 연결이 무너질 때</h2>
-  <p class="lede">TIME_WAIT가 쌓이고, 포트가 바닥나고, 로드 밸런서가 502와 504를 돌려주는 순간. 원인은 대개 2부에서 본 상태 전이와 타임아웃의 어긋남입니다.</p>
+  <h2>같은 서버들이 운영에서 무너질 때</h2>
+  <p class="lede">2부 끝의 경로가 실제로 돌기 시작하면 증상은 이렇게 나타납니다. 웹 서버에 TIME_WAIT가 수만 개 쌓이고, 새 연결이 실패하고, 로드 밸런서가 가끔 502와 504를 돌려줍니다. 원인은 대개 2부에서 본 상태 전이와 타임아웃이 어긋난 데 있습니다. 이 부는 증상에서 원인으로 거슬러 올라가는 길을 봅니다.</p>
   <div class="depth-shift" aria-label="깊이 전환: 원리에서 실무로">
     <span class="depth-shift__step"><span class="depth" data-depth="core"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>원리</span>
     <span class="depth-shift__line" aria-hidden="true"></span>
@@ -946,21 +1350,33 @@ Cache-Control: no-store
 </section>
 
 <section class="slide">
+  <h2>먼저 연결 상태별 개수부터 센다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="웹 서버 10.0.1.15의 터미널"><code><span class="prompt">$ </span>ss -tan | awk 'NR&gt;1 {print $1}' \
+    | sort | uniq -c | sort -rn
+<span class="hl"><span class="n">  28412</span> TIME-WAIT</span>
+<span class="n">    406</span> ESTAB
+<span class="n">     12</span> LISTEN
+<span class="n">      3</span> SYN-SENT</code></pre>
+    <div class="prose">
+      <p>네트워크 장애가 의심되면 2부에서 본 상태 이름으로 소켓을 세는 것부터 합니다. <code>ss -tan</code>은 모든(<code>-a</code>) TCP 소켓을 숫자로 보여 주고, 뒤는 출력 다듬기입니다. <code>awk</code>가 머리줄을 빼고 첫 열(상태)만 뽑고, <code>sort | uniq -c</code>가 같은 값끼리 세고, <code>sort -rn</code>이 많은 순으로 줄 세웁니다.</p>
+      <p>평소와 비교해 튀는 상태가 단서입니다. 이 웹 서버는 맺어진 연결은 406개인데 <mark>TIME-WAIT가 2.8만 개</mark>입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <h2>TIME_WAIT는 상대별로 묶어 봐야 보인다</h2>
   <div class="split split--wide-left">
-    <pre class="code" data-file="터미널"><code><span class="prompt">$ </span>ss -tan state time-wait | wc -l
-<span class="n">28412</span>
-<span class="prompt">$ </span>ss -tan state time-wait \
+    <pre class="code" data-file="웹 서버 10.0.1.15의 터미널"><code><span class="prompt">$ </span>ss -tan state time-wait \
     | awk '{print $4}' | sort \
     | uniq -c | sort -rn | head -3
 <span class="hl"><span class="n">  27950</span> 10.0.2.31:8080</span>
-<span class="n">    310</span> 10.0.3.12:5432
-<span class="n">    152</span> 203.0.113.50:443
-<span class="prompt">$ </span>ss -tan state close-wait | wc -l
-<span class="n">   214</span></code></pre>
+<span class="n">    310</span> 10.0.2.32:8080
+<span class="n">    152</span> 10.0.2.33:8080</code></pre>
     <div class="prose">
-      <p>상대 주소별로 세면 범인이 드러납니다. 이 서버가 내부 API <code>10.0.2.31:8080</code>을 부를 때마다 연결을 열고 <strong>먼저 닫고</strong> 있습니다.</p>
-      <p>TIME_WAIT 소켓 하나는 메모리를 거의 쓰지 않습니다. 진짜 위험은 <mark>같은 목적지로 나갈 포트가 묶이는 것</mark>입니다. 반면 CLOSE_WAIT가 늘면 우리 코드가 소켓을 닫지 않는 누수입니다.</p>
+      <p><code>state time-wait</code>로 TIME_WAIT만 고르고, 넷째 열인 상대 주소별로 셉니다. 범인이 드러납니다. 웹 서버가 주문 API <code>10.0.2.31:8080</code>을 부를 때마다 연결을 새로 열고 <strong>먼저 닫고</strong> 있습니다. 2부에서 본 대로 TIME_WAIT는 먼저 닫은 쪽에 생기기 때문입니다.</p>
+      <p>TIME_WAIT 소켓 하나는 메모리를 거의 쓰지 않습니다. 진짜 위험은 <mark>같은 목적지로 나갈 포트가 묶이는 것</mark>이고, 다음 슬라이드에서 계산합니다.</p>
     </div>
   </div>
 </section>
@@ -968,7 +1384,7 @@ Cache-Control: no-store
 <section class="slide">
   <h2>임시 포트는 목적지 하나당 약 2만 8천 개다</h2>
   <div class="slide__body">
-    <p class="prose">나가는 연결은 (내 IP, 내 포트, 상대 IP, 상대 포트)가 유일해야 합니다. 상대가 하나로 고정되면 바꿀 수 있는 것은 내 포트뿐이고, 닫힌 포트는 TIME_WAIT 60초 동안 다시 쓸 수 없습니다.</p>
+    <p class="prose">1부의 5-tuple을 떠올려 봅니다. 웹 서버가 주문 API로 나가는 연결은 프로토콜(TCP), 내 IP(10.0.1.15), 상대 IP와 포트(10.0.2.31:8080)가 모두 고정이고 바꿀 수 있는 것은 내 임시 포트뿐입니다. 그런데 닫은 포트는 TIME_WAIT 60초 동안 같은 상대에게 다시 쓸 수 없습니다. 그래서 한 목적지에 대해 지속할 수 있는 새 연결 속도에는 상한이 생깁니다.</p>
     <table class="compare">
       <thead><tr><th scope="col">항목</th><th scope="col">값</th><th scope="col">계산</th></tr></thead>
       <tbody>
@@ -978,9 +1394,7 @@ Cache-Control: no-store
         <tr><th scope="row">넘으면</th><td>connect() 실패</td><td>Cannot assign requested address</td></tr>
       </tbody>
     </table>
-    <aside class="callout callout--note">
-      <p>목적지가 소수로 몰리는 곳에서 잘 터집니다. Nginx에서 WAS로, 앱에서 Redis나 내부 API로, 그리고 NAT 장비를 통과하는 서버 간 호출입니다.</p>
-    </aside>
+    <p class="prose">마지막 줄의 오류는 "내 쪽에 쓸 수 있는 주소·포트 조합이 없다"는 뜻입니다. 목적지가 몇 곳으로 몰리는 구간에서 잘 터집니다. 웹 서버에서 WAS로, 앱에서 캐시 서버나 내부 API로, 그리고 하나의 NAT를 지나는 서버 간 호출입니다.</p>
   </div>
 </section>
 
@@ -990,15 +1404,26 @@ Cache-Control: no-store
     <ol class="steps">
       <li class="is-key"><b>연결 재사용</b><p>HTTP 클라이언트에 커넥션 풀과 keep-alive를 켭니다. 근본 해결입니다.</p></li>
       <li><b>프록시 업스트림 keepalive</b><p>Nginx가 WAS 연결을 재사용하게 합니다(뒤 슬라이드).</p></li>
-      <li><b>포트 범위 확장</b><p>ip_local_port_range를 넓힙니다. 리스닝 포트와는 겹치지 않게 합니다.</p></li>
+      <li><b>포트 범위 확장</b><p>임시 포트 범위 파라미터 ip_local_port_range를 넓힙니다. 서버가 기다리는 포트와 겹치지 않게 합니다.</p></li>
       <li><b>tcp_tw_reuse</b><p>1이면 나가는 연결에 TIME_WAIT 포트를 안전할 때 재사용합니다.</p></li>
     </ol>
     <div class="slide__body">
-      <p class="prose">아래쪽 조치일수록 증상만 미룹니다. <code>tcp_tw_reuse</code>의 커널 기본값은 2로, 루프백 연결에서만 재사용합니다. 커널 문서도 함부로 바꾸지 말라고 적어 둡니다.</p>
+      <p class="prose">연결을 재사용하면 닫히는 연결 자체가 줄어 TIME_WAIT가 생기지 않습니다. 아래 두 줄은 커널 파라미터를 <code>sysctl</code>로 바꾸는 방법인데, 증상을 미룰 뿐입니다. <code>tcp_tw_reuse</code>의 기본값 2는 자기 자신에게 보내는 루프백(127.0.0.1) 연결에서만 재사용하라는 뜻입니다.</p>
       <aside class="callout callout--key">
         <p class="callout__title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/></svg>오래된 글의 tcp_tw_recycle은 따라 하지 마세요</p>
-        <p>NAT 뒤에서 들어오는 연결을 거부하는 부작용 때문에 리눅스 4.12에서 아예 삭제된 옵션입니다.</p>
+        <p>NAT 뒤에서 들어오는 정상 연결을 거부하는 부작용 때문에 리눅스 4.12에서 아예 삭제된 옵션입니다.</p>
       </aside>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>CLOSE_WAIT가 쌓이면 우리 코드가 닫지 않은 것이다</h2>
+  <div class="slide__body">
+    <div class="prose">
+      <p>TIME_WAIT와 자주 헷갈리지만 정반대의 신호가 CLOSE_WAIT입니다. 2부의 4-way 그림에서 CLOSE_WAIT는 상대가 FIN을 보냈고 우리 커널은 ACK까지 했지만, <mark>우리 앱이 아직 close()를 부르지 않은 상태</mark>였습니다. 커널은 앱이 닫아 줄 때까지 영원히 기다리므로, 이 상태는 시간이 지나도 저절로 사라지지 않습니다.</p>
+      <p>그래서 CLOSE_WAIT가 계속 늘어나면 거의 언제나 애플리케이션의 누수입니다. 예를 들어 주문 API가 외부 결제 API를 HTTP 클라이언트로 부른 뒤, 오류가 난 경로에서 응답 객체를 닫지 않거나 커넥션을 풀에 돌려주지 않으면, 결제 API 쪽이 유휴 연결을 정리하며 보낸 FIN마다 CLOSE_WAIT가 하나씩 남습니다.</p>
+      <p>이 소켓들은 fd를 계속 붙잡으므로 결국 1장에서 본 <code>Too many open files</code>로 이어집니다. 커널 파라미터로는 고칠 수 없고, <code>ss -tanp state close-wait</code>(<code>-p</code>는 소켓을 가진 프로세스 표시)로 어느 프로세스의 어느 상대인지 찾아 그 호출 코드에서 자원을 닫는 경로를 고칩니다.</p>
     </div>
   </div>
 </section>
@@ -1007,30 +1432,30 @@ Cache-Control: no-store
   <h2>유휴 타임아웃은 뒤로 갈수록 길게 둔다</h2>
   <div class="split split--center">
     <div class="prose">
-      <p>재사용하는 연결의 양 끝은 각자 유휴 타임아웃을 갖고, 먼저 다 된 쪽이 연결을 닫습니다. 닫는 쪽이 <strong>요청을 보내는 쪽</strong>이어야 경쟁이 생기지 않습니다.</p>
-      <p>그래서 규칙은 하나입니다. <mark>앞단 타임아웃 &lt; 뒷단 타임아웃</mark>. ALB 유휴 타임아웃 기본값이 60초이므로 뒤의 Nginx나 WAS의 keep-alive는 그보다 길게 둡니다. Nginx 클라이언트 쪽 기본값은 75초입니다.</p>
+      <p>연결을 재사용하면 새 문제가 생깁니다. 요청 사이에 조용히 쉬는 연결을 언제 정리할지입니다. 양 끝은 각자 <dfn title="idle timeout">유휴 타임아웃</dfn>, 즉 아무것도 오가지 않으면 연결을 닫는 시간을 갖고, 먼저 다 된 쪽이 닫습니다.</p>
+      <p>닫는 쪽은 <strong>요청을 보내는 쪽</strong>이어야 안전합니다(이유는 두 슬라이드 뒤). 그래서 <mark>앞단 타임아웃 &lt; 뒷단 타임아웃</mark>입니다. AWS ALB 유휴 타임아웃 기본값이 60초이므로 뒤의 Nginx나 WAS의 keep-alive는 그보다 길게 둡니다. Nginx 클라이언트 쪽 기본값은 75초입니다.</p>
     </div>
     <figure class="figure">
-      <svg class="dg" viewBox="0 0 760 340" role="img" aria-labelledby="f45t">
-        <title id="f45t">ALB 유휴 타임아웃 60초가 백엔드 keep-alive 75초보다 짧아서, 유휴 연결은 항상 ALB가 먼저 정리한다.</title>
+      <svg class="dg" viewBox="0 0 760 340" role="img" aria-labelledby="f73t">
+        <title id="f73t">ALB 유휴 타임아웃 60초가 백엔드 keep-alive 75초보다 짧아서, 유휴 연결은 항상 ALB가 먼저 정리한다.</title>
         <rect class="dg-box" x="20" y="30" width="160" height="64"/>
-        <text x="100" y="62" text-anchor="middle">클라이언트</text>
+        <text x="100" y="62" text-anchor="middle">브라우저</text>
         <rect class="dg-box dg-box--flow" x="300" y="30" width="160" height="64"/>
         <text x="380" y="62" text-anchor="middle">ALB</text>
         <rect class="dg-box" x="580" y="30" width="160" height="64"/>
-        <text x="660" y="62" text-anchor="middle">Nginx, WAS</text>
+        <text x="660" y="62" text-anchor="middle">Nginx</text>
         <path class="dg-arrow dg-arrow--flow" d="M182,62 H292"/>
         <path class="dg-arrow dg-arrow--flow" d="M462,62 H572"/>
 
-        <text class="dg-label--sm dg-label--muted" x="300" y="150" text-anchor="start">ALB ↔ 백엔드 연결의 유휴 시간</text>
+        <text class="dg-label--sm dg-label--muted" x="300" y="150" text-anchor="start">ALB ↔ Nginx 연결의 유휴 시간</text>
         <rect class="dg-box dg-box--flow" x="20" y="170" width="480" height="48"/>
         <text x="260" y="194" text-anchor="middle">ALB 유휴 타임아웃 60초</text>
         <rect class="dg-box" x="20" y="232" width="600" height="48"/>
-        <text x="320" y="256" text-anchor="middle">백엔드 keep-alive 75초</text>
+        <text x="320" y="256" text-anchor="middle">Nginx keep-alive 75초</text>
         <line class="dg-line dg-line--thin" x1="500" y1="160" x2="500" y2="300"/>
         <text class="dg-label--sm dg-label--flow" x="510" y="320" text-anchor="start">ALB가 먼저 정리</text>
       </svg>
-      <figcaption>반대로 뒤가 더 짧으면 다음 슬라이드의 간헐적 502가 생깁니다.</figcaption>
+      <figcaption>같은 규칙이 Nginx와 주문 API 사이에도 적용됩니다. 뒤가 더 짧으면 간헐적 502가 생깁니다.</figcaption>
     </figure>
   </div>
 </section>
@@ -1038,31 +1463,42 @@ Cache-Control: no-store
 <section class="slide">
   <h2>Nginx는 기본 설정으로 업스트림 연결을 버린다</h2>
   <div class="split split--wide-left">
-    <pre class="code" data-file="nginx.conf"><code><span class="k">upstream</span> app {
+    <pre class="code" data-file="nginx.conf"><code><span class="k">upstream</span> order_api {
     server 10.0.2.31:8080;
+    server 10.0.2.32:8080;
 <span class="hl">    keepalive <span class="n">32</span>;</span>
     keepalive_timeout <span class="n">60s</span>;
 }
 <span class="k">server</span> {
     keepalive_timeout <span class="n">75s</span>;
-    <span class="k">location</span> / {
-        proxy_pass http://app;
+    <span class="k">location</span> /orders {
+        proxy_pass http://order_api;
 <span class="hl">        proxy_http_version <span class="n">1.1</span>;</span>
 <span class="hl">        proxy_set_header Connection <span class="s">""</span>;</span>
         proxy_read_timeout <span class="n">60s</span>;
     }
 }</code></pre>
     <div class="prose">
-      <p>Nginx는 기본적으로 업스트림에 HTTP/1.0으로 말하고 요청마다 연결을 닫습니다. 먼저 닫는 쪽이 Nginx이므로 <mark>TIME_WAIT가 Nginx 서버에 쌓입니다</mark>.</p>
-      <p>강조한 세 줄이 함께 있어야 재사용됩니다. <code>keepalive 32</code>는 워커마다 보관할 유휴 연결 수이지 연결 상한이 아닙니다. WAS의 keep-alive는 업스트림 <code>keepalive_timeout</code>보다 길게 둡니다.</p>
+      <p>3부 첫 장면의 원인이 여기 있습니다. Nginx는 프록시할 뒤쪽 서버(<dfn title="upstream">업스트림</dfn>)에 기본적으로 HTTP/1.0으로 말하고 요청마다 연결을 닫습니다. 먼저 닫는 쪽이 Nginx이므로 <mark>TIME_WAIT가 Nginx 서버에 쌓입니다</mark>.</p>
+      <p>강조한 세 줄이 함께 있어야 재사용이 켜집니다. 각 줄의 뜻은 다음 슬라이드에서 짚습니다.</p>
     </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>설정 한 줄마다 연결의 수명이 정해진다</h2>
+  <div class="prose prose--cols">
+    <p><code>upstream order_api</code>는 주문 API 서버 두 대를 한 묶음으로 이름 붙입니다. Nginx는 이 묶음 안에서 요청을 나눠 보냅니다. <code>location /orders</code> 안의 <code>proxy_pass</code>가 이 경로의 요청을 그 묶음으로 넘기라는 지시입니다.</p>
+    <p><code>keepalive 32</code>는 Nginx 워커 프로세스마다 보관해 둘 <strong>유휴 연결 수</strong>입니다. 동시 연결의 상한이 아니라서, 바쁠 때는 그보다 많이 열고 한가해지면 32개만 남기고 닫습니다. 업스트림의 <code>keepalive_timeout 60s</code>는 보관한 연결을 60초 쉬면 닫는다는 뜻이므로, 주문 API 쪽 keep-alive는 이보다 길게 둡니다.</p>
+    <p><code>proxy_http_version 1.1</code>은 업스트림과 HTTP/1.1로 말하게 해 지속 연결을 가능하게 하고, <code>proxy_set_header Connection ""</code>는 브라우저가 보낸 "연결을 닫아 달라"는 헤더를 업스트림에 그대로 넘기지 않게 지웁니다. 셋 중 하나라도 빠지면 연결은 여전히 요청마다 닫힙니다.</p>
+    <p><code>server</code> 블록의 <code>keepalive_timeout 75s</code>는 앞쪽(ALB) 연결의 유휴 시간이고, <code>proxy_read_timeout 60s</code>는 업스트림이 응답을 보내다 멈췄을 때 기다리는 한도입니다. 이 시간을 넘기면 다음 슬라이드의 504가 됩니다.</p>
   </div>
 </section>
 
 <section class="slide">
   <h2>502는 이상한 대답, 504는 대답 없음이다</h2>
   <div class="slide__body">
-    <p class="prose">세 코드 모두 앱이 아니라 <strong>프록시가 만든 응답</strong>입니다. 그래서 앱 로그에는 흔적이 없을 수 있고, 프록시나 로드 밸런서의 로그부터 봐야 합니다.</p>
+    <p class="prose">1부에서 미뤄 둔 5xx 세 코드는 모두 앱이 아니라 <strong>중간의 프록시나 로드 밸런서가 만든 응답</strong>입니다. 뒤 서버와의 대화가 실패했다는 것을 프록시가 대신 알리는 것입니다. 그래서 앱 로그에는 흔적이 없을 수 있고, 프록시와 로드 밸런서의 로그부터 봐야 합니다.</p>
     <table class="compare">
       <thead><tr><th scope="col">코드</th><th scope="col">프록시가 본 상황</th><th scope="col">흔한 원인</th><th scope="col">Nginx 에러 로그 단서</th></tr></thead>
       <tbody>
@@ -1071,7 +1507,7 @@ Cache-Control: no-store
         <tr><th scope="row">504 Gateway Timeout</th><td class="is-key">시간 안에 응답이 안 옴</td><td>느린 쿼리, 스레드 풀 고갈</td><td>upstream timed out</td></tr>
       </tbody>
     </table>
-    <p class="small">502는 빨리 실패하고, 504는 프록시 타임아웃(Nginx <code>proxy_read_timeout</code> 기본 60초, ALB는 유휴 타임아웃)만큼 기다린 뒤 실패합니다. 응답 시간 분포만 봐도 둘을 가를 수 있습니다.</p>
+    <p class="prose">502는 빨리 실패하고, 504는 프록시 타임아웃만큼 기다린 뒤 실패합니다. Nginx는 <code>proxy_read_timeout</code>(기본 60초), ALB는 유휴 타임아웃입니다. 그래서 실패한 요청의 응답 시간 분포만 봐도 둘을 가를 수 있습니다.</p>
   </div>
 </section>
 
@@ -1105,8 +1541,25 @@ Cache-Control: no-store
       </div>
     </div>
     <div class="prose">
-      <p>백엔드의 keep-alive가 로드 밸런서의 유휴 타임아웃보다 짧으면, 백엔드가 닫는 순간과 로드 밸런서가 그 연결을 재사용하는 순간이 엇갈립니다. 트래픽이 뜸해 유휴 연결이 많을 때 드물게 튀는 502의 전형입니다.</p>
-      <p>Node.js HTTP 서버의 keep-alive 기본값은 5초라 ALB 60초 뒤에서 자주 겪습니다. AWS 문서도 <mark>백엔드 타임아웃을 더 길게</mark> 두라고 권합니다.</p>
+      <p>백엔드 keep-alive가 로드 밸런서의 유휴 타임아웃보다 짧으면, 백엔드가 닫는 순간과 로드 밸런서가 그 연결을 재사용하는 순간이 엇갈립니다. 2부의 RST가 바로 이 순간입니다. 트래픽이 뜸해 쉬는 연결이 많을 때 드물게 튀는 502의 전형입니다.</p>
+      <p>1장에서 이벤트 루프 서버로 본 Node.js의 HTTP 서버 keep-alive 기본값이 5초라 ALB 60초 뒤에서 자주 겪습니다. AWS 문서도 <mark>백엔드 타임아웃을 더 길게</mark> 두라고 권합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>네트워크 장애는 증상에서 층을 따라 내려간다</h2>
+  <div class="split split--even">
+    <ol class="steps">
+      <li><b>코드와 시간</b><p>502·503·504 중 무엇이고, 실패까지 몇 초 걸렸는지 봅니다.</p></li>
+      <li><b>누가 만들었나</b><p>앱 로그에 없으면 프록시·로드 밸런서 로그의 단서 문구를 찾습니다.</p></li>
+      <li class="is-key"><b>소켓 상태</b><p>ss로 상태별·상대별 개수를 세어 TIME_WAIT, CLOSE_WAIT를 봅니다.</p></li>
+      <li><b>타임아웃 사슬</b><p>앞단부터 뒷단까지 유휴 타임아웃이 길어지는 순서인지 확인합니다.</p></li>
+      <li><b>이름과 경로</b><p>dig와 ip route로 이름 해석과 길이 의도대로인지 봅니다.</p></li>
+    </ol>
+    <div class="prose">
+      <p>이 장에서 본 도구를 진단 순서로 엮으면 왼쪽과 같습니다. 핵심은 증상(상태 코드)에서 출발해, 그 응답을 만든 층을 찾고, 그 층의 상태와 설정을 2부의 원리에 비춰 보는 것입니다.</p>
+      <p>AWS 환경에서 같은 진단을 어떤 지표와 로그로 하는지는 18장의 트러블슈팅에서 다시 만납니다.</p>
     </div>
   </div>
 </section>
@@ -1115,10 +1568,11 @@ Cache-Control: no-store
 <section class="slide slide--summary" data-section="정리" data-depth="none">
   <h2>정리</h2>
   <ul class="summary">
-    <li><b>계층마다 헤더 한 겹, 일 하나입니다.</b> IP는 컴퓨터까지, 포트는 프로세스까지, MAC은 바로 다음 장비까지만 책임집니다.</li>
-    <li><b>CIDR, 게이트웨이, NAT는 VPC의 언어입니다.</b> 사설 대역을 쪼개고, 밖으로는 게이트웨이와 NAT로 나갑니다.</li>
-    <li><b>TCP의 신뢰는 상태로 만듭니다.</b> 핸드셰이크로 번호를 맞추고, ACK와 윈도우로 유실과 혼잡을 견디며, TIME_WAIT로 마무리합니다.</li>
-    <li><b>HTTP는 무상태이고, 상태는 쿠키와 세션이 얹습니다.</b> TLS는 공개키로 대칭키를 합의하고, 인증서로 상대를 확인합니다.</li>
+    <li><b>계층마다 헤더 한 겹, 일 하나입니다.</b> MAC은 다음 장비까지, IP는 목적지 컴퓨터까지, 포트는 프로세스까지 책임집니다.</li>
+    <li><b>CIDR, 게이트웨이, NAT는 클라우드 네트워크의 언어입니다.</b> 사설 대역을 서브넷으로 쪼개고, 밖으로는 게이트웨이와 NAT로 나갑니다.</li>
+    <li><b>TCP의 신뢰는 번호와 상태로 만듭니다.</b> 핸드셰이크로 번호를 맞추고, ACK·재전송·윈도우로 유실과 혼잡을 견딥니다.</li>
+    <li><b>HTTP는 무상태이고, 상태는 쿠키와 세션이 얹습니다.</b> TLS는 공개키로 대칭 세션 키를 합의하고, 인증서 사슬로 상대를 확인합니다.</li>
+    <li><b>입구에는 프록시와 로드 밸런서가 섭니다.</b> 웹 서버는 연결을, WAS는 로직을 맡습니다.</li>
     <li><b>장애는 연결 재사용과 타임아웃 순서에서 납니다.</b> 연결을 재사용하고, 앞단 타임아웃을 뒷단보다 짧게 둡니다.</li>
   </ul>
 </section>
@@ -1127,38 +1581,60 @@ Cache-Control: no-store
   <h2>스스로 점검 (1)</h2>
   <ol class="selfcheck">
     <li><details><summary>10.0.1.20/24와 10.0.2.20/24는 라우터 없이 통신할 수 있나요?</summary>
-      <div class="answer"><p>아닙니다. 마스크를 적용한 네트워크 주소가 10.0.1.0과 10.0.2.0으로 다르므로, 각자 게이트웨이를 거쳐야 합니다.</p></div></details></li>
+      <div class="answer"><p>아닙니다. 마스크를 적용한 네트워크 주소가 10.0.1.0과 10.0.2.0으로 다르므로, 각자 기본 게이트웨이를 거쳐야 합니다.</p></div></details></li>
+    <li><details><summary>패킷이 라우터 세 개를 지나는 동안 IP 헤더와 이더넷 헤더 중 바뀌는 것은 무엇이고, 왜 그런가요?</summary>
+      <div class="answer"><p>이더넷 헤더만 구간마다 바뀝니다. IP 주소는 최종 목적지를, MAC 주소는 바로 다음 장비를 가리키기 때문입니다.</p></div></details></li>
     <li><details><summary>Private Subnet의 서버가 NAT를 통해 외부 API는 부를 수 있는데, 외부에서는 왜 그 서버에 접속할 수 없나요?</summary>
       <div class="answer"><p>NAT는 안에서 시작한 연결만 변환 표에 기록합니다. 밖에서 먼저 온 패킷은 표에 짝이 없어 어디로 보낼지 알 수 없습니다.</p></div></details></li>
-    <li><details><summary>핸드셰이크를 두 번으로 줄이면 어떤 일이 생길 수 있나요?</summary>
-      <div class="answer"><p>서버는 자기 ISN이 클라이언트에 도착했는지 확인할 수 없습니다. 네트워크에 떠돌던 옛 SYN 하나로도 서버가 유령 연결을 열게 됩니다.</p></div></details></li>
-    <li><details><summary>HTTP/2로 바꿨는데도 패킷 손실이 잦은 모바일 망에서 느린 이유는 무엇인가요?</summary>
-      <div class="answer"><p>스트림을 다중화해도 모두 하나의 TCP 바이트 흐름에 실리므로, 패킷 하나가 유실되면 모든 스트림이 재전송을 기다립니다. HTTP/3는 스트림별로 재전송해 이를 피합니다.</p></div></details></li>
-    <li><details><summary>세션 ID 쿠키에서 HttpOnly를 빼면 어떤 공격이 쉬워지나요?</summary>
-      <div class="answer"><p>페이지에 주입된 스크립트가 document.cookie로 세션 ID를 읽어 갈 수 있습니다. XSS 한 번이 곧 세션 탈취가 됩니다.</p></div></details></li>
+    <li><details><summary>DNS 레코드의 TTL을 하루로 둔 채 서버 IP를 바꾸면 어떤 일이 생기나요?</summary>
+      <div class="answer"><p>이미 옛 답을 캐시한 리졸버와 브라우저는 최대 하루 동안 옛 IP로 접속합니다. 그래서 옮기기 전에 TTL부터 짧게 낮춰 둡니다.</p></div></details></li>
+    <li><details><summary>결제 요청(POST)의 응답을 받기 전에 연결이 끊겼습니다. 클라이언트가 그냥 다시 보내면 왜 위험한가요?</summary>
+      <div class="answer"><p>POST는 멱등하지 않아, 첫 요청이 이미 처리됐다면 결제가 두 번 됩니다. 같은 요청임을 서버가 알아보게 하는 설계가 필요합니다(7장).</p></div></details></li>
   </ol>
 </section>
 
 <section class="slide" data-section="부록: 스스로 점검" data-depth="none">
   <h2>스스로 점검 (2)</h2>
   <ol class="selfcheck">
+    <li><details><summary>핸드셰이크를 두 번으로 줄이면 어떤 일이 생길 수 있나요?</summary>
+      <div class="answer"><p>서버는 자기 ISN이 클라이언트에 도착했는지 확인할 수 없습니다. 네트워크를 떠돌던 옛 SYN 하나로도 서버가 유령 연결을 열게 됩니다.</p></div></details></li>
+    <li><details><summary>SYN 쿠키는 왜 SYN 큐가 가득 차도 정상 연결을 받을 수 있나요?</summary>
+      <div class="answer"><p>반쯤 열린 연결을 큐에 저장하지 않고, 필요한 정보를 서버의 ISN에 담아 상대에게 맡기기 때문입니다. 진짜 클라이언트의 ACK에 담긴 번호로 검증해 그때 연결을 만듭니다.</p></div></details></li>
+    <li><details><summary>네트워크에 여유가 있는데도 대용량 전송이 멈췄습니다. 흐름 제어 관점에서 먼저 무엇을 의심하나요?</summary>
+      <div class="answer"><p>받는 앱이 read()를 늦게 해 수신 버퍼가 차고 rwnd가 0이 된 경우입니다. 보내는 쪽은 상대가 다시 공간을 알릴 때까지 멈춥니다.</p></div></details></li>
+    <li><details><summary>HTTP/2로 바꿨는데도 패킷 손실이 잦은 모바일 망에서 느린 이유는 무엇인가요?</summary>
+      <div class="answer"><p>스트림을 다중화해도 모두 하나의 TCP 바이트 흐름에 실리므로, 패킷 하나가 유실되면 모든 스트림이 재전송을 기다립니다. HTTP/3는 스트림별로 재전송해 이를 피합니다.</p></div></details></li>
+  </ol>
+</section>
+
+<section class="slide" data-section="부록: 스스로 점검" data-depth="none">
+  <h2>스스로 점검 (3)</h2>
+  <ol class="selfcheck">
     <li><details><summary>TLS 핸드셰이크에서 공개키로 데이터를 직접 암호화하지 않는 이유는 무엇인가요?</summary>
       <div class="answer"><p>공개키 연산은 대칭키보다 훨씬 느리기 때문입니다. 공개키 기법은 세션 키 합의와 인증에만 쓰고, 데이터는 빠른 대칭키로 암호화합니다.</p></div></details></li>
-    <li><details><summary>API 서버에 TIME_WAIT가 3만 개 쌓였고 대부분 상대가 같은 내부 서비스입니다. 무엇부터 고치나요?</summary>
-      <div class="answer"><p>그 서비스를 부르는 HTTP 클라이언트가 요청마다 연결을 새로 열고 닫는지 확인하고, 커넥션 풀과 keep-alive를 켭니다. 커널 파라미터는 그다음입니다.</p></div></details></li>
+    <li><details><summary>세션 ID 쿠키에서 HttpOnly를 빼면 어떤 공격이 쉬워지나요?</summary>
+      <div class="answer"><p>페이지에 주입된 스크립트가 document.cookie로 세션 ID를 읽어 갈 수 있습니다. XSS 한 번이 곧 세션 탈취가 됩니다.</p></div></details></li>
+    <li><details><summary>웹 서버에 TIME_WAIT가 3만 개 쌓였고 대부분 상대가 같은 WAS입니다. 무엇부터 고치나요?</summary>
+      <div class="answer"><p>웹 서버가 WAS 연결을 요청마다 열고 닫는지 확인하고, Nginx라면 업스트림 keepalive와 HTTP/1.1 설정을 켭니다. 커널 파라미터는 그다음입니다.</p></div></details></li>
+  </ol>
+</section>
+
+<section class="slide" data-section="부록: 스스로 점검" data-depth="none">
+  <h2>스스로 점검 (4)</h2>
+  <ol class="selfcheck">
     <li><details><summary>CLOSE_WAIT가 계속 늘어나는 것은 누구의 문제인가요?</summary>
-      <div class="answer"><p>상대는 FIN을 보냈는데 우리 애플리케이션이 소켓을 닫지 않은 것입니다. 응답 본문을 다 읽지 않았거나 커넥션 반환을 빠뜨린 코드를 찾습니다.</p></div></details></li>
+      <div class="answer"><p>상대는 FIN을 보냈는데 우리 애플리케이션이 소켓을 닫지 않은 것입니다. 응답을 닫지 않았거나 커넥션 반환을 빠뜨린 코드를 찾습니다.</p></div></details></li>
     <li><details><summary>ALB 뒤에서 504가 정확히 60초 걸려 난다면 무엇을 의심하나요?</summary>
       <div class="answer"><p>ALB 유휴 타임아웃 기본값 60초 안에 백엔드가 응답하지 못한 것입니다. 느린 쿼리나 고갈된 스레드 풀처럼 백엔드가 느려진 원인을 먼저 찾습니다.</p></div></details></li>
     <li><details><summary>백엔드 keep-alive를 ALB 유휴 타임아웃보다 길게 두라는 이유는 무엇인가요?</summary>
-      <div class="answer"><p>연결은 항상 요청을 보내는 ALB 쪽이 먼저 닫아야 합니다. 백엔드가 먼저 닫으면 그 순간 재사용된 요청이 RST를 받아 502가 됩니다.</p></div></details></li>
+      <div class="answer"><p>연결은 요청을 보내는 ALB 쪽이 먼저 닫아야 합니다. 백엔드가 먼저 닫으면 그 순간 재사용된 요청이 RST를 받아 502가 됩니다.</p></div></details></li>
   </ol>
 </section>
 
 <section class="slide" data-section="다음 단계" data-depth="none">
   <h2>다음으로 올라갈 층</h2>
   <div class="slide__body">
-    <p class="lede">요청은 이제 서버에 도착했습니다. 서버가 그 요청에 답할 데이터를 얼마나 빨리 찾느냐는 자료구조에 달려 있습니다. 해시 테이블, 트리, 힙이 DB 인덱스와 캐시의 바탕이 되는 이유로 넘어갑니다.</p>
+    <p class="lede">주문 조회 요청은 이제 주문 API 서버에 도착했습니다. 서버가 수많은 주문 중 42번을 얼마나 빨리 찾느냐는 데이터를 어떤 구조로 담느냐에 달려 있습니다. 해시 테이블, 트리, 힙이 DB 인덱스와 캐시의 바탕이 되는 이유로 넘어갑니다.</p>
     <div class="nav-pair">
       <a class="next" href="03-data-structures.html">
         <span class="next__text">

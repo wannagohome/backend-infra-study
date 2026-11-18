@@ -17,12 +17,12 @@
   <div class="cover">
     <div class="cover__main">
       <p class="cover__chapter"><b>6장</b> Spring과 JPA</p>
-      <h1>프레임워크는 객체를 어떻게 대신 관리하는가</h1>
-      <p class="cover__lede">객체 생성, 트랜잭션, 요청 처리, DB 매핑을 프레임워크에 맡기는 원리를 따라갑니다. 열쇠는 컨테이너와 프록시, 그리고 영속성 컨텍스트입니다.</p>
+      <h1>프레임워크는 내 코드 대신 무엇을 하는가</h1>
+      <p class="cover__lede">주문 API 서버 하나를 예제로, 객체 조립과 트랜잭션, 요청 처리, SQL 생성을 프레임워크가 어떻게 맡는지 따라갑니다.</p>
       <dl class="cover__meta">
-        <div><dt>선수 지식</dt><dd>4장 트랜잭션과 락, 5장 OOP와 리플렉션</dd></div>
-        <div><dt>슬라이드</dt><dd>54장</dd></div>
-        <div><dt>예상 학습 시간</dt><dd>150분</dd></div>
+        <div><dt>선수 지식</dt><dd>4장 트랜잭션과 커넥션 풀, 5장 다형성과 리플렉션</dd></div>
+        <div><dt>슬라이드</dt><dd>86장</dd></div>
+        <div><dt>예상 학습 시간</dt><dd>210분</dd></div>
       </dl>
     </div>
     <div class="cover__map">
@@ -32,11 +32,28 @@
   </div>
 </section>
 
-<!-- ===== 1부 기초: IoC, DI, Bean ===================================== -->
-<section class="slide slide--divider" data-section="IoC와 Bean" data-depth="basic">
+<!-- ===== 1부 기초: 객체 조립 ========================================= -->
+<section class="slide slide--divider" data-section="객체 조립과 Bean" data-depth="basic">
   <p class="divider__no">1부</p>
-  <h2>객체를 만드는 일을 넘겨준다</h2>
-  <p class="lede">5장에서 본 객체지향 설계 원칙을 실제 코드에서 지키려면 누군가 객체를 조립해 줘야 합니다. Spring은 5장 끝에서 본 리플렉션과 어노테이션으로 그 조립을 대신 맡는 컨테이너입니다.</p>
+  <h2>객체는 누가 만들고 누가 이어 주는가</h2>
+  <p class="lede">5장에서 DIP를 다루며 "구현 객체는 누가 만들어 넣어 줄까"라는 질문이 남았습니다. 이 부는 그 질문에서 출발해, Spring이 객체를 대신 만들고 연결하는 방식과 그 객체를 쓸 때 지켜야 할 규칙을 봅니다.</p>
+</section>
+
+<section class="slide">
+  <h2>이 장의 예제: 쇼핑몰 주문 API 서버</h2>
+  <div class="slide__body">
+    <div class="prose">
+      <p>장 전체에서 주문 API 서버 하나를 따라갑니다. 클라이언트가 <code>POST /orders</code>를 보내면 서버는 재고를 줄이고, 결제사 API로 결제를 승인받고, 주문을 DB에 저장합니다. 테이블은 4장에서 본 <code>member</code>, <code>orders</code>와 같은 모양입니다.</p>
+      <p>백엔드 코드는 보통 세 <dfn title="layer">계층</dfn>으로 나눕니다. <strong>컨트롤러</strong>는 HTTP 요청을 받아 해석하고, <strong>서비스</strong>는 "재고 확인 후 결제 후 저장" 같은 업무 규칙을 담고, <strong>리포지토리</strong>는 DB 읽기와 쓰기만 맡습니다. 바뀌는 이유가 다른 코드를 떼어 두는 것으로, 5장의 단일 책임 원칙을 계층 단위로 적용한 것입니다.</p>
+    </div>
+    <ol class="flow">
+      <li class="flow__node"><b>클라이언트</b><span>POST /orders</span></li>
+      <li class="flow__node"><b>OrderController</b><span>요청 해석, 응답 작성</span></li>
+      <li class="flow__node is-flow"><b>OrderService</b><span>재고, 결제, 저장 순서</span></li>
+      <li class="flow__node"><b>OrderRepository</b><span>SQL 실행</span></li>
+      <li class="flow__node"><b>MySQL</b><span>member, orders</span></li>
+    </ol>
+  </div>
 </section>
 
 <section class="slide">
@@ -45,14 +62,40 @@
     <pre class="code" data-file="OrderService.java"><code><span class="k">public class</span> OrderService {
 <span class="hl">  <span class="k">private final</span> PaymentClient pay =</span>
 <span class="hl">      <span class="k">new</span> KakaoPayClient(<span class="s">"api-key"</span>);</span>
+  <span class="k">private final</span> OrderRepository repo =
+      <span class="k">new</span> JdbcOrderRepository();
 
   <span class="k">public void</span> order(Order o) {
     pay.approve(o.amount());
+    repo.save(o);
   }
 }</code></pre>
     <div class="prose">
-      <p>OrderService는 인터페이스 PaymentClient를 쓰지만, 어떤 구현을 쓸지까지 스스로 정합니다. 결제사를 바꾸려면 이 클래스를 고쳐야 하고, 테스트에서 가짜 결제 객체로 바꿔 끼울 수도 없습니다.</p>
-      <p>5장의 DIP(의존 역전 원칙)는 "추상에 의존하라"고 말하지만, <mark>구현을 고르는 코드가 안에 있는 한</mark> 원칙은 반쪽만 지켜집니다.</p>
+      <p>서비스가 결제사 인터페이스 <code>PaymentClient</code>를 쓰는 점은 좋습니다. 그런데 어떤 구현을 쓸지까지 스스로 <code>new</code>로 정합니다. 결제사를 토스로 바꾸려면 이 클래스를 고쳐야 하고, 테스트에서 가짜 결제 객체로 바꿔 끼울 수도 없습니다.</p>
+      <p>5장의 <dfn title="Dependency Inversion Principle">DIP</dfn>(의존 역전 원칙)는 "구현 말고 추상에 의존하라"였습니다. <mark>구현을 고르는 코드가 클래스 안에 있는 한</mark> 이 원칙은 반쪽만 지켜집니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>조립하는 코드를 한곳으로 모은다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="AppConfig.java"><code><span class="k">public class</span> AppConfig {
+  DataSource dataSource() { <span class="k">return new</span> DataSource(…); }
+  OrderRepository orderRepository() {
+    <span class="k">return new</span> OrderRepository(dataSource());
+  }
+<span class="hl">  PaymentClient paymentClient() {</span>
+<span class="hl">    <span class="k">return new</span> KakaoPayClient(<span class="s">"api-key"</span>);</span>
+  }
+  OrderService orderService() {
+    <span class="k">return new</span> OrderService(
+        paymentClient(), orderRepository());
+  }
+}</code></pre>
+    <div class="prose">
+      <p>해법은 단순합니다. 서비스는 생성자로 필요한 것을 받기만 하고, "무엇을 만들어 누구에게 넣을지"는 <code>AppConfig</code> 같은 조립 전용 클래스가 정합니다. 결제사를 바꿀 때는 강조한 두 줄만 고치면 됩니다. 맨 위 <code>DataSource</code>는 DB 커넥션을 빌려주는 객체로, 4장의 커넥션 풀이 이 모양입니다.</p>
+      <p>하지만 객체가 수백 개가 되면 이 조립 코드도 거대해집니다. 같은 객체를 한 번만 만들기, 종료 때 자원 닫기, 모든 서비스에 트랜잭션 끼워 넣기까지 손으로 하게 됩니다. 이 반복을 통째로 떠맡는 것이 Spring입니다.</p>
     </div>
   </div>
 </section>
@@ -60,26 +103,76 @@
 <section class="slide">
   <h2>제어의 역전: 내가 부르지 않고 불려진다</h2>
   <div class="prose">
-    <p><dfn title="Inversion of Control">제어의 역전(IoC)</dfn>은 객체를 만들고 연결하고 호출하는 흐름의 주도권을 내 코드가 아니라 외부에 넘기는 것입니다. 라이브러리는 내가 호출하지만, 프레임워크는 내 코드를 호출합니다.</p>
-    <p>Spring에서는 <strong>IoC 컨테이너</strong>가 이 역할을 합니다. 컨테이너는 설정을 읽어 객체를 만들고, 필요한 의존 객체를 넣어 주고, 생명이 끝날 때 정리합니다.</p>
-    <p>앞 슬라이드의 OrderService는 이제 "PaymentClient 하나가 필요하다"고 선언만 하고, 무엇을 넣을지는 컨테이너가 정합니다. 이렇게 밖에서 넣어 주는 방식을 <dfn title="Dependency Injection">의존성 주입(DI)</dfn>이라고 합니다.</p>
+    <p><dfn title="Inversion of Control">제어의 역전(IoC)</dfn>은 객체를 만들고 연결하고 호출하는 흐름의 주도권을 내 코드가 아니라 외부에 넘기는 것입니다. 라이브러리는 내가 필요할 때 호출하지만, <dfn title="framework">프레임워크</dfn>는 정해진 흐름을 쥐고 있다가 적절한 때 내 코드를 호출합니다. 앞 슬라이드의 <code>AppConfig</code>도 작은 IoC입니다. 서비스는 자기 의존 객체를 고르지 않고 받기만 하니까요.</p>
+    <p>Spring에서는 <dfn title="IoC container">IoC 컨테이너</dfn>가 그 조립 담당입니다. 5장에서 본 리플렉션으로 클래스와 어노테이션을 읽어, 객체를 만들고 필요한 의존 객체를 넣어 주고, 애플리케이션이 끝날 때 정리합니다. 이렇게 필요한 객체를 밖에서 넣어 주는 방식을 <dfn title="Dependency Injection">의존성 주입(DI)</dfn>이라고 합니다.</p>
+    <p>DI 덕분에 <code>OrderService</code>는 "PaymentClient 하나가 필요하다"고 선언만 하면 됩니다. 운영에서는 카카오페이 구현이, 테스트에서는 가짜 구현이 들어갑니다.</p>
   </div>
 </section>
 
 <section class="slide">
-  <h2>Spring의 세 기둥은 POJO를 지키는 장치다</h2>
+  <h2>Spring은 세 장치로 코드를 평범하게 둔다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>Spring이 지향하는 것은 비즈니스 코드를 <dfn title="Plain Old Java Object">POJO</dfn>, 즉 특정 프레임워크 클래스를 상속하거나 구현하지 않는 평범한 자바 객체로 두는 것입니다. 그래야 프레임워크 없이 테스트하고, 기술을 바꿔도 업무 코드는 그대로 남습니다. 이를 위해 장치 세 개를 씁니다. DI는 방금 봤습니다.</p>
+      <p><dfn title="Aspect-Oriented Programming">AOP</dfn>는 트랜잭션, 로깅처럼 여러 클래스에 반복되는 기능을 따로 떼어 내는 기법입니다. 지금은 이 정도로 알아 두고, 동작은 2부에서 봅니다. <dfn title="Portable Service Abstraction">PSA</dfn>는 기술마다 다른 API를 공통 인터페이스 뒤에 숨기는 것입니다. 예를 들어 SQL을 직접 보내는 Java 표준 API인 JDBC와, 객체를 테이블에 자동으로 저장해 주는 JPA(4부)는 트랜잭션을 여는 코드가 다르지만, Spring에서는 둘 다 <code>@Transactional</code> 하나로 씁니다.</p>
+    </div>
     <table class="compare">
-      <thead><tr><th scope="col">요소</th><th scope="col">하는 일</th><th scope="col">없으면 생기는 일</th></tr></thead>
+      <thead><tr><th scope="col">장치</th><th scope="col">하는 일</th><th scope="col">없으면 생기는 일</th></tr></thead>
       <tbody>
-        <tr><th scope="row">IoC/DI</th><td>객체 생성과 연결을 컨테이너가 맡음</td><td>클래스마다 new와 팩토리 코드</td></tr>
-        <tr><th scope="row">AOP</th><td>트랜잭션, 로깅 같은 공통 기능 분리</td><td>모든 메서드에 같은 코드 반복</td></tr>
-        <tr><th scope="row">PSA</th><td>기술을 추상 인터페이스 뒤에 숨김</td><td>JDBC, JPA마다 다른 트랜잭션 코드</td></tr>
+        <tr><th scope="row">IoC/DI</th><td>객체 생성과 연결을 컨테이너가 맡음</td><td>클래스마다 new와 조립 코드</td></tr>
+        <tr><th scope="row">AOP</th><td>반복되는 공통 기능을 분리</td><td>모든 메서드에 같은 코드 반복</td></tr>
+        <tr><th scope="row">PSA</th><td>기술을 공통 인터페이스 뒤에 숨김</td><td>DB 기술마다 다른 트랜잭션 코드</td></tr>
       </tbody>
     </table>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Spring과 Spring Boot는 맡은 일이 다르다</h2>
+  <div class="prose">
+    <p>이 장에는 두 이름이 섞여 나오므로 먼저 구분합니다. <dfn>Spring Framework</dfn>는 IoC 컨테이너, AOP, 트랜잭션, 웹 MVC 같은 핵심 기능을 담은 본체입니다. 예전에는 이 본체를 쓰려면 XML이나 설정 클래스로 DB 연결, 웹 서버, 요청 데이터 변환기를 하나하나 등록해야 했습니다.</p>
+    <p><dfn>Spring Boot</dfn>는 그 설정을 대신해 주는 도구입니다. 필요한 라이브러리를 묶은 <strong>starter</strong> 의존성(예: <code>spring-boot-starter-web</code>)을 추가하면, 흔히 쓰는 설정을 자동으로 등록하고 2장에서 본 WAS인 Tomcat을 애플리케이션 안에 넣어 <code>java -jar</code> 하나로 실행되게 합니다. 자동 설정이 어떻게 동작하는지는 3부에서 봅니다.</p>
+    <p>그래서 "Spring Boot 2.6부터 기본값이 바뀌었다"는 말은 본체가 아니라 Boot가 깔아 주는 설정이 바뀌었다는 뜻입니다. 이 장의 기본값은 Spring Boot 3.x 기준입니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>컨테이너가 관리하는 객체가 Bean이다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="두 가지 등록 방법"><code><span class="c">// 1. 내 클래스: 표시만 하면 스캔이 찾음</span>
+<span class="hl"><span class="k">@Service</span></span>
+<span class="k">public class</span> OrderService { … }
+
+<span class="c">// 2. 남의 클래스: 만드는 메서드를 등록</span>
+<span class="k">@Configuration</span>
+<span class="k">public class</span> PaymentConfig {
+<span class="hl">  <span class="k">@Bean</span></span>
+  PaymentClient paymentClient() {
+    <span class="k">return new</span> KakaoPayClient(<span class="s">"api-key"</span>);
+  }
+}</code></pre>
     <div class="prose">
-      <p><dfn title="Plain Old Java Object">POJO</dfn>는 특정 프레임워크 클래스를 상속하지 않는 평범한 자바 객체입니다. 세 기둥 덕분에 비즈니스 코드는 POJO로 남고, <dfn title="Portable Service Abstraction">PSA</dfn> 예로 <code>@Transactional</code>은 JDBC든 JPA든 같은 방식으로 씁니다.</p>
+      <p>컨테이너가 만들고 관리하는 객체를 <dfn>빈(Bean)</dfn>이라 합니다. 컨테이너는 두 경로로 Bean을 압니다. 하나는 <dfn title="component scan">컴포넌트 스캔</dfn>으로, 기동할 때 지정한 패키지의 클래스를 훑어 <code>@Component</code>가 붙은 것을 찾아 등록합니다. <code>@Service</code>, <code>@Repository</code>, <code>@Controller</code>는 계층 이름을 붙인 <code>@Component</code>입니다.</p>
+      <p>다른 하나는 앞의 <code>AppConfig</code>와 같은 모양입니다. <code>@Configuration</code> 클래스의 <code>@Bean</code> 메서드가 돌려준 객체를 등록합니다.</p>
     </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>내 클래스는 스캔으로, 남의 클래스는 @Bean으로</h2>
+  <div class="slide__body">
+    <div class="prose">
+      <p>두 방법은 쓰는 자리가 갈립니다. 외부 라이브러리의 <code>KakaoPayClient</code>에는 내가 어노테이션을 붙일 수 없으므로 <code>@Bean</code> 메서드로 만들어 등록합니다. 생성자 인자에 API 키를 넣는 것처럼 만드는 과정을 세밀하게 정해야 할 때도 <code>@Bean</code>이 맞습니다.</p>
+      <p>이렇게 등록된 Bean을 모두 담고 있는 컨테이너의 실체가 <code>ApplicationContext</code>입니다. Bean을 만들고 꺼내 주는 기본 기능(<code>BeanFactory</code>)에 이벤트 발행, 설정값 읽기 같은 기능을 더한 것입니다.</p>
+    </div>
+    <table class="compare">
+      <thead><tr><th scope="col">기준</th><th scope="col">@Component 계열</th><th scope="col">@Configuration + @Bean</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">붙이는 곳</th><td>내가 만든 클래스</td><td>설정 클래스 안의 메서드</td></tr>
+        <tr><th scope="row">발견 방식</th><td>컴포넌트 스캔이 자동 등록</td><td>메서드 반환값을 등록</td></tr>
+        <tr><th scope="row">주된 용도</th><td class="is-flow">서비스, 리포지토리, 컨트롤러</td><td class="is-flow">외부 라이브러리 객체, 세밀한 생성</td></tr>
+      </tbody>
+    </table>
   </div>
 </section>
 
@@ -97,8 +190,8 @@
 <span class="c">// 3. 필드 주입</span>
 <span class="k">@Autowired private</span> PaymentClient pay;</code></pre>
     <div class="prose">
-      <p>생성자가 하나뿐이면 Spring 4.3부터 <code>@Autowired</code>를 생략할 수 있습니다. Lombok의 <code>@RequiredArgsConstructor</code>로 생성자를 자동 생성하는 경우가 많습니다.</p>
-      <p>수정자 주입은 선택적이거나 실행 중 바뀌는 의존성에, 필드 주입은 테스트 코드 정도에만 씁니다.</p>
+      <p>Bean이 등록됐으면 서로 넣어 줘야 합니다. <code>@Autowired</code>는 "여기에 맞는 타입의 Bean을 넣어 달라"는 표시입니다. 생성자가 하나뿐이면 Spring 4.3부터 이 표시를 생략할 수 있습니다.</p>
+      <p>생성자를 손으로 쓰는 대신 <dfn>Lombok</dfn>(컴파일 때 반복 코드를 생성해 주는 라이브러리)의 <code>@RequiredArgsConstructor</code>로 final 필드용 생성자를 만드는 경우가 많습니다.</p>
     </div>
   </div>
 </section>
@@ -107,19 +200,19 @@
   <h2>생성자 주입을 권장하는 네 가지 이유</h2>
   <div class="prose">
     <ul>
-      <li><strong>불변</strong>: 필드를 <code>final</code>로 선언할 수 있어 생성 후 누구도 의존성을 바꾸지 못합니다.</li>
-      <li><strong>누락 방지</strong>: 의존성 없이는 객체 자체를 만들 수 없어, 빠뜨리면 컴파일이나 기동 단계에서 바로 드러납니다.</li>
-      <li><strong>순환 참조 조기 발견</strong>: A와 B가 서로를 생성자로 요구하면 둘 다 먼저 만들 수 없으므로 기동 시점에 실패합니다.</li>
-      <li><strong>테스트 용이</strong>: 컨테이너 없이 <code>new OrderService(fakePay)</code>로 바로 테스트할 수 있습니다.</li>
+      <li><strong>불변</strong>: 필드를 <code>final</code>로 선언할 수 있어, 생성된 뒤에는 누구도 의존 객체를 바꾸지 못합니다. 실행 중에 결제 클라이언트가 바뀌는 일을 컴파일러가 막아 줍니다.</li>
+      <li><strong>누락 방지</strong>: 의존 객체 없이는 객체 자체를 만들 수 없으므로, 빠뜨리면 컴파일이나 기동 단계에서 바로 드러납니다. 필드 주입은 빠뜨려도 실행 중 <code>NullPointerException</code>으로 늦게 터집니다.</li>
+      <li><strong>순환 참조 조기 발견</strong>: A가 B를, B가 A를 필요로 하는 것을 <dfn title="circular reference">순환 참조</dfn>라 합니다. 둘 다 생성자로 요구하면 어느 쪽도 먼저 만들 수 없어 기동이 실패하고, 설계 문제가 그 자리에서 드러납니다. Spring Boot 2.6부터는 순환 참조를 기본으로 금지합니다.</li>
+      <li><strong>테스트 용이</strong>: 컨테이너 없이 <code>new OrderService(fakePay, fakeRepo)</code>로 바로 테스트할 수 있습니다. 필드 주입은 리플렉션으로 private 필드를 채우므로 컨테이너 밖에서는 채울 방법이 없습니다.</li>
     </ul>
-    <p>필드 주입은 리플렉션으로 private 필드에 값을 넣기 때문에 컨테이너 밖에서는 채울 방법이 없습니다. Spring Boot 2.6부터는 순환 참조 자체를 기본으로 금지합니다.</p>
+    <p>수정자 주입은 선택적이거나 실행 중 바뀌어야 하는 드문 의존성에만, 필드 주입은 테스트 코드 정도에만 씁니다.</p>
   </div>
 </section>
 
 <section class="slide">
   <h2>같은 타입의 Bean이 여럿이면 골라 줘야 한다</h2>
   <div class="split split--even">
-    <pre class="code" data-file="PaymentConfig"><code><span class="k">@Component @Primary</span>
+    <pre class="code" data-file="결제사 두 곳"><code><span class="k">@Component @Primary</span>
 <span class="k">class</span> KakaoPay <span class="k">implements</span> PaymentClient {}
 
 <span class="k">@Component</span>
@@ -129,45 +222,28 @@
 OrderService(<span class="k">@Qualifier</span>(<span class="s">"tossPay"</span>)
              PaymentClient pay)
 
-<span class="c">// 전부 받기</span>
-<span class="hl">Router(Map&lt;String, PaymentClient&gt; all)</span></code></pre>
+<span class="c">// 전부 받기: Bean 이름 → 객체</span>
+<span class="hl">PayRouter(Map&lt;String, PaymentClient&gt; all)</span></code></pre>
     <div class="prose">
-      <p>후보가 둘 이상이면 컨테이너는 무엇을 넣을지 몰라 기동에 실패합니다. <code>@Primary</code>는 기본값을, <code>@Qualifier</code>는 특정 Bean을 지정합니다.</p>
-      <p>마지막 줄처럼 <code>List</code>나 <code>Map</code>으로 모두 받으면 요청마다 결제사를 고르는 <strong>전략 패턴</strong>이 됩니다. 새 결제사를 추가해도 Router는 바뀌지 않습니다.</p>
+      <p>결제사가 두 곳이 되면 <code>PaymentClient</code> 타입 후보가 둘입니다. 컨테이너는 무엇을 넣을지 몰라 기동에 실패합니다. <code>@Primary</code>는 기본으로 쓸 쪽을, <code>@Qualifier</code>는 Bean 이름으로 특정 쪽을 지정합니다.</p>
+      <p>마지막 줄처럼 <code>Map</code>으로 모두 받으면 요청마다 결제사를 골라 쓸 수 있습니다. 바꿔 끼울 수 있는 알고리즘을 인터페이스 뒤에 두는 이 구조를 <dfn title="Strategy pattern">전략 패턴</dfn>이라 하며, 2부에서 다른 패턴과 함께 다시 봅니다.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <h2>컨테이너가 관리하는 객체가 Bean이다</h2>
-  <div class="slide__body">
-    <div class="prose">
-      <p>컨테이너가 만들고 관리하는 객체를 <dfn>빈(Bean)</dfn>이라고 합니다. 컨테이너의 실체는 <code>ApplicationContext</code>로, 기본 기능인 <code>BeanFactory</code>에 이벤트 발행, 메시지, 환경 설정 같은 기능을 더한 것입니다.</p>
-    </div>
-    <table class="compare">
-      <thead><tr><th scope="col">등록 방법</th><th scope="col">@Component</th><th scope="col">@Bean</th></tr></thead>
-      <tbody>
-        <tr><th scope="row">붙이는 곳</th><td>내가 만든 클래스</td><td>@Configuration 안의 메서드</td></tr>
-        <tr><th scope="row">발견 방식</th><td>컴포넌트 스캔이 자동 등록</td><td>메서드 반환값을 등록</td></tr>
-        <tr><th scope="row">주된 용도</th><td class="is-flow">서비스, 리포지토리, 컨트롤러</td><td class="is-flow">외부 라이브러리 객체, 세밀한 설정</td></tr>
-      </tbody>
-    </table>
-  </div>
-</section>
-
-<section class="slide">
-  <h2>Bean의 생명주기와 초기화 콜백</h2>
+  <h2>Bean은 생성, 주입, 초기화 순으로 준비된다</h2>
   <div class="split split--even">
     <ol class="steps">
-      <li><b>객체 생성</b><p>생성자를 호출합니다. 생성자 주입이면 이때 의존성이 함께 들어옵니다.</p></li>
-      <li><b>의존성 주입</b><p>수정자, 필드 주입 대상을 채웁니다.</p></li>
-      <li class="is-key"><b>초기화 콜백</b><p>@PostConstruct가 실행됩니다. 의존성이 모두 준비된 첫 시점입니다.</p></li>
-      <li><b>사용</b><p>애플리케이션이 Bean을 씁니다. 필요하면 이 앞에서 프록시로 감쌉니다.</p></li>
-      <li><b>소멸 콜백</b><p>컨텍스트 종료 시 @PreDestroy로 자원을 정리합니다.</p></li>
+      <li><b>객체 생성</b><p>생성자를 호출합니다. 생성자 주입이면 의존 객체가 이때 함께 들어옵니다.</p></li>
+      <li><b>나머지 주입</b><p>수정자 주입과 필드 주입 대상을 채웁니다.</p></li>
+      <li class="is-key"><b>초기화 콜백</b><p>@PostConstruct 메서드가 실행됩니다. 모든 의존 객체가 채워진 첫 시점입니다.</p></li>
+      <li><b>사용</b><p>애플리케이션이 Bean을 씁니다. 이 직전에 다른 객체로 감싸 바꿔치기하기도 합니다(2부).</p></li>
+      <li><b>소멸 콜백</b><p>컨테이너가 닫힐 때 @PreDestroy 메서드가 자원을 정리합니다.</p></li>
     </ol>
     <div class="prose">
-      <p>생성자 안에서 다른 Bean을 써서 캐시를 채우거나 연결을 여는 코드는 위험합니다. 수정자 주입 대상은 아직 비어 있을 수 있기 때문입니다.</p>
-      <p>그래서 초기화 작업은 <code>@PostConstruct</code>에, 커넥션이나 스레드 풀 정리는 <code>@PreDestroy</code>에 둡니다. 10장의 Pod 종료 절차와 11장의 Graceful Shutdown이 이 소멸 단계와 이어집니다.</p>
+      <p>이 순서를 Bean의 <dfn title="lifecycle">생명주기</dfn>라 합니다. 생성자에서 다른 Bean을 써서 캐시를 채우면 위험합니다. 수정자 주입 대상은 2단계에서야 채워지므로 아직 비어 있을 수 있습니다.</p>
+      <p>그래서 준비 작업은 <code>@PostConstruct</code>에, 커넥션이나 스레드 풀 닫기는 <code>@PreDestroy</code>에 둡니다. 서버를 내릴 때 처리 중인 요청을 마무리하고 자원을 닫는 절차가 이 5단계와 이어지며, 10장과 11장에서 배포 관점으로 다시 봅니다.</p>
     </div>
   </div>
 </section>
@@ -175,16 +251,19 @@ OrderService(<span class="k">@Qualifier</span>(<span class="s">"tossPay"</span>)
 <section class="slide">
   <h2>스코프: Bean을 몇 개, 언제까지 만들까</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>Bean의 <dfn title="scope">스코프</dfn>는 인스턴스를 몇 개 만들고 언제까지 살려 둘지에 대한 규칙입니다. 아무것도 지정하지 않으면 컨테이너 전체에서 하나만 만드는 singleton입니다. 1부 예제의 서비스와 리포지토리는 모두 이 기본값을 씁니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">스코프</th><th scope="col">인스턴스 수</th><th scope="col">소멸 관리</th></tr></thead>
       <tbody>
         <tr><th scope="row">singleton (기본)</th><td class="is-flow">컨테이너당 하나</td><td>컨테이너가 끝까지 관리</td></tr>
-        <tr><th scope="row">prototype</th><td>요청할 때마다 새로</td><td class="is-key">생성 후 손을 뗌</td></tr>
+        <tr><th scope="row">prototype</th><td>꺼낼 때마다 새로</td><td class="is-key">만들어 준 뒤 손을 뗌</td></tr>
         <tr><th scope="row">request</th><td>HTTP 요청마다 하나</td><td>요청이 끝나면 소멸</td></tr>
       </tbody>
     </table>
     <div class="prose">
-      <p>싱글톤 Bean에 prototype Bean을 주입하면 주입이 한 번만 일어나므로 사실상 싱글톤처럼 동작합니다. 매번 새 객체가 필요하면 <code>ObjectProvider</code>로 필요할 때 꺼내 씁니다.</p>
+      <p>함정이 하나 있습니다. 싱글톤 Bean에 prototype Bean을 주입하면 주입은 싱글톤이 만들어질 때 한 번뿐이라, 사실상 싱글톤처럼 쓰입니다. 매번 새 객체가 필요하면 <code>ObjectProvider</code>(필요할 때 컨테이너에서 Bean을 꺼내 주는 도우미)를 주입받아 쓸 때마다 꺼냅니다.</p>
     </div>
   </div>
 </section>
@@ -193,12 +272,12 @@ OrderService(<span class="k">@Qualifier</span>(<span class="s">"tossPay"</span>)
   <h2>싱글톤 Bean은 상태를 가지면 안 된다</h2>
   <div class="split split--center">
     <div class="prose">
-      <p>기본 스코프가 싱글톤인 이유는 요청마다 객체를 만들고 GC하는 비용을 없애기 위해서입니다. 대신 하나의 객체를 <strong>모든 요청 스레드가 동시에</strong> 씁니다.</p>
-      <p>Bean에 변경 가능한 필드를 두면 1장의 경쟁 상태가 그대로 생깁니다. <mark>요청별 값은 지역 변수나 파라미터로</mark> 다루면 각 스레드 스택에 따로 놓이므로 안전합니다.</p>
+      <p>기본이 싱글톤인 이유는 요청마다 서비스 객체를 만들고 5장의 GC가 치우는 비용을 없애기 위해서입니다. 대신 객체 하나를 <strong>모든 요청 스레드가 동시에</strong> 씁니다.</p>
+      <p>서비스에 <code>lastOrder</code> 같은 변경 가능한 필드를 두면, 1장의 경쟁 상태(여러 스레드가 같은 값을 동시에 고쳐 결과가 꼬이는 현상)가 그대로 생깁니다. <mark>요청별 값은 지역 변수나 파라미터로</mark> 다루면 5장에서 본 대로 스레드마다 따로 있는 스택에 놓이므로 안전합니다.</p>
     </div>
     <figure class="figure">
-      <svg class="dg" viewBox="0 0 760 420" role="img" aria-labelledby="f12t">
-        <title id="f12t">요청 스레드 세 개가 하나의 싱글톤 Bean을 동시에 호출하고, Bean의 필드는 공유되어 경쟁 상태가 생긴다</title>
+      <svg class="dg" viewBox="0 0 760 420" role="img" aria-labelledby="f15t">
+        <title id="f15t">요청 스레드 세 개가 하나의 싱글톤 Bean을 동시에 호출하고, Bean의 필드는 공유되어 경쟁 상태가 생긴다</title>
         <rect class="dg-box" x="30" y="40" width="210" height="64"/>
         <text x="135" y="72" text-anchor="middle">요청 스레드 1</text>
         <rect class="dg-box" x="30" y="170" width="210" height="64"/>
@@ -220,11 +299,11 @@ OrderService(<span class="k">@Qualifier</span>(<span class="s">"tossPay"</span>)
   </div>
 </section>
 
-<!-- ===== 2부 원리: 패턴, 프록시, AOP, 트랜잭션, 요청 처리 ============== -->
-<section class="slide slide--divider" data-section="패턴과 프록시" data-depth="core">
+<!-- ===== 2부 원리: 패턴, 프록시, AOP, 트랜잭션 ======================== -->
+<section class="slide slide--divider" data-section="프록시와 트랜잭션" data-depth="core">
   <p class="divider__no">2부</p>
-  <h2>Spring 내부는 패턴과 프록시로 짜여 있다</h2>
-  <p class="lede">Spring이 쓰는 디자인 패턴을 살펴본 뒤, 그중 프록시가 AOP와 @Transactional을 어떻게 가능하게 하는지, 요청 하나가 어떤 길을 지나는지 따라갑니다.</p>
+  <h2>트랜잭션 코드는 어디로 사라졌나</h2>
+  <p class="lede">1부의 OrderService에는 커밋도 롤백도 없습니다. 그런데 <code>@Transactional</code> 한 줄이면 트랜잭션이 걸립니다. 컨테이너가 Bean을 넘겨주는 순간 무엇을 끼워 넣는지, 그 장치가 어떤 설계 패턴에서 왔는지 따라갑니다.</p>
   <div class="depth-shift" aria-label="깊이 전환: 기초에서 원리로">
     <span class="depth-shift__step"><span class="depth" data-depth="basic"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>기초</span>
     <span class="depth-shift__line" aria-hidden="true"></span>
@@ -234,38 +313,47 @@ OrderService(<span class="k">@Qualifier</span>(<span class="s">"tossPay"</span>)
 </section>
 
 <section class="slide">
-  <h2>Spring 곳곳에 디자인 패턴이 있다</h2>
-  <div class="slide__body">
-    <table class="compare">
-      <thead><tr><th scope="col">패턴</th><th scope="col">핵심 아이디어</th><th scope="col">Spring에서 쓰는 곳</th></tr></thead>
-      <tbody>
-        <tr><th scope="row">싱글톤</th><td>인스턴스를 하나만 유지</td><td>기본 Bean 스코프</td></tr>
-        <tr><th scope="row">팩토리</th><td>생성 로직을 한곳에 숨김</td><td>BeanFactory, @Bean 메서드</td></tr>
-        <tr><th scope="row">템플릿 메서드</th><td>뼈대는 고정, 일부만 바꿈</td><td>JdbcTemplate, TransactionTemplate</td></tr>
-        <tr><th scope="row">전략</th><td>알고리즘을 갈아 끼움</td><td>DI로 주입되는 인터페이스</td></tr>
-        <tr><th scope="row">프록시</th><td class="is-flow">대리 객체가 호출을 가로챔</td><td class="is-flow">AOP, @Transactional, 지연 로딩</td></tr>
-        <tr><th scope="row">옵저버</th><td>이벤트를 구독자에게 통지</td><td>ApplicationEvent, @EventListener</td></tr>
-      </tbody>
-    </table>
-    <p class="small">Spring 싱글톤은 GoF 싱글톤과 다릅니다. private 생성자와 static 필드로 클래스가 스스로 유일함을 지키는 대신, 평범한 클래스를 컨테이너가 하나만 만들어 나눠 주므로 POJO로 남고 테스트에서 교체할 수 있습니다.</p>
+  <h2>디자인 패턴은 되풀이되는 해법의 이름이다</h2>
+  <div class="prose prose--cols">
+    <p><dfn title="design pattern">디자인 패턴</dfn>은 객체지향 설계에서 자꾸 마주치는 문제와 그 해법에 이름을 붙여 둔 것입니다. 1994년 네 명의 저자(흔히 <dfn title="Gang of Four">GoF</dfn>)가 23개를 정리한 책이 출발점입니다. 이름이 있으면 "여기는 전략 패턴으로"처럼 설계를 한마디로 주고받을 수 있습니다.</p>
+    <p>Spring 내부는 이 패턴들로 짜여 있어서, 패턴을 알면 Spring의 동작이 예측됩니다. 1부에서 이미 셋을 만났습니다.</p>
+    <p><strong>싱글톤</strong>은 인스턴스를 하나만 두는 패턴입니다. GoF 방식은 생성자를 private으로 막고 static 필드에 하나를 보관해 클래스 스스로 유일함을 지킵니다. 그러면 테스트에서 바꿔 끼울 수 없습니다. Spring은 평범한 클래스를 <mark>컨테이너가 하나만 만들어 나눠 주는</mark> 방식이라, 클래스는 POJO로 남습니다.</p>
+    <p><strong>팩토리</strong>는 객체를 만드는 방법을 한곳에 숨기는 패턴입니다. 쓰는 쪽은 "PaymentClient를 달라"고만 하고 어떤 구현을 어떻게 만드는지 모릅니다. <code>BeanFactory</code>와 <code>@Bean</code> 메서드가 이 역할입니다.</p>
+    <p><strong>전략</strong>은 바꿔 끼울 알고리즘을 인터페이스 뒤에 두는 패턴으로, DI로 주입되는 모든 인터페이스가 그 예입니다. 이어서 나머지 셋인 템플릿 메서드, 옵저버, 프록시를 봅니다.</p>
   </div>
 </section>
 
 <section class="slide">
-  <h2>템플릿 콜백과 옵저버: 반복은 프레임워크로</h2>
-  <div class="split split--even">
-    <pre class="code" data-file="두 가지 패턴"><code><span class="c">// 템플릿: 연결, 예외, 반납은 고정</span>
-jdbc.query(<span class="s">"select * from member"</span>,
-<span class="hl">    (rs, i) -&gt; <span class="k">new</span> Member(rs.getLong(<span class="n">1</span>)));</span>
-
-<span class="c">// 옵저버: 발행자는 구독자를 모름</span>
-events.publishEvent(<span class="k">new</span> Ordered(id));
-
-<span class="k">@TransactionalEventListener</span>
-<span class="k">void</span> on(Ordered e) { mail.send(e); }</code></pre>
+  <h2>템플릿 메서드: 뼈대는 고정, 빈칸만 채운다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="MemberDao.java"><code><span class="c">// 커넥션 획득, 실행, 예외 변환, 반납은</span>
+<span class="c">// JdbcTemplate 안에 고정되어 있다</span>
+List&lt;Member&gt; all = jdbc.query(
+    <span class="s">"select id, name from member"</span>,
+<span class="hl">    (rs, rowNum) -&gt; <span class="k">new</span> Member(</span>
+<span class="hl">        rs.getLong(<span class="s">"id"</span>), rs.getString(<span class="s">"name"</span>)));</span></code></pre>
     <div class="prose">
-      <p><code>JdbcTemplate</code>은 커넥션 획득, 예외 변환, 자원 반납이라는 뼈대를 고정하고, 결과를 객체로 바꾸는 부분만 콜백으로 받습니다.</p>
-      <p>이벤트는 주문 코드와 메일 코드를 떼어 놓습니다. <code>@TransactionalEventListener</code>는 기본적으로 커밋 후에 실행되어, 롤백된 주문에 메일이 나가는 일을 막습니다.</p>
+      <p><dfn title="Template Method pattern">템플릿 메서드</dfn>는 작업의 순서(뼈대)는 고정하고, 달라지는 단계만 바꿔 끼우게 하는 패턴입니다.</p>
+      <p>Java 프로그램이 DB와 대화하는 표준 API인 <dfn title="Java Database Connectivity">JDBC</dfn>로 조회하면, 커넥션 얻기, SQL 실행, 예외 처리, 커넥션 반납을 매번 똑같이 씁니다. <code>JdbcTemplate</code>은 그 뼈대를 품고, 결과 한 행을 객체로 바꾸는 부분만 강조한 람다로 받습니다. 나중에 불려지도록 넘기는 이런 코드를 <dfn title="callback">콜백</dfn>이라 합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>옵저버: 주문 코드는 메일 코드를 모른다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="주문 완료 이벤트"><code><span class="c">// 발행: OrderService 안</span>
+events.publishEvent(<span class="k">new</span> OrderPlaced(orderId));
+
+<span class="c">// 구독: 별도 Bean</span>
+<span class="k">@Component</span>
+<span class="k">class</span> OrderMailer {
+<span class="hl">  <span class="k">@TransactionalEventListener</span></span>
+  <span class="k">void</span> on(OrderPlaced e) { mail.send(e); }
+}</code></pre>
+    <div class="prose">
+      <p><dfn title="Observer pattern">옵저버</dfn>는 어떤 일이 일어났다는 사실(이벤트)을 발행하면, 관심 있는 구독자들이 알아서 반응하게 하는 패턴입니다. 주문 서비스는 메일, 알림, 포인트 적립 코드를 몰라도 되고, 구독자를 추가해도 주문 코드는 그대로입니다.</p>
+      <p><code>@TransactionalEventListener</code>는 기본적으로 주문 트랜잭션이 <strong>커밋된 뒤</strong>에 실행됩니다. 주문이 롤백됐는데 "주문 완료" 메일이 나가는 일을 막기 위해서입니다.</p>
     </div>
   </div>
 </section>
@@ -274,12 +362,12 @@ events.publishEvent(<span class="k">new</span> Ordered(id));
   <h2>프록시는 진짜 객체 앞에 선 대리인이다</h2>
   <div class="split split--center">
     <div class="prose">
-      <p><dfn title="Proxy">프록시</dfn>는 실제 객체와 같은 타입을 가진 대리 객체입니다. 호출을 먼저 받아 부가 기능을 실행하고 실제 객체에 위임합니다.</p>
-      <p>컨테이너가 다른 Bean에 넣어 주는 것이 실제 객체가 아니라 프록시라면, 호출하는 쪽은 코드 한 줄 바꾸지 않고 <mark>모든 호출 앞뒤에 기능이 끼어듭니다</mark>. 이것이 AOP의 토대입니다.</p>
+      <p>마지막이자 이 부의 주인공인 <dfn title="Proxy">프록시</dfn>는 실제 객체와 같은 타입을 가진 대리 객체입니다. 호출을 먼저 받아 부가 기능을 실행하고, 진짜 일은 실제 객체에 맡깁니다(위임).</p>
+      <p>컨테이너가 다른 Bean에 넣어 주는 것이 실제 객체가 아니라 프록시라면, 호출하는 쪽은 코드 한 줄 바꾸지 않고도 <mark>모든 호출 앞뒤에 기능이 끼어듭니다</mark>. 사라진 트랜잭션 코드가 바로 여기에 있습니다.</p>
     </div>
     <figure class="figure">
-      <svg class="dg" viewBox="0 0 760 380" role="img" aria-labelledby="f17t">
-        <title id="f17t">클라이언트가 프록시를 호출하면 프록시가 부가 기능을 실행한 뒤 실제 객체에 위임하고 결과를 돌려준다</title>
+      <svg class="dg" viewBox="0 0 760 380" role="img" aria-labelledby="f21t">
+        <title id="f21t">클라이언트가 프록시를 호출하면 프록시가 부가 기능을 실행한 뒤 실제 객체에 위임하고 결과를 돌려준다</title>
         <rect class="dg-box" x="20" y="130" width="160" height="64"/>
         <text x="100" y="162" text-anchor="middle">호출하는 Bean</text>
         <rect class="dg-zone" x="240" y="70" width="500" height="200"/>
@@ -302,21 +390,59 @@ events.publishEvent(<span class="k">new</span> Ordered(id));
 </section>
 
 <section class="slide">
-  <h2>AOP: 흩어진 공통 관심사를 한곳에</h2>
+  <h2>여섯 패턴이 Spring에서 쓰이는 자리</h2>
+  <div class="slide__body">
+    <p class="lede">지금까지 본 패턴을 Spring 안의 위치로 정리합니다. 프록시 행이 이 부의 나머지와 4부의 지연 로딩까지 이어집니다.</p>
+    <table class="compare">
+      <thead><tr><th scope="col">패턴</th><th scope="col">핵심 아이디어</th><th scope="col">Spring에서 쓰는 곳</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">싱글톤</th><td>인스턴스를 하나만 유지</td><td>기본 Bean 스코프</td></tr>
+        <tr><th scope="row">팩토리</th><td>생성 방법을 한곳에 숨김</td><td>BeanFactory, @Bean 메서드</td></tr>
+        <tr><th scope="row">전략</th><td>알고리즘을 갈아 끼움</td><td>DI로 주입되는 인터페이스</td></tr>
+        <tr><th scope="row">템플릿 메서드</th><td>뼈대는 고정, 일부만 바꿈</td><td>JdbcTemplate</td></tr>
+        <tr><th scope="row">옵저버</th><td>이벤트를 구독자에게 통지</td><td>publishEvent, 이벤트 리스너</td></tr>
+        <tr><th scope="row">프록시</th><td class="is-flow">대리 객체가 호출을 가로챔</td><td class="is-flow">AOP, @Transactional, 지연 로딩</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>같은 코드가 모든 서비스 메서드에 반복된다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="OrderService.java"><code><span class="k">public</span> Order place(OrderReq r) {
+<span class="hl">  <span class="k">long</span> t = System.nanoTime();</span>
+  <span class="k">try</span> {
+    <span class="k">return</span> doPlace(r);   <span class="c">// 진짜 업무</span>
+  } <span class="k">finally</span> {
+<span class="hl">    log.info(<span class="s">"place {}ns"</span>, System.nanoTime() - t);</span>
+  }
+}
+<span class="c">// cancel(), refund(), MemberService.join() …</span>
+<span class="c">// 수십 개 메서드에 같은 다섯 줄</span></code></pre>
+    <div class="prose">
+      <p>프록시를 어디에 쓰는지 예로 봅니다. 서비스 메서드마다 실행 시간을 로그로 남기고 싶다면, 강조한 측정 코드를 모든 메서드에 복사해야 합니다. 업무 코드보다 측정 코드가 길어지고, 로그 형식을 바꾸려면 수십 곳을 고쳐야 합니다.</p>
+      <p>트랜잭션, 권한 확인, 로깅처럼 여러 클래스에 가로로 걸친 기능을 <dfn title="cross-cutting concern">횡단 관심사</dfn>라 합니다. 이것을 한 모듈로 뽑아내는 것이 AOP입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>AOP: 무엇을, 어디에 끼울지 따로 적는다</h2>
   <div class="split split--wide-left">
     <pre class="code" data-file="TimingAspect.java"><code><span class="k">@Aspect @Component</span>
 <span class="k">class</span> TimingAspect {
-<span class="hl">  <span class="k">@Around</span>(<span class="s">"execution(* *..*Service.*(..))"</span>)</span>
+<span class="hl">  <span class="k">@Around</span>(<span class="s">"execution(* com.shop..*Service.*(..))"</span>)</span>
   Object time(ProceedingJoinPoint jp)
       <span class="k">throws</span> Throwable {
     <span class="k">long</span> t = System.nanoTime();
-    <span class="k">try</span> { <span class="k">return</span> jp.proceed(); }
+<span class="hl">    <span class="k">try</span> { <span class="k">return</span> jp.proceed(); }</span>
     <span class="k">finally</span> { log(jp, System.nanoTime() - t); }
   }
 }</code></pre>
     <div class="prose">
-      <p>로깅, 실행 시간 측정, 트랜잭션처럼 여러 클래스에 걸친 기능을 <dfn title="cross-cutting concern">횡단 관심사</dfn>라고 합니다. <dfn title="Aspect-Oriented Programming">AOP</dfn>는 이를 모듈 하나로 뽑아냅니다.</p>
-      <p>Aspect는 무엇을(<strong>Advice</strong>) 어디에(<strong>Pointcut</strong>) 적용할지 묶은 것이고, 적용되는 실행 지점을 <strong>JoinPoint</strong>라 합니다. Spring AOP의 JoinPoint는 메서드 실행뿐입니다.</p>
+      <p>앞의 다섯 줄이 이 클래스 하나로 옮겨졌습니다. <dfn>Aspect</dfn>는 부가 기능 모듈입니다. 실행할 코드 <code>time()</code>이 <dfn>Advice</dfn>이고, <code>@Around</code>는 대상 메서드의 앞과 뒤를 모두 감싼다는 뜻입니다.</p>
+      <p>괄호 안 표현식이 <dfn>Pointcut</dfn>으로, "com.shop 아래 이름이 Service로 끝나는 클래스의 모든 메서드"를 고릅니다. 고른 실행 지점 하나하나가 <dfn>JoinPoint</dfn>이며, <code>jp.proceed()</code>가 실제 메서드를 호출합니다. Spring AOP의 JoinPoint는 메서드 실행뿐입니다.</p>
     </div>
   </div>
 </section>
@@ -325,33 +451,73 @@ events.publishEvent(<span class="k">new</span> Ordered(id));
   <h2>프록시는 Bean 등록 순간에 바꿔치기된다</h2>
   <div class="split split--even">
     <ol class="steps">
-      <li><b>Bean 생성과 주입</b><p>컨테이너가 원본 객체를 만들고 의존성을 채웁니다.</p></li>
-      <li><b>후처리기 검사</b><p>BeanPostProcessor가 Pointcut에 맞는 메서드가 있는지 봅니다.</p></li>
-      <li class="is-key"><b>프록시 생성</b><p>맞으면 원본을 감싼 프록시를 만들어 원본 대신 등록합니다.</p></li>
-      <li><b>주입</b><p>다른 Bean은 이 프록시를 주입받습니다.</p></li>
+      <li><b>Bean 생성과 주입</b><p>컨테이너가 원본 OrderService를 만들고 의존 객체를 채웁니다.</p></li>
+      <li><b>후처리기 검사</b><p>BeanPostProcessor가 Pointcut에 걸리는 메서드가 있는지 봅니다.</p></li>
+      <li class="is-key"><b>프록시 생성</b><p>걸리면 원본을 감싼 프록시를 만들어 원본 대신 컨테이너에 등록합니다.</p></li>
+      <li><b>주입</b><p>OrderController는 원본이 아니라 이 프록시를 주입받습니다.</p></li>
     </ol>
     <div class="prose">
-      <p>바이트코드를 바꾸는 시점을 <dfn title="weaving">위빙</dfn>이라 합니다. AspectJ는 컴파일이나 클래스 로딩 때 코드를 직접 바꾸지만, Spring AOP는 <strong>런타임에 프록시를 덧씌우는</strong> 방식입니다.</p>
-      <p>그래서 Spring AOP는 설정이 단순한 대신, 프록시를 거치는 외부 호출에만 적용됩니다. 이 한계가 곧 @Transactional의 함정이 됩니다.</p>
+      <p>1부 생명주기의 "사용" 직전 단계를 확대한 그림입니다. <dfn>BeanPostProcessor</dfn>는 초기화가 끝난 Bean을 받아 다른 객체로 바꿔 돌려줄 수 있는 확장 지점으로, AOP가 여기서 동작합니다.</p>
+      <p>부가 기능을 대상 코드에 엮는 일을 <dfn title="weaving">위빙</dfn>이라 합니다. AOP 전용 도구인 <dfn>AspectJ</dfn>는 컴파일이나 클래스 로딩 때 바이트코드를 직접 고치지만, Spring AOP는 <strong>실행 중에 프록시를 덧씌웁니다</strong>. 설정이 단순한 대신 프록시를 거치는 호출에만 적용되며, 이 한계가 곧 @Transactional의 함정이 됩니다.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <h2>JDK 동적 프록시와 CGLIB</h2>
+  <h2>프록시 클래스를 실행 중에 만드는 두 방법</h2>
+  <div class="prose prose--cols">
+    <p>프록시는 실제 객체와 같은 타입이어야 합니다. 그런데 Spring은 우리 서비스 클래스를 미리 알 수 없으니, 기동 중에 프록시 클래스를 즉석에서 만들어야 합니다. 방법은 두 가지입니다.</p>
+    <p><dfn title="JDK dynamic proxy">JDK 동적 프록시</dfn>는 Java 표준 기능입니다. <code>java.lang.reflect.Proxy</code>에 "이 인터페이스들을 구현한 객체를 만들어 달라"고 하면, 모든 메서드 호출을 하나의 처리기(<code>InvocationHandler</code>)로 보내는 클래스를 실행 중에 생성합니다. 5장의 리플렉션 위에 있는 기능이라 <mark>인터페이스가 반드시 있어야</mark> 하고, 만들어진 프록시는 그 인터페이스 타입일 뿐 <code>OrderService</code> 클래스 타입은 아닙니다.</p>
+    <p><dfn title="Code Generation Library">CGLIB</dfn>은 바이트코드를 생성하는 라이브러리로, 대상 클래스를 <strong>상속한 하위 클래스</strong>를 만들고 메서드를 오버라이드해 호출을 가로챕니다. 인터페이스가 없어도 되고 구체 클래스 타입으로 주입할 수 있습니다. 대신 상속과 오버라이드에 기대므로 final 클래스와 final 메서드는 가로챌 수 없습니다. 지금은 Spring에 포함되어 함께 배포됩니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Spring Boot는 기본으로 CGLIB을 쓴다</h2>
   <div class="slide__body">
     <table class="compare">
       <thead><tr><th scope="col">항목</th><th scope="col">JDK 동적 프록시</th><th scope="col">CGLIB</th></tr></thead>
       <tbody>
-        <tr><th scope="row">만드는 방법</th><td>인터페이스를 구현한 클래스 생성</td><td>대상 클래스를 상속한 하위 클래스 생성</td></tr>
+        <tr><th scope="row">만드는 방법</th><td>인터페이스 구현 클래스 생성</td><td>대상 클래스의 하위 클래스 생성</td></tr>
         <tr><th scope="row">조건</th><td>인터페이스 필수</td><td>클래스만 있어도 됨</td></tr>
-        <tr><th scope="row">주입 타입</th><td class="is-key">구체 클래스 타입으로 주입 불가</td><td>구체 클래스 타입도 가능</td></tr>
-        <tr><th scope="row">제약</th><td>인터페이스 메서드만 가로챔</td><td>final 클래스와 메서드는 불가</td></tr>
+        <tr><th scope="row">구체 타입 주입</th><td class="is-key">불가 (인터페이스로만)</td><td>가능</td></tr>
+        <tr><th scope="row">가로채지 못하는 것</th><td>인터페이스에 없는 메서드</td><td>final 클래스와 메서드</td></tr>
       </tbody>
     </table>
     <div class="prose">
-      <p>JDK 프록시는 5장의 리플렉션 API로 인터페이스 구현체를 실행 중에 만들고, CGLIB은 바이트코드로 하위 클래스를 만듭니다. Spring Boot는 <code>spring.aop.proxy-target-class=true</code>가 기본이라 CGLIB을 씁니다. 구체 타입 주입에서 생기는 오류를 없애기 위해서입니다.</p>
+      <p>JDK 프록시를 쓰면, 컨트롤러가 <code>OrderService</code> 클래스 타입으로 주입받으려 할 때 프록시가 그 타입이 아니어서 기동이 실패합니다. 이런 혼란을 없애려고 Spring Boot는 2.0부터 <code>spring.aop.proxy-target-class=true</code>를 기본으로 두어, 인터페이스가 있어도 CGLIB을 씁니다.</p>
     </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>프록시가 없다면 트랜잭션은 이렇게 쓴다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="JDBC로 직접 쓴 트랜잭션"><code>Connection con = dataSource.getConnection();
+<span class="k">try</span> {
+<span class="hl">  con.setAutoCommit(<span class="k">false</span>);  <span class="c">// 트랜잭션 시작</span></span>
+  stockDao.decrease(con, itemId);
+  orderDao.insert(con, order);
+<span class="hl">  con.commit();</span>
+} <span class="k">catch</span> (Exception e) {
+  con.rollback();
+  <span class="k">throw</span> e;
+} <span class="k">finally</span> {
+  con.close();   <span class="c">// 풀에 반납</span>
+}</code></pre>
+    <div class="prose">
+      <p>4장에서 트랜잭션은 "전부 되거나 전혀 안 되는" 작업 단위였고, DB 커넥션 하나 위에서 열립니다. JDBC 커넥션은 기본이 <dfn title="auto-commit">자동 커밋</dfn>, 즉 SQL 한 문장마다 바로 커밋하는 모드라서, 여러 문장을 묶으려면 이를 끄고 직접 커밋해야 합니다.</p>
+      <p>문제는 둘입니다. 이 뼈대가 모든 서비스 메서드에 반복되고, 같은 커넥션을 DAO(리포지토리처럼 DB 접근만 맡는 객체)마다 인자로 넘겨야 합니다. JPA로 바꾸면 트랜잭션 API 자체가 달라져 전부 다시 써야 합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>트랜잭션 매니저가 기술 차이를 감춘다</h2>
+  <div class="prose">
+    <p>두 번째 문제, 기술마다 API가 다른 문제는 1부에서 예고한 PSA로 풉니다. Spring은 트랜잭션을 시작, 커밋, 롤백하는 공통 인터페이스 <code>PlatformTransactionManager</code>를 두고, 기술별 구현을 Bean으로 등록합니다. JDBC나 MyBatis(4부에서 소개할 SQL 매퍼)에는 <code>DataSourceTransactionManager</code>가, JPA에는 <code>JpaTransactionManager</code>가 쓰이며, Spring Boot는 클래스패스에 있는 라이브러리를 보고 알맞은 것을 자동으로 등록합니다.</p>
+    <p>첫 번째 문제, 반복되는 뼈대는 프록시로 풉니다. 앞 슬라이드의 try, commit, rollback, close 뼈대가 <code>TransactionInterceptor</code>라는 Advice 안에 한 번만 들어 있고, <code>@Transactional</code>은 "이 메서드를 그 Advice로 감싸라"는 Pointcut 표시입니다.</p>
+    <p>마지막 남은 질문은 커넥션을 인자로 넘기지 않고도 서비스 안의 여러 리포지토리가 어떻게 같은 커넥션을 쓰느냐입니다. 다음 슬라이드에서 단계별로 봅니다.</p>
   </div>
 </section>
 
@@ -359,15 +525,15 @@ events.publishEvent(<span class="k">new</span> Ordered(id));
   <h2>@Transactional은 프록시가 여는 트랜잭션이다</h2>
   <div class="split split--even">
     <ol class="steps">
-      <li><b>프록시가 호출을 받음</b><p>TransactionInterceptor가 트랜잭션 속성을 읽습니다.</p></li>
+      <li><b>프록시가 호출을 받음</b><p>TransactionInterceptor가 메서드의 트랜잭션 속성을 읽습니다.</p></li>
       <li class="is-key"><b>커넥션 획득, 자동 커밋 끔</b><p>트랜잭션 매니저가 풀에서 커넥션을 받아 현재 스레드에 묶습니다.</p></li>
-      <li><b>실제 메서드 실행</b><p>안의 리포지토리는 스레드에 묶인 같은 커넥션을 씁니다.</p></li>
+      <li><b>실제 메서드 실행</b><p>안의 리포지토리는 스레드에 묶인 같은 커넥션을 찾아 씁니다.</p></li>
       <li><b>커밋 또는 롤백</b><p>정상 반환이면 커밋, 롤백 대상 예외면 롤백합니다.</p></li>
-      <li><b>커넥션 반납</b><p>스레드 바인딩을 풀고 커넥션을 풀에 돌려줍니다.</p></li>
+      <li><b>커넥션 반납</b><p>스레드와의 연결을 풀고 커넥션을 풀에 돌려줍니다.</p></li>
     </ol>
     <div class="prose">
-      <p>여러 리포지토리가 같은 트랜잭션에 묶이는 비밀은 2단계입니다. 커넥션을 5장의 <code>ThreadLocal</code>에 보관하므로, 같은 스레드의 코드는 파라미터 없이도 같은 커넥션을 찾습니다.</p>
-      <p>4장의 트랜잭션이 DB 커넥션 단위라는 사실이 여기서 그대로 드러납니다. <mark>트랜잭션이 열려 있는 동안 커넥션 하나를 점유</mark>합니다.</p>
+      <p>비밀은 2단계입니다. 5장의 <code>ThreadLocal</code>, 즉 스레드마다 따로 값을 두는 저장소에 커넥션을 보관합니다(<code>TransactionSynchronizationManager</code>). 요청 하나는 스레드 하나가 처리하므로, 같은 스레드의 코드는 인자 없이도 같은 커넥션을 찾습니다.</p>
+      <p>이 그림에서 운영에 중요한 사실이 하나 나옵니다. <mark>트랜잭션이 열려 있는 동안 4장의 커넥션 풀에서 커넥션 하나를 점유</mark>합니다. 5부의 장애 이야기는 모두 여기서 출발합니다.</p>
     </div>
   </div>
 </section>
@@ -385,8 +551,8 @@ events.publishEvent(<span class="k">new</span> Ordered(id));
   <span class="k">public void</span> place(Req r) { … }
 }</code></pre>
     <figure class="figure">
-      <svg class="dg" viewBox="0 0 760 420" role="img" aria-labelledby="f22t">
-        <title id="f22t">외부 호출은 프록시를 거쳐 placeAll로 들어가지만, placeAll에서 this.place를 부르면 프록시를 우회해 트랜잭션이 시작되지 않는다</title>
+      <svg class="dg" viewBox="0 0 760 420" role="img" aria-labelledby="f34t">
+        <title id="f34t">외부 호출은 프록시를 거쳐 placeAll로 들어가지만, placeAll에서 this.place를 부르면 프록시를 우회해 트랜잭션이 시작되지 않는다</title>
         <rect class="dg-box" x="20" y="60" width="160" height="64"/>
         <text x="100" y="92" text-anchor="middle">컨트롤러</text>
         <rect class="dg-box dg-box--muted" x="230" y="60" width="180" height="64"/>
@@ -405,17 +571,17 @@ events.publishEvent(<span class="k">new</span> Ordered(id));
         <text class="dg-label--sm dg-label--key" x="320" y="160" text-anchor="middle">트랜잭션 시작 코드는</text>
         <text class="dg-label--sm dg-label--key" x="320" y="184" text-anchor="middle">여기에만 있다</text>
       </svg>
-      <figcaption>place()의 트랜잭션 로직은 프록시에 있습니다. this로 부르면 그 코드를 건너뜁니다.</figcaption>
+      <figcaption>컨트롤러가 부른 placeAll()에는 @Transactional이 없고, 그 안의 place() 호출은 this를 통해 실제 객체로 바로 갑니다.</figcaption>
     </figure>
   </div>
 </section>
 
 <section class="slide">
-  <h2>self-invocation과 private 메서드의 해법</h2>
+  <h2>자기 호출과 private 메서드에는 걸리지 않는다</h2>
   <div class="prose">
-    <p>같은 클래스 안에서 <code>this.place()</code>를 부르는 것을 <dfn title="self-invocation">자기 호출</dfn>이라 합니다. 가장 깔끔한 해결은 <strong>트랜잭션 메서드를 다른 Bean으로 분리</strong>해 프록시를 거치게 하는 것입니다. 자기 자신을 주입받는 방법도 있지만 구조를 흐립니다.</p>
-    <p>private 메서드에도 적용되지 않습니다. CGLIB은 하위 클래스에서 오버라이드로 가로채는데, private과 final 메서드는 오버라이드할 수 없기 때문입니다. Spring 6.0부터 CGLIB 프록시는 protected와 package-private 메서드까지 지원합니다.</p>
-    <p>정말 내부 호출까지 트랜잭션이 필요하면 바이트코드를 직접 바꾸는 AspectJ 모드를 쓸 수 있지만, 대부분은 구조를 고치는 편이 낫습니다.</p>
+    <p>같은 클래스 안에서 <code>this.place()</code>처럼 자기 메서드를 부르는 것을 <dfn title="self-invocation">자기 호출</dfn>이라 합니다. <code>this</code>는 프록시가 아니라 실제 객체를 가리키므로, 프록시에 있는 트랜잭션 시작 코드를 건너뜁니다. 가장 깔끔한 해결은 <strong>트랜잭션 메서드를 다른 Bean으로 분리</strong>해 호출이 프록시를 거치게 하는 것입니다. 자기 자신을 주입받는 우회법도 있지만 구조를 흐립니다.</p>
+    <p>private 메서드에도 걸리지 않습니다. CGLIB은 하위 클래스에서 오버라이드해 가로채는데, private과 final 메서드는 오버라이드할 수 없기 때문입니다. Spring 6.0부터 CGLIB 프록시에서는 protected와 package-private 메서드까지 트랜잭션이 적용됩니다.</p>
+    <p>내부 호출까지 정말 필요하면 바이트코드를 직접 고치는 AspectJ 위빙을 켤 수 있지만, 빌드 설정이 복잡해지므로 대부분은 클래스 구조를 고치는 편이 낫습니다.</p>
   </div>
 </section>
 
@@ -423,12 +589,12 @@ events.publishEvent(<span class="k">new</span> Ordered(id));
   <h2>전파: 이미 트랜잭션이 있으면 어떻게 할까</h2>
   <div class="split split--center">
     <div class="prose">
-      <p>트랜잭션 메서드가 다른 트랜잭션 메서드를 부를 때의 규칙이 <dfn title="propagation">전파 속성</dfn>입니다. 기본값 <code>REQUIRED</code>는 있으면 참여하고 없으면 새로 엽니다. 안쪽에서 롤백이 나면 바깥까지 함께 롤백됩니다.</p>
-      <p><code>REQUIRES_NEW</code>는 바깥을 잠시 멈추고 <mark>커넥션을 하나 더 받아</mark> 독립 트랜잭션을 엽니다. 실패해도 남겨야 하는 감사 로그 같은 곳에 씁니다.</p>
+      <p>주문 서비스가 트랜잭션 안에서 감사 로그(누가 언제 무엇을 했는지 남기는 기록) 서비스의 트랜잭션 메서드를 부르면, 둘을 하나로 묶을지 따로 둘지 정해야 합니다. 이 규칙이 <dfn title="propagation">전파 속성</dfn>입니다. 기본값 <code>REQUIRED</code>는 바깥 트랜잭션이 있으면 참여하고 없으면 새로 엽니다. 물리적으로 트랜잭션 하나이므로 함께 커밋되고 함께 롤백됩니다.</p>
+      <p><code>REQUIRES_NEW</code>는 바깥을 잠시 멈추고 <mark>커넥션을 하나 더 받아</mark> 독립 트랜잭션을 엽니다. 주문이 실패해도 남겨야 하는 감사 로그에 씁니다. 그 밖에 <code>MANDATORY</code>, <code>NESTED</code> 등이 있지만 실무는 이 둘이 대부분입니다.</p>
     </div>
     <figure class="figure">
-      <svg class="dg" viewBox="0 0 760 400" role="img" aria-labelledby="f24t">
-        <title id="f24t">REQUIRED는 안쪽 메서드가 바깥 트랜잭션에 참여하고, REQUIRES_NEW는 바깥 트랜잭션을 중단한 채 두 번째 커넥션으로 새 트랜잭션을 연다</title>
+      <svg class="dg" viewBox="0 0 760 400" role="img" aria-labelledby="f36t">
+        <title id="f36t">REQUIRED는 안쪽 메서드가 바깥 트랜잭션에 참여하고, REQUIRES_NEW는 바깥 트랜잭션을 중단한 채 두 번째 커넥션으로 새 트랜잭션을 연다</title>
         <text class="dg-label--lg" x="40" y="34" text-anchor="start">REQUIRED</text>
         <rect class="dg-box dg-box--flow" x="40" y="54" width="680" height="56"/>
         <text x="380" y="82" text-anchor="middle">바깥 트랜잭션 (커넥션 #1)</text>
@@ -444,7 +610,7 @@ events.publishEvent(<span class="k">new</span> Ordered(id));
         <rect class="dg-box dg-box--key" x="240" y="324" width="280" height="56"/>
         <text class="dg-label--sm dg-label--key" x="380" y="352" text-anchor="middle">커넥션 #2, 독립 커밋</text>
       </svg>
-      <figcaption>REQUIRES_NEW 동안 한 요청이 커넥션 두 개를 붙잡습니다. 4부에서 이것이 장애로 이어지는 경우를 봅니다.</figcaption>
+      <figcaption>REQUIRES_NEW 동안 한 요청이 커넥션 두 개를 붙잡습니다. 5부에서 이것이 장애로 이어지는 경우를 봅니다.</figcaption>
     </figure>
   </div>
 </section>
@@ -465,62 +631,165 @@ events.publishEvent(<span class="k">new</span> Ordered(id));
 <span class="k">void</span> c() <span class="k">throws</span> IOException { … }
 <span class="c">// 모든 예외에서 롤백</span></code></pre>
     <div class="prose">
-      <p>Spring은 <code>RuntimeException</code>과 <code>Error</code>에서만 롤백합니다. 5장에서 본 대로 Checked 예외는 호출자가 복구할 수 있는 상황이라는 전제를 따른 설계입니다.</p>
-      <p>안쪽 REQUIRED 메서드의 예외를 바깥에서 catch해도 트랜잭션은 이미 롤백 전용으로 표시되어, 커밋 시점에 <code>UnexpectedRollbackException</code>이 납니다.</p>
+      <p>프록시는 메서드가 예외로 끝나면 롤백할지 따져 봅니다. 기본 규칙은 <code>RuntimeException</code>과 <code>Error</code>에서만 롤백하는 것입니다.</p>
+      <p>5장에서 Checked 예외는 "호출자가 대응할 수 있는 상황", Unchecked는 "코드를 고쳐야 하는 상황"이었습니다. Spring은 대응 가능한 상황이면 작업 결과를 살릴 수도 있다고 보고 커밋합니다. 의도와 다르면 <code>rollbackFor</code>로 대상을 넓힙니다.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <h2>readOnly=true는 힌트 이상의 일을 한다</h2>
-  <div class="prose">
-    <p><code>@Transactional(readOnly = true)</code>를 붙이면 JPA(Hibernate) 환경에서 flush 모드가 수동으로 바뀌어 <strong>변경 감지와 flush를 건너뜁니다</strong>. 엔티티 스냅샷을 유지할 필요도 줄어 대량 조회에서 메모리와 CPU를 아낍니다.</p>
-    <p>JDBC 커넥션에도 읽기 전용 힌트가 전달되어, DB나 드라이버가 최적화에 쓸 수 있습니다. 4장의 읽기/쓰기 분리 구조에서는 이 속성을 보고 <mark>조회 트랜잭션을 Replica로 라우팅</mark>하도록 구성하는 경우가 많습니다.</p>
-    <p>그래서 서비스 클래스에 <code>readOnly = true</code>를 기본으로 두고, 쓰기 메서드에만 <code>@Transactional</code>을 다시 붙이는 패턴을 흔히 씁니다.</p>
+  <h2>안쪽 예외는 잡아도 롤백 표시가 남는다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="OrderService.java"><code><span class="k">@Transactional</span>
+<span class="k">public void</span> place(OrderReq r) {
+  orderRepo.save(r.toOrder());
+  <span class="k">try</span> {
+<span class="hl">    pointService.add(r.memberId()); <span class="c">// REQUIRED</span></span>
+  } <span class="k">catch</span> (RuntimeException e) {
+    log.warn(<span class="s">"포인트 실패, 주문은 진행"</span>);
+  }
+}
+<span class="c">// 커밋 시점:</span>
+<span class="c">// UnexpectedRollbackException</span></code></pre>
+    <div class="prose">
+      <p>포인트 적립이 실패해도 주문은 살리려고 예외를 잡았습니다. 그런데 커밋 시점에 <code>UnexpectedRollbackException</code>이 나고 주문까지 롤백됩니다.</p>
+      <p>이유는 REQUIRED의 정의에 있습니다. 안쪽과 바깥이 물리적으로 한 트랜잭션이라 안쪽만 따로 롤백할 수 없습니다. 그래서 안쪽 프록시는 예외가 지나갈 때 트랜잭션에 <strong>롤백 전용(rollback-only)</strong> 표시만 남기고, 바깥이 커밋하려 할 때 이 표시를 보고 롤백합니다. 정말 분리하려면 포인트 쪽을 REQUIRES_NEW로 두거나 트랜잭션 밖에서 호출합니다.</p>
+    </div>
   </div>
 </section>
 
-<section class="slide" data-section="요청 처리">
+<!-- ===== 3부 원리: 요청 처리 ======================================== -->
+<section class="slide slide--divider" data-section="요청 처리">
+  <p class="divider__no">3부</p>
+  <h2>요청은 어떤 길로 컨트롤러에 닿는가</h2>
+  <p class="lede">2부까지는 서비스 Bean 안을 들여다봤습니다. 이제 바깥으로 나가, <code>POST /orders</code> 요청이 2장의 WAS에 도착해서 OrderController 메서드가 불리기까지 어떤 스레드가 어떤 객체를 거치는지 따라갑니다.</p>
+</section>
+
+<section class="slide">
+  <h2>서블릿은 Java 웹 요청 처리의 표준 계약이다</h2>
+  <div class="prose">
+    <p>2장에서 웹 서버는 연결을, WAS는 로직을 맡는다고 했습니다. Java 진영에서 WAS와 애플리케이션 사이의 약속이 <dfn title="Servlet">서블릿</dfn>입니다. 서블릿은 "HTTP 요청 객체를 받아 응답 객체에 결과를 쓰는" 메서드(<code>service(request, response)</code>)를 가진 인터페이스이고, 이 계약을 지키면 어느 WAS에서든 돌아갑니다.</p>
+    <p>서블릿을 실행해 주는 쪽이 <dfn title="servlet container">서블릿 컨테이너</dfn>이며, Tomcat이 대표입니다. 소켓에서 바이트를 읽어 HTTP를 해석하고, 요청 객체를 만들고, 스레드를 배정해 서블릿을 호출하는 일을 Tomcat이 합니다.</p>
+    <p>Spring MVC 입장에서 보면 Tomcat에 등록된 서블릿은 <code>DispatcherServlet</code> <mark>하나뿐</mark>입니다. 모든 요청이 이 서블릿으로 들어오고, 거기서 Spring이 컨트롤러를 고릅니다. Spring Boot는 이 Tomcat을 애플리케이션 안에 넣어(내장 Tomcat) 함께 띄웁니다.</p>
+  </div>
+</section>
+
+<section class="slide">
   <h2>요청 하나에 스레드 하나: Tomcat 스레드 풀</h2>
-  <div class="slide__body">
+  <div class="split split--even">
+    <ol class="steps">
+      <li><b>OS 대기열</b><p>커널이 2장의 3-way handshake를 마친 연결을 Tomcat이 꺼내 갈 때까지 쌓아 둡니다.</p></li>
+      <li><b>연결 수락</b><p>Tomcat이 연결을 받아 관리 목록에 올립니다. 이 목록에도 상한이 있습니다.</p></li>
+      <li class="is-key"><b>워커 스레드 배정</b><p>요청 데이터가 도착하면 풀에서 스레드 하나를 꺼내 이 요청에 붙입니다.</p></li>
+      <li><b>응답 후 반납</b><p>응답을 다 쓰면 스레드를 풀로 돌려보냅니다.</p></li>
+    </ol>
     <div class="prose">
-      <p>Spring MVC는 서블릿 컨테이너인 Tomcat 위에서 돕니다. Tomcat은 연결을 받으면 <strong>워커 스레드 풀</strong>에서 스레드 하나를 꺼내, 응답이 끝날 때까지 그 요청에 붙여 둡니다. 1장의 I/O 바운드 풀 크기 원리가 여기에 적용됩니다.</p>
+      <p>Tomcat은 요청마다 스레드를 새로 만들지 않고 미리 만든 <strong>워커 스레드 풀</strong>에서 빌려줍니다. 스레드 생성 비용을 아끼고, 동시에 도는 스레드 수에 상한을 두기 위해서입니다.</p>
+      <p>중요한 점은 3단계의 스레드가 <mark>응답이 끝날 때까지 이 요청에 붙어 있다</mark>는 것입니다. DB나 결제 API를 기다리는 동안에도 스레드는 놀면서 점유됩니다. 2부에서 ThreadLocal로 커넥션을 찾을 수 있었던 것도 요청과 스레드가 1:1이기 때문입니다.</p>
     </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>세 단계마다 상한이 하나씩 있다</h2>
+  <div class="slide__body">
+    <p class="lede">앞 슬라이드의 단계마다 Spring Boot 설정이 하나씩 대응합니다.</p>
     <table class="compare">
       <thead><tr><th scope="col">Spring Boot 설정</th><th scope="col">기본값</th><th scope="col">의미</th></tr></thead>
       <tbody>
-        <tr><th scope="row"><code>server.tomcat.threads.max</code></th><td class="num">200</td><td>동시에 처리하는 요청 수 상한</td></tr>
-        <tr><th scope="row"><code>server.tomcat.max-connections</code></th><td class="num">8192</td><td>동시에 붙잡는 연결 수</td></tr>
-        <tr><th scope="row"><code>server.tomcat.accept-count</code></th><td class="num">100</td><td>그 너머 OS 대기열 길이</td></tr>
+        <tr><th scope="row"><code>server.tomcat.accept-count</code></th><td class="num">100</td><td>1단계 OS 대기열 길이</td></tr>
+        <tr><th scope="row"><code>server.tomcat.max-connections</code></th><td class="num">8192</td><td>2단계 동시에 붙잡는 연결 수</td></tr>
+        <tr><th scope="row"><code>server.tomcat.threads.max</code></th><td class="num">200</td><td class="is-flow">3단계 동시 처리 요청 수</td></tr>
       </tbody>
     </table>
-    <p class="small">Java 21 이상에서 <code>spring.threads.virtual.enabled=true</code>로 5장의 Virtual Thread를 쓰면 threads.max 설정은 효과가 없습니다.</p>
+    <div class="prose">
+      <p>스레드 200개가 모두 바쁘면 새 요청은 연결만 된 채 기다리고, 연결 8192개와 대기열 100개까지 차면 새 연결이 거절됩니다. 200이라는 값은 1장에서 본 원리대로, 대부분의 시간을 I/O 대기로 보내는 웹 요청에 맞춘 큰 숫자입니다. 다만 4장의 HikariCP 커넥션 풀 기본값은 10개라서, 스레드 200개가 DB를 동시에 원하면 190개는 커넥션을 기다리게 됩니다. 5부에서 이 차이가 장애가 되는 모습을 봅니다.</p>
+      <p>Java 21 이상에서 <code>spring.threads.virtual.enabled=true</code>로 5장의 Virtual Thread를 켜면 요청마다 가벼운 스레드를 쓰므로 <code>threads.max</code>는 효과가 없어집니다. 그래도 커넥션 풀 10개라는 한계는 그대로입니다.</p>
+    </div>
   </div>
 </section>
 
 <section class="slide">
   <h2>DispatcherServlet은 모든 요청의 정문이다</h2>
+  <div class="slide__body">
+    <div class="prose">
+      <p>워커 스레드는 <code>DispatcherServlet</code>을 호출합니다. 모든 요청을 진입점 하나가 받아 알맞은 처리기로 나눠 주는 구조를 <dfn title="Front Controller">프런트 컨트롤러 패턴</dfn>이라 합니다. 컨트롤러마다 서블릿을 따로 두면 인코딩, 예외 처리, JSON 변환 같은 공통 일을 컨트롤러마다 반복해야 하지만, 정문이 하나면 그 일을 한곳에서 처리할 수 있습니다.</p>
+      <p>정문 안에서 일어나는 일을 크게 나누면 아래와 같습니다. 각 단계의 이름은 다음 슬라이드에서 하나씩 풉니다.</p>
+    </div>
+    <ol class="flow">
+      <li class="flow__node"><b>핸들러 찾기</b><span>URL과 메서드로</span></li>
+      <li class="flow__node"><b>인자 만들기</b><span>JSON을 객체로</span></li>
+      <li class="flow__node is-flow"><b>컨트롤러 호출</b><span>OrderController</span></li>
+      <li class="flow__node"><b>반환값 쓰기</b><span>객체를 JSON으로</span></li>
+      <li class="flow__node"><b>예외 변환</b><span>오류 응답으로</span></li>
+    </ol>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>정문 안에서 다섯 부품이 차례로 일한다</h2>
   <div class="split split--even">
     <ol class="steps">
-      <li><b>HandlerMapping</b><p>URL과 메서드로 처리할 컨트롤러 메서드를 찾습니다.</p></li>
-      <li><b>HandlerAdapter</b><p>ArgumentResolver로 파라미터를 만들고 메서드를 호출합니다.</p></li>
-      <li class="is-key"><b>HttpMessageConverter</b><p>@RequestBody JSON을 객체로, 반환 객체를 JSON으로 바꿉니다.</p></li>
-      <li><b>예외 처리</b><p>예외가 나면 @ControllerAdvice가 응답으로 바꿉니다.</p></li>
-      <li><b>응답</b><p>뷰가 필요하면 ViewResolver를 거쳐 응답을 씁니다.</p></li>
+      <li><b>HandlerMapping</b><p>URL과 HTTP 메서드로 처리할 컨트롤러 메서드(핸들러)를 찾습니다.</p></li>
+      <li><b>HandlerAdapter</b><p>ArgumentResolver로 메서드 인자를 하나씩 만들어 호출합니다.</p></li>
+      <li class="is-key"><b>HttpMessageConverter</b><p>요청 본문 JSON을 객체로, 반환 객체를 JSON으로 바꿉니다.</p></li>
+      <li><b>HandlerExceptionResolver</b><p>예외가 나면 공통 예외 처리기(@ControllerAdvice, 곧 봄)로 응답을 만듭니다.</p></li>
+      <li><b>ViewResolver</b><p>HTML 화면이 필요한 경우에만 뷰 이름을 템플릿으로 바꿉니다.</p></li>
     </ol>
     <div class="prose">
-      <p>모든 요청을 하나의 진입점이 받아 나눠 주는 구조를 <dfn title="Front Controller">프런트 컨트롤러 패턴</dfn>이라 합니다. 인증, 인코딩, 예외 처리처럼 공통인 일을 한곳에서 처리할 수 있습니다.</p>
-      <p><code>@RestController</code>는 반환값을 뷰 이름이 아니라 응답 본문으로 보고, 3단계의 컨버터(보통 Jackson)로 바로 JSON을 씁니다.</p>
+      <p><dfn title="handler">핸들러</dfn>는 요청을 처리할 대상, 대개 컨트롤러 메서드입니다. HandlerAdapter가 따로 있는 이유는 핸들러 모양이 여럿이어도 정문 코드를 바꾸지 않기 위해서입니다.</p>
+      <p><dfn>ArgumentResolver</dfn>는 인자 하나를 채우는 부품으로, 경로 변수, 쿼리 파라미터, 요청 본문 등 종류마다 하나씩 있습니다. 본문을 읽는 리졸버가 3단계의 컨버터를 부릅니다. API 서버는 HTML을 만들지 않으므로 5단계는 대개 건너뜁니다.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <h2>Filter, Interceptor, AOP는 서는 위치가 다르다</h2>
+  <h2>JSON과 객체 사이는 메시지 컨버터가 바꾼다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="OrderController.java"><code><span class="k">@RestController</span>
+<span class="k">@RequiredArgsConstructor</span>
+<span class="k">class</span> OrderController {
+  <span class="k">private final</span> OrderService orderService;
+
+<span class="hl">  <span class="k">@PostMapping</span>(<span class="s">"/orders"</span>)</span>
+  OrderRes place(<span class="k">@RequestBody</span> OrderReq req) {
+    <span class="k">return</span> orderService.place(req);
+  }
+}
+<span class="c">// 요청 본문: {"itemId":7,"qty":2}</span>
+<span class="c">// 응답 본문: {"orderId":101,"status":"PAID"}</span></code></pre>
+    <div class="prose">
+      <p><dfn title="JavaScript Object Notation">JSON</dfn>은 <code>{"itemId":7}</code>처럼 이름과 값을 글자로 적는 데이터 형식으로, 웹 API의 사실상 표준입니다. <code>@PostMapping</code>은 1단계가 찾을 주소를, <code>@RequestBody</code>는 "본문을 이 타입으로 바꿔 달라"를 뜻합니다.</p>
+      <p><dfn>HttpMessageConverter</dfn>는 본문 형식을 알리는 <code>Content-Type</code> 헤더를 보고 맞는 변환기를 고릅니다. JSON이면 Java의 대표 JSON 라이브러리 Jackson이 맡습니다. <code>@RestController</code>는 반환값을 뷰 이름이 아니라 응답 본문으로 보고 같은 컨버터로 JSON을 씁니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>예외를 HTTP 응답으로 바꾸는 곳은 한 군데다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="ApiExceptionHandler.java"><code><span class="k">@RestControllerAdvice</span>
+<span class="k">class</span> ApiExceptionHandler {
+<span class="hl">  <span class="k">@ExceptionHandler</span>(OutOfStockException.<span class="k">class</span>)</span>
+  <span class="k">@ResponseStatus</span>(HttpStatus.CONFLICT)
+  ErrorRes outOfStock(OutOfStockException e) {
+    <span class="k">return new</span> ErrorRes(<span class="s">"OUT_OF_STOCK"</span>,
+                        e.getMessage());
+  }
+}</code></pre>
+    <div class="prose">
+      <p>서비스가 재고 부족으로 <code>OutOfStockException</code>을 던지면, 컨트롤러마다 try-catch를 쓰는 대신 정문의 4단계가 받아 처리합니다. <dfn>@ControllerAdvice</dfn>는 모든 컨트롤러에 공통으로 적용되는 예외 처리 모음이고, <code>@RestControllerAdvice</code>는 반환값을 JSON 본문으로 쓰는 판입니다.</p>
+      <p>예외 종류마다 <code>@ExceptionHandler</code> 메서드를 두어 상태 코드와 오류 본문을 정합니다. 어떤 상태 코드와 오류 형식을 고를지는 7장에서 다룹니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>세 가로채기 지점은 서는 위치가 다르다</h2>
   <div class="slide__body">
     <figure class="figure">
-      <svg class="dg" viewBox="0 0 1400 280" role="img" aria-labelledby="f29t">
-        <title id="f29t">요청은 Tomcat 영역의 Filter를 지나 Spring 영역의 DispatcherServlet, Interceptor, AOP 프록시를 거쳐 컨트롤러와 서비스에 도착한다</title>
+      <svg class="dg" viewBox="0 0 1400 280" role="img" aria-labelledby="f47t">
+        <title id="f47t">요청은 Tomcat 영역의 Filter를 지나 Spring 영역의 DispatcherServlet, Interceptor, AOP 프록시를 거쳐 컨트롤러와 서비스에 도착한다</title>
         <rect class="dg-zone" x="230" y="20" width="1150" height="240"/>
         <text class="dg-label--sm" x="246" y="46" text-anchor="start">서블릿 컨테이너 (Tomcat)</text>
         <rect class="dg-zone" x="450" y="66" width="910" height="176"/>
@@ -548,8 +817,7 @@ events.publishEvent(<span class="k">new</span> Ordered(id));
       </svg>
     </figure>
     <div class="prose">
-      <p>Filter는 서블릿 컨테이너 단계에서 동작해 DispatcherServlet에 닿기 전 요청 전체를 봅니다. 정적 파일 요청까지 모두 지나가므로 보안이나 인코딩처럼 예외 없이 적용할 일에 맞습니다.</p>
-      <p>Interceptor는 DispatcherServlet이 컨트롤러를 고른 뒤에 실행되어 <strong>어떤 핸들러가 선택됐는지</strong> 압니다. AOP는 더 안쪽에서 웹과 무관하게 Bean 메서드 단위로 끼어듭니다.</p>
+      <p>요청 앞뒤에 공통 처리를 끼우는 자리는 세 곳입니다. <dfn>Filter</dfn>는 서블릿 스펙의 부품으로, Tomcat이 DispatcherServlet을 부르기 전에 실행해 모든 요청을 봅니다. <dfn title="HandlerInterceptor">Interceptor</dfn>는 Spring MVC의 부품으로, 정문이 핸들러를 고른 뒤 컨트롤러 호출 전후(<code>preHandle</code>, <code>postHandle</code>)에 실행됩니다. 2부의 AOP는 가장 안쪽에서 웹과 무관하게 Bean 메서드를 감쌉니다.</p>
     </div>
   </div>
 </section>
@@ -557,6 +825,9 @@ events.publishEvent(<span class="k">new</span> Ordered(id));
 <section class="slide">
   <h2>무엇을 어디에 둘지 고르는 기준</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>위치가 다르면 아는 정보와 할 수 있는 일이 다릅니다. Filter는 가장 바깥이라 요청 객체를 감싼 다른 객체로 바꿔 넘길 수 있고, Interceptor는 어떤 컨트롤러 메서드가 선택됐는지 압니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">기준</th><th scope="col">Filter</th><th scope="col">Interceptor</th><th scope="col">AOP</th></tr></thead>
       <tbody>
@@ -564,29 +835,29 @@ events.publishEvent(<span class="k">new</span> Ordered(id));
         <tr><th scope="row">아는 정보</th><td>요청과 응답 원본</td><td>선택된 핸들러</td><td>메서드와 인자</td></tr>
         <tr><th scope="row">요청 교체</th><td class="is-flow">요청 객체 감싸기 가능</td><td>불가</td><td>불가</td></tr>
         <tr><th scope="row">예외 처리</th><td class="is-key">@ControllerAdvice 밖</td><td>@ControllerAdvice 안</td><td>@ControllerAdvice 안</td></tr>
-        <tr><th scope="row">대표 용도</th><td>보안, 인코딩, CORS</td><td>로그인 확인, 로깅</td><td>트랜잭션, 실행 시간</td></tr>
+        <tr><th scope="row">대표 용도</th><td>보안, 인코딩, 요청 로깅</td><td>로그인 확인, 로깅</td><td>트랜잭션, 실행 시간</td></tr>
       </tbody>
     </table>
-    <p class="small">Filter에서 난 예외는 DispatcherServlet 밖이라 @ControllerAdvice가 잡지 못하므로 Filter 안에서 직접 응답을 써야 합니다. Spring Security가 Filter 체인으로 만들어진 이유는 7장에서 봅니다.</p>
+    <p class="small">Filter에서 난 예외는 DispatcherServlet 밖이라 @ControllerAdvice가 잡지 못하고 Boot의 기본 오류 처리로 넘어갑니다. 원하는 오류 형식이 필요하면 Filter 안에서 직접 응답을 씁니다. 인증과 인가를 맡는 Spring Security가 Filter 묶음으로 만들어진 이유는 7장에서 봅니다.</p>
   </div>
 </section>
 
 <section class="slide">
   <h2>Spring Boot 자동 설정은 조건부 Bean이다</h2>
   <div class="split split--wide-left">
-    <pre class="code" data-file="자동 설정의 모양"><code><span class="k">@AutoConfiguration</span>
-<span class="k">@ConditionalOnClass</span>(DataSource.<span class="k">class</span>)
+    <pre class="code" data-file="자동 설정의 모양 (단순화)"><code><span class="k">@AutoConfiguration</span>
+<span class="hl"><span class="k">@ConditionalOnClass</span>(DataSource.<span class="k">class</span>)</span>
 <span class="k">class</span> DataSourceAutoConfig {
 
   <span class="k">@Bean</span>
 <span class="hl">  <span class="k">@ConditionalOnMissingBean</span></span>
-  DataSource dataSource(Props p) {
+  DataSource dataSource(DataSourceProps p) {
     <span class="k">return new</span> HikariDataSource(p.toConfig());
   }
 }</code></pre>
     <div class="prose">
-      <p>Boot는 starter 의존성과 함께 자동 설정 클래스 목록을 읽어, <strong>조건이 맞는 것만</strong> Bean으로 등록합니다. 클래스패스에 라이브러리가 있는지, 설정값이 있는지 같은 조건입니다.</p>
-      <p>핵심은 <code>@ConditionalOnMissingBean</code>입니다. 내가 같은 타입 Bean을 직접 등록하면 자동 설정은 물러납니다. 내장 Tomcat도 같은 방식으로 뜹니다.</p>
+      <p>지금까지 쓴 Tomcat, DispatcherServlet, 커넥션 풀, 트랜잭션 매니저를 우리는 등록한 적이 없습니다. Boot는 jar 안의 <code>AutoConfiguration.imports</code> 파일에서 자동 설정 클래스 목록을 읽고, <strong>조건이 맞는 것만</strong> Bean으로 등록합니다.</p>
+      <p><code>@ConditionalOnClass</code>는 그 클래스가 <dfn title="classpath">클래스패스</dfn>(JVM이 클래스를 찾는 경로, 곧 추가한 라이브러리)에 있을 때만 켜집니다. <code>@ConditionalOnMissingBean</code>은 내가 같은 타입을 직접 등록하지 않았을 때만 켜집니다. 그래서 내 설정이 늘 자동 설정을 이깁니다.</p>
     </div>
   </div>
 </section>
@@ -594,47 +865,139 @@ events.publishEvent(<span class="k">new</span> Ordered(id));
 <section class="slide">
   <h2>WebFlux는 스레드 대신 이벤트 루프를 쓴다</h2>
   <div class="prose">
-    <p>스레드 풀 모델은 I/O를 기다리는 동안에도 스레드를 붙잡습니다. 동시 요청이 수만 개면 스레드 수와 메모리가 버티지 못합니다.</p>
-    <p>WebFlux는 Netty 위에서 1장의 이벤트 루프 방식으로 동작해, 적은 스레드로 많은 연결을 처리합니다. 대신 <strong>호출 경로 전체가 논블로킹</strong>이어야 효과가 있습니다. JDBC와 JPA는 블로킹이라 그대로 쓰면 이벤트 루프가 멈춥니다.</p>
-    <p>그래서 DB 중심의 일반적인 서비스는 MVC를 유지하고, 외부 호출을 대량으로 묶는 게이트웨이 같은 곳에 WebFlux를 고르는 경우가 많습니다. Virtual Thread(5장)가 그 사이의 선택지로 떠오르고 있습니다.</p>
+    <p>앞에서 본 스레드 풀 모델은 결제 API를 기다리는 동안에도 스레드를 붙잡습니다. 동시 요청이 수만 개면 스레드 수와 스택 메모리가 버티지 못합니다. 1장에서 본 C10K 문제(동시 연결 1만 개를 연결당 스레드로 감당하지 못하는 문제)와 같은 구조입니다.</p>
+    <p><dfn title="Spring WebFlux">WebFlux</dfn>는 Spring의 또 다른 웹 스택으로, Tomcat 대신 Netty라는 네트워크 서버 위에서 1장의 이벤트 루프 방식으로 동작합니다. 기다리는 일을 커널에 맡기고 준비된 일만 처리하므로 적은 스레드로 많은 연결을 다룹니다. 결과는 "나중에 값이 올 것"을 나타내는 <code>Mono</code>(값 하나)와 <code>Flux</code>(값 여러 개) 타입으로 돌려줍니다.</p>
+    <p>대신 <mark>호출 경로 전체가 논블로킹</mark>이어야 효과가 있습니다. JDBC와 JPA는 결과가 올 때까지 스레드를 멈추는 블로킹 API라, 그대로 쓰면 몇 개 안 되는 이벤트 루프 스레드가 멈춥니다. 그래서 DB 중심 서비스는 MVC를 유지하고, 외부 호출을 대량으로 묶는 게이트웨이 같은 곳에 WebFlux를 고르는 경우가 많습니다. 5장의 Virtual Thread가 그 사이의 선택지로 떠오르고 있습니다.</p>
   </div>
 </section>
 
-<!-- ===== 3부 원리: JPA ============================================= -->
-<section class="slide slide--divider" data-section="JPA와 영속성 컨텍스트" data-depth="core">
-  <p class="divider__no">3부</p>
-  <h2>객체와 테이블 사이의 통역사</h2>
-  <p class="lede">JPA가 왜 필요한지에서 출발해, 영속성 컨텍스트가 SQL을 언제 어떻게 만드는지, N+1 문제가 왜 생기는지 봅니다.</p>
+<!-- ===== 4부 원리: JPA ============================================= -->
+<section class="slide slide--divider" data-section="JPA와 영속성 컨텍스트">
+  <p class="divider__no">4부</p>
+  <h2>SQL은 누가, 언제 만드는가</h2>
+  <p class="lede">요청이 OrderService에 닿았고 트랜잭션도 열렸습니다. 이제 주문 객체를 4장의 테이블에 저장하고 읽어 오는 마지막 구간입니다. JPA가 SQL을 대신 만드는 원리와, 그 원리를 모를 때 쿼리가 폭증하는 이유를 봅니다.</p>
+</section>
+
+<section class="slide">
+  <h2>JDBC로 직접 하면 변환 코드가 반복된다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="OrderJdbcDao.java"><code>PreparedStatement ps = con.prepareStatement(
+  <span class="s">"insert into orders(member_id, status)"</span>
+  + <span class="s">" values (?, ?)"</span>);
+<span class="hl">ps.setLong(<span class="n">1</span>, order.getMember().getId());</span>
+ps.setString(<span class="n">2</span>, order.getStatus().name());
+ps.executeUpdate();
+
+ResultSet rs = …(<span class="s">"select * from orders where id=?"</span>);
+<span class="hl">Order o = <span class="k">new</span> Order(rs.getLong(<span class="s">"id"</span>), …);</span>
+<span class="c">// member는? member_id 숫자만 왔다</span></code></pre>
+    <div class="prose">
+      <p>2부의 JDBC로 주문을 저장하면, 객체의 필드를 꺼내 SQL의 물음표 자리에 하나씩 넣습니다(<code>PreparedStatement</code>). 읽을 때는 결과 행(<code>ResultSet</code>)에서 열을 하나씩 꺼내 객체를 조립합니다.</p>
+      <p>필드 하나를 추가하면 INSERT, SELECT, 조립 코드를 모두 고쳐야 합니다. 더 곤란한 것은 마지막 주석입니다. 객체는 <code>Member</code>를 원하는데 테이블은 <code>member_id</code> 숫자만 줍니다.</p>
+    </div>
+  </div>
 </section>
 
 <section class="slide">
   <h2>객체와 테이블은 생각하는 방식이 다르다</h2>
+  <div class="prose prose--cols">
+    <p>앞 슬라이드의 어색함은 우연이 아닙니다. 객체 모델과 관계형 모델은 같은 데이터를 다른 규칙으로 표현하며, 이 차이를 <dfn title="paradigm mismatch">패러다임 불일치</dfn>라 합니다. 네 가지가 대표적입니다.</p>
+    <p><strong>연관</strong>: 객체는 참조(<code>order.member</code>)로 다른 객체를 가리키고, 테이블은 4장의 외래 키(<code>orders.member_id</code>)로 다른 행을 가리킵니다. 참조는 한 방향이지만 외래 키는 JOIN으로 양쪽에서 쓸 수 있습니다.</p>
+    <p><strong>그래프 탐색</strong>: 객체는 <code>order.getMember().getAddress()</code>처럼 점을 찍어 끝없이 따라가지만, SQL은 처음에 JOIN한 테이블까지만 가져옵니다. 어디까지 읽어 둘지 미리 정해야 합니다.</p>
+    <p><strong>상속</strong>: 객체에는 상속이 있지만 테이블에는 없습니다. 카드 결제와 포인트 결제를 한 테이블에 둘지, 나눌지 매핑 규칙이 필요합니다.</p>
+    <p><strong>동일성</strong>: 같은 주문 행을 두 번 읽으면 JDBC는 서로 다른 객체 두 개를 만듭니다. 객체 세계에서는 <code>==</code>가 거짓이 되어, "같은 주문"이라는 사실이 흐려집니다.</p>
+    <p>이 변환을 매번 손으로 하지 않도록 도구가 대신 맡는 기법을 <dfn title="Object-Relational Mapping">ORM</dfn>(객체 관계 매핑)이라 합니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>JPA는 명세, Hibernate는 구현이다</h2>
   <div class="slide__body">
     <div class="prose">
-      <p>객체는 참조로 연결되고 상속이 있으며 <code>order.getMember()</code>처럼 그래프를 따라갑니다. 테이블은 외래 키로 연결되고 JOIN으로 묶습니다. 이 차이를 <dfn title="paradigm mismatch">패러다임 불일치</dfn>라 합니다.</p>
-      <p><dfn title="Java Persistence API">JPA</dfn>는 이 변환을 맡는 표준 명세이고, Spring Boot는 구현체로 Hibernate를 씁니다.</p>
+      <p><dfn title="Jakarta Persistence API">JPA</dfn>는 Java ORM의 표준 명세로, 어노테이션과 인터페이스만 정합니다(원래 Java Persistence API였고 지금은 Jakarta Persistence로 이름이 바뀌었습니다). 실제로 SQL을 만들고 JDBC를 부르는 구현체가 <dfn>Hibernate</dfn>이며 Spring Boot의 기본값입니다.</p>
+      <p>그 위에 <dfn>Spring Data JPA</dfn>가 한 층 더 있습니다. 리포지토리 인터페이스만 선언하면 구현 클래스를 실행 중에 만들어 주는 Spring 모듈입니다. 우리 코드는 맨 왼쪽만 보고, 나머지 층이 차례로 일을 넘깁니다.</p>
+    </div>
+    <ol class="flow">
+      <li class="flow__node is-flow"><b>OrderRepository</b><span>내가 쓴 인터페이스</span></li>
+      <li class="flow__node"><b>Spring Data JPA</b><span>구현을 자동 생성</span></li>
+      <li class="flow__node"><b>JPA 인터페이스</b><span>EntityManager</span></li>
+      <li class="flow__node"><b>Hibernate</b><span>SQL 생성</span></li>
+      <li class="flow__node"><b>JDBC</b><span>DB로 전송</span></li>
+    </ol>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>JPA와 MyBatis는 SQL을 누가 쓰느냐가 다르다</h2>
+  <div class="slide__body">
+    <div class="prose">
+      <p>한국 실무에서 JPA와 자주 비교되는 <dfn>MyBatis</dfn>는 ORM이 아니라 SQL 매퍼입니다. SQL은 개발자가 XML이나 어노테이션에 직접 쓰고, MyBatis는 그 결과를 객체 필드에 옮겨 주기만 합니다. JPA는 반대로 객체 변경을 보고 SQL을 대부분 스스로 만듭니다.</p>
     </div>
     <table class="compare">
       <thead><tr><th scope="col">항목</th><th scope="col">JPA</th><th scope="col">MyBatis</th></tr></thead>
       <tbody>
         <tr><th scope="row">SQL 작성</th><td class="is-flow">대부분 자동 생성</td><td>직접 작성해 매핑</td></tr>
-        <tr><th scope="row">강점</th><td>CRUD 생산성, 변경 감지</td><td>복잡한 SQL 통제</td></tr>
+        <tr><th scope="row">강점</th><td>CRUD 생산성, 변경 감지</td><td>복잡한 통계 SQL 통제</td></tr>
         <tr><th scope="row">약점</th><td class="is-key">동작을 모르면 쿼리 폭증</td><td>반복 SQL, 객체 그래프 수동</td></tr>
       </tbody>
     </table>
+    <p class="small">"쿼리 폭증"이 무엇인지가 이 부의 후반부 주제입니다. 둘을 함께 쓰는 팀도 많습니다.</p>
   </div>
 </section>
 
 <section class="slide">
-  <h2>영속성 컨텍스트는 트랜잭션 안의 캐시다</h2>
+  <h2>엔티티는 테이블과 짝지은 클래스다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="Order.java"><code><span class="k">@Entity</span> <span class="k">@Table</span>(name = <span class="s">"orders"</span>)
+<span class="k">public class</span> Order {
+  <span class="k">@Id</span>
+  <span class="k">@GeneratedValue</span>(strategy = IDENTITY)
+  <span class="k">private</span> Long id;
+
+<span class="hl">  <span class="k">@ManyToOne</span>(fetch = FetchType.LAZY)</span>
+<span class="hl">  <span class="k">@JoinColumn</span>(name = <span class="s">"member_id"</span>)</span>
+  <span class="k">private</span> Member member;
+
+  <span class="k">@OneToMany</span>(mappedBy = <span class="s">"order"</span>)
+  <span class="k">private</span> List&lt;OrderItem&gt; items;
+}</code></pre>
+    <div class="prose">
+      <p><code>@Entity</code>가 붙은 클래스가 <dfn title="entity">엔티티</dfn>로, 객체 하나가 테이블 행 하나에 대응합니다. <code>@Id</code>는 PK이고, <code>IDENTITY</code>는 4장의 AUTO_INCREMENT로 DB가 번호를 매긴다는 뜻입니다.</p>
+      <p>강조한 두 줄이 연관 불일치의 해법입니다. "주문 여럿이 회원 하나에 속한다"(<code>@ManyToOne</code>)와 외래 키 열 이름을 적으면, JPA가 참조와 <code>member_id</code>를 오갑니다. 반대쪽 <code>items</code>의 <code>mappedBy</code>는 "외래 키는 OrderItem 쪽에 있으니 거기서 관리한다"는 표시입니다. <code>fetch</code>는 뒤에서 봅니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>리포지토리는 인터페이스만 쓰면 된다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="OrderRepository.java"><code><span class="k">public interface</span> OrderRepository
+    <span class="k">extends</span> JpaRepository&lt;Order, Long&gt; {
+
+<span class="hl">  List&lt;Order&gt; findByStatus(OrderStatus s);</span>
+
+  <span class="k">@Query</span>(<span class="s">"select o from Order o"</span>
+       + <span class="s">" where o.member.id = :memberId"</span>)
+  List&lt;Order&gt; findOfMember(Long memberId);
+}
+<span class="c">// save, findById, findAll, delete는 상속</span></code></pre>
+    <div class="prose">
+      <p><code>JpaRepository</code>를 상속하면 저장, ID 조회, 전체 조회, 삭제를 공짜로 얻습니다. 강조한 줄처럼 메서드 이름을 규칙대로 지으면 이름을 해석해 쿼리를 만들어 주는데, 이를 <dfn title="query method">메서드 이름 쿼리</dfn>라 합니다.</p>
+      <p><code>@Query</code> 안의 문장은 SQL이 아니라 <dfn title="Java Persistence Query Language">JPQL</dfn>입니다. 테이블과 열 대신 엔티티와 필드(<code>Order</code>, <code>o.member.id</code>)를 대상으로 쓰는 쿼리 언어이고, Hibernate가 실행 직전에 SQL로 번역합니다. 구현 클래스는 Spring Data가 2부의 프록시로 만들어 Bean으로 등록합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>영속성 컨텍스트는 엔티티를 담아 두는 작업 공간이다</h2>
   <div class="split split--center">
     <div class="prose">
-      <p><dfn title="persistence context">영속성 컨텍스트</dfn>는 엔티티를 담아 두는 메모리 공간으로, Spring에서는 기본적으로 트랜잭션 하나와 수명이 같습니다.</p>
-      <p><code>find()</code>는 먼저 <dfn title="first-level cache">1차 캐시</dfn>를 보고 없을 때만 SELECT합니다. 같은 트랜잭션에서 같은 ID로 두 번 찾으면 <mark>같은 인스턴스</mark>가 나와 <code>==</code> 비교가 참입니다.</p>
+      <p>리포지토리 아래에서 실제로 일하는 JPA 객체가 <dfn>EntityManager</dfn>이고, 그 안에 엔티티를 보관하는 메모리 공간이 <dfn title="persistence context">영속성 컨텍스트</dfn>입니다. Spring에서는 기본적으로 트랜잭션 하나와 수명이 같습니다.</p>
+      <p>JPA가 SQL을 바로 날리지 않고 이 공간을 거치는 덕분에, 앞에서 본 동일성 불일치가 풀리고 SQL을 모아 보낼 수 있습니다. 그림의 세 칸을 다음 슬라이드들에서 하나씩 봅니다.</p>
     </div>
     <figure class="figure">
-      <svg class="dg" viewBox="0 0 760 470" role="img" aria-labelledby="f35t">
-        <title id="f35t">애플리케이션의 조회와 수정은 영속성 컨텍스트의 1차 캐시와 쓰기 지연 SQL 저장소를 거치고, DB에는 캐시에 없을 때 SELECT, flush 때 모아 둔 SQL이 전달된다</title>
+      <svg class="dg" viewBox="0 0 760 470" role="img" aria-labelledby="f58t">
+        <title id="f58t">애플리케이션의 조회와 수정은 영속성 컨텍스트의 1차 캐시와 쓰기 지연 SQL 저장소를 거치고, DB에는 캐시에 없을 때 SELECT, flush 때 모아 둔 SQL이 전달된다</title>
         <rect class="dg-box" x="40" y="20" width="680" height="60"/>
         <text x="380" y="50" text-anchor="middle">애플리케이션: find(), 필드 수정, persist()</text>
         <rect class="dg-zone" x="40" y="120" width="680" height="210"/>
@@ -661,16 +1024,34 @@ events.publishEvent(<span class="k">new</span> Ordered(id));
 </section>
 
 <section class="slide">
-  <h2>쓰기 지연과 flush가 일어나는 시점</h2>
+  <h2>1차 캐시: 같은 ID는 같은 객체로 돌려준다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="같은 트랜잭션 안"><code><span class="c">// em: EntityManager</span>
+Order a = em.find(Order.<span class="k">class</span>, <span class="n">101L</span>);
+<span class="c">// select ... from orders where id=101</span>
+
+<span class="hl">Order b = em.find(Order.<span class="k">class</span>, <span class="n">101L</span>);</span>
+<span class="c">// SQL 없음: 1차 캐시에서 꺼냄</span>
+
+a == b   <span class="c">// true</span></code></pre>
+    <div class="prose">
+      <p><code>find()</code>는 먼저 <dfn title="first-level cache">1차 캐시</dfn>, 즉 영속성 컨텍스트 안의 "ID → 엔티티" 지도를 봅니다. 없을 때만 SELECT하고, 읽은 엔티티를 지도에 넣어 둡니다.</p>
+      <p>그래서 같은 트랜잭션에서 같은 ID를 두 번 찾으면 <mark>같은 인스턴스</mark>가 나와 <code>==</code>가 참입니다. 패러다임 불일치의 동일성 문제가 이렇게 풀립니다. 다만 트랜잭션이 끝나면 함께 사라지므로, 여러 요청이 공유하는 캐시는 아닙니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>쓰기 지연: SQL은 flush 때 모아서 나간다</h2>
   <div class="split split--even">
     <div class="prose">
-      <p><code>persist()</code>를 불러도 INSERT는 바로 나가지 않고 <dfn title="write-behind">쓰기 지연</dfn> 저장소에 쌓입니다. 모아 보내면 JDBC 배치로 왕복을 줄일 수 있습니다.</p>
-      <p><dfn>flush</dfn>는 쌓인 변경을 DB에 SQL로 보내는 일이지 커밋이 아닙니다. flush 후에도 롤백하면 모두 취소됩니다.</p>
-      <p>예외: ID 생성이 <code>IDENTITY</code>(AUTO_INCREMENT)면 ID를 알려면 INSERT해야 하므로 persist 즉시 나가고, INSERT 배치도 쓸 수 없습니다.</p>
+      <p><code>persist()</code>로 저장해도 INSERT는 바로 나가지 않고 <dfn title="write-behind">쓰기 지연</dfn> 저장소에 쌓입니다. 모아 두면 여러 INSERT를 한 번에 보내는 JDBC 배치로 DB 왕복을 줄일 수 있습니다.</p>
+      <p>쌓인 변경을 SQL로 DB에 보내는 일이 <dfn>flush</dfn>입니다. flush는 커밋이 아닙니다. flush 후에도 롤백하면 모두 취소됩니다.</p>
+      <p>예외가 하나 있습니다. ID가 <code>IDENTITY</code>면 DB가 INSERT해야 번호가 생기므로, 1차 캐시에 넣을 ID를 얻으려고 persist 즉시 INSERT하고 배치도 쓸 수 없습니다.</p>
     </div>
     <ol class="steps">
       <li><b>트랜잭션 커밋 직전</b><p>커밋하기 전에 자동으로 flush합니다.</p></li>
-      <li class="is-key"><b>JPQL 쿼리 실행 직전</b><p>쌓인 변경이 조회 결과에 반영되도록 먼저 flush합니다.</p></li>
+      <li class="is-key"><b>JPQL 쿼리 실행 직전</b><p>JPQL은 DB에서 바로 읽으므로, 쌓인 변경이 결과에 반영되도록 먼저 flush합니다.</p></li>
       <li><b>직접 호출</b><p>em.flush()나 saveAndFlush()로 즉시 보냅니다.</p></li>
     </ol>
   </div>
@@ -679,31 +1060,54 @@ events.publishEvent(<span class="k">new</span> Ordered(id));
 <section class="slide">
   <h2>변경 감지: save를 부르지 않아도 UPDATE된다</h2>
   <div class="split split--wide-left">
-    <pre class="code" data-file="MemberService.java"><code><span class="k">@Transactional</span>
-<span class="k">public void</span> rename(Long id, String name) {
-  Member m = repo.findById(id).orElseThrow();
-<span class="hl">  m.changeName(name);   <span class="c">// save() 없음</span></span>
+    <pre class="code" data-file="OrderService.java"><code><span class="k">@Transactional</span>
+<span class="k">public void</span> cancel(Long orderId) {
+  Order o = orderRepo.findById(orderId)
+                     .orElseThrow();
+<span class="hl">  o.cancel();   <span class="c">// status = CANCELED, save() 없음</span></span>
 }
 <span class="c">// 커밋 직전 flush:</span>
 <span class="c">// 스냅샷과 비교 → 달라진 엔티티 발견</span>
-<span class="c">// update member set name=? where id=?</span></code></pre>
+<span class="c">// update orders set status=? where id=?</span></code></pre>
     <div class="prose">
-      <p>영속성 컨텍스트는 엔티티를 처음 읽을 때 상태를 <strong>스냅샷</strong>으로 복사해 둡니다. flush 시점에 현재 값과 비교해 달라진 엔티티의 UPDATE를 만듭니다. 이것이 <dfn title="Dirty Checking">변경 감지</dfn>입니다.</p>
-      <p>그래서 엔티티 수정은 "꺼내서 바꾸면 끝"입니다. 반대로 트랜잭션 밖에서 바꾸면 아무 일도 일어나지 않습니다.</p>
+      <p>영속성 컨텍스트는 엔티티를 처음 읽을 때 상태를 <strong>스냅샷</strong>으로 복사해 둡니다. flush 시점에 현재 값과 스냅샷을 비교해, 달라진 엔티티의 UPDATE를 만듭니다. 이것이 <dfn title="Dirty Checking">변경 감지</dfn>입니다.</p>
+      <p>그래서 주문 취소는 "꺼내서 바꾸면 끝"입니다. 컬렉션의 객체를 고치듯 쓰면 되도록 만든 설계입니다. 반대로 트랜잭션 밖에서 바꾸면 비교할 영속성 컨텍스트가 없어 아무 일도 일어나지 않습니다.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <h2>엔티티의 네 가지 상태</h2>
+  <h2>save()는 persist 아니면 merge다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="SimpleJpaRepository (요약)"><code><span class="hl"><span class="k">@Transactional</span>(readOnly = <span class="k">true</span>)</span>
+<span class="k">public class</span> SimpleJpaRepository&lt;T, ID&gt; … {
+
+  <span class="k">@Transactional</span>
+  <span class="k">public</span> &lt;S <span class="k">extends</span> T&gt; S save(S entity) {
+<span class="hl">    <span class="k">if</span> (entityInformation.isNew(entity)) {</span>
+      em.persist(entity);
+      <span class="k">return</span> entity;
+    }
+    <span class="k">return</span> em.merge(entity);
+  }
+}</code></pre>
+    <div class="prose">
+      <p>Spring Data가 만들어 주는 리포지토리 구현의 실제 모양입니다. <code>save()</code>는 ID가 비어 있으면 새 엔티티로 보고 <code>persist()</code>를, 아니면 <code>merge()</code>를 부릅니다. 이미 영속 상태인 엔티티라면 변경 감지가 처리하므로 save는 필요 없습니다.</p>
+      <p>첫 줄도 눈여겨볼 만합니다. 리포지토리 자체에 <code>@Transactional</code>이 붙어 있어, 서비스 트랜잭션이 있으면 2부의 REQUIRED로 참여하고, 없으면 메서드 하나만큼의 짧은 트랜잭션을 엽니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>엔티티는 네 가지 상태를 오간다</h2>
   <div class="split split--center">
     <div class="prose">
-      <p>변경 감지는 <strong>영속</strong> 상태의 엔티티에만 일어납니다. <code>new</code>로 막 만든 객체는 비영속, 트랜잭션이 끝나 컨텍스트가 닫히면 준영속이 됩니다.</p>
-      <p>준영속 객체를 <code>merge()</code>하면 새 영속 엔티티에 값을 <mark>통째로 복사</mark>합니다. 빈 필드도 그대로 덮으므로, 수정은 다시 조회해 변경 감지로 하는 편이 안전합니다.</p>
+      <p>앞의 merge를 이해하려면 상태를 알아야 합니다. <code>new</code>로 막 만든 객체는 <strong>비영속</strong>, 영속성 컨텍스트가 관리하면 <strong>영속</strong>, 트랜잭션이 끝나 컨텍스트가 닫히면 <strong>준영속</strong>입니다. 1차 캐시, 변경 감지, 지연 로딩은 영속 상태에서만 동작합니다.</p>
+      <p>준영속 객체를 <code>merge()</code>하면 DB에서 다시 읽은 영속 엔티티에 값을 <mark>통째로 복사</mark>합니다. 비어 있는 필드도 그대로 덮어 null이 저장될 수 있으므로, 수정은 다시 조회해 변경 감지로 하는 편이 안전합니다.</p>
     </div>
     <figure class="figure">
-      <svg class="dg" viewBox="0 0 760 420" role="img" aria-labelledby="f38t">
-        <title id="f38t">비영속 엔티티는 persist로 영속이 되고, 영속은 detach나 컨텍스트 종료로 준영속, remove로 삭제 상태가 되며, 준영속은 merge로 다시 영속이 된다</title>
+      <svg class="dg" viewBox="0 0 760 420" role="img" aria-labelledby="f63t">
+        <title id="f63t">비영속 엔티티는 persist로 영속이 되고, 영속은 detach나 컨텍스트 종료로 준영속, remove로 삭제 상태가 되며, 준영속은 merge로 다시 영속이 된다</title>
         <rect class="dg-box" x="30" y="40" width="200" height="64"/>
         <text x="130" y="72" text-anchor="middle">비영속 (new)</text>
         <rect class="dg-box dg-box--ghost" x="30" y="316" width="200" height="64"/>
@@ -731,21 +1135,31 @@ events.publishEvent(<span class="k">new</span> Ordered(id));
 </section>
 
 <section class="slide">
+  <h2>readOnly=true는 변경 감지를 끈다</h2>
+  <div class="prose">
+    <p>변경 감지에는 비용이 있습니다. 읽은 엔티티마다 스냅샷을 복사해 두고, flush 때 모든 필드를 비교해야 합니다. 주문 목록 1만 건을 읽기만 하는 조회에서는 낭비입니다.</p>
+    <p><code>@Transactional(readOnly = true)</code>를 붙이면 Hibernate는 flush 모드를 수동으로 바꾸고 엔티티를 읽기 전용으로 다뤄, <strong>스냅샷과 flush를 건너뜁니다</strong>. 대량 조회에서 메모리와 CPU를 아낍니다. JDBC 커넥션에도 읽기 전용 힌트가 전달되어 DB나 드라이버가 최적화에 쓸 수 있고, 4장의 읽기/쓰기 분리 구조에서는 이 속성을 보고 <mark>조회 트랜잭션을 Replica로 보내도록</mark> 구성하는 경우가 많습니다.</p>
+    <p>앞에서 본 <code>SimpleJpaRepository</code>처럼, 서비스 클래스에 <code>readOnly = true</code>를 기본으로 두고 쓰기 메서드에만 <code>@Transactional</code>을 다시 붙이는 방식을 흔히 씁니다.</p>
+  </div>
+</section>
+
+<section class="slide">
   <h2>지연 로딩은 프록시가 대신 서 있는 것이다</h2>
   <div class="split split--wide-left">
-    <pre class="code" data-file="Order.java"><code><span class="k">@Entity</span>
-<span class="k">class</span> Order {
-<span class="hl">  <span class="k">@ManyToOne</span>(fetch = FetchType.LAZY)</span>
-  Member member;
+    <pre class="code" data-file="Order 조회"><code>Order o = orderRepo.findById(<span class="n">101L</span>).get();
+<span class="c">// select ... from orders where id=101</span>
 
-  <span class="k">@OneToMany</span>(mappedBy = <span class="s">"order"</span>)
-  List&lt;OrderItem&gt; items; <span class="c">// 기본 LAZY</span>
-}
-<span class="c">// order.getMember()    → 프록시, SQL 없음</span>
-<span class="c">// member.getName()     → 이때 SELECT</span></code></pre>
+Member m = o.getMember();
+<span class="c">// m은 Hibernate 프록시, SQL 없음</span>
+
+<span class="hl">m.getName();</span>
+<span class="c">// 이때 select ... from member where id=?</span>
+
+<span class="c">// 트랜잭션 밖에서 getName()을 부르면</span>
+<span class="c">// LazyInitializationException</span></code></pre>
     <div class="prose">
-      <p><dfn title="lazy loading">지연 로딩</dfn>이면 Order를 읽을 때 Member 자리에 Hibernate가 만든 <strong>프록시</strong>를 넣고, 실제 값을 쓰는 순간 조회합니다. 2부의 프록시가 여기서도 쓰입니다.</p>
-      <p><code>@ManyToOne</code>과 <code>@OneToOne</code>은 기본값이 EAGER라 직접 LAZY로 바꿔야 합니다. 실무 원칙은 <strong>전부 LAZY</strong>, 필요할 때만 함께 조회입니다.</p>
+      <p>엔티티 매핑에서 미뤄 둔 <code>fetch</code>입니다. 그래프 탐색 불일치 때문에 JPA는 주문을 읽을 때 회원까지 읽을지 정해야 합니다. <dfn title="lazy loading">지연 로딩</dfn>(LAZY)은 회원 자리에 Hibernate가 만든 <strong>프록시</strong>를 넣어 두고, 실제 값을 쓰는 순간 조회합니다. <dfn title="eager loading">즉시 로딩</dfn>(EAGER)은 처음부터 함께 읽습니다.</p>
+      <p>프록시를 초기화하려면 열린 영속성 컨텍스트가 필요합니다. 트랜잭션이 끝난 뒤 건드리면 <code>LazyInitializationException</code>이 납니다. <code>@ManyToOne</code>과 <code>@OneToOne</code>은 기본이 EAGER라 직접 LAZY로 바꿔야 하며, 실무 원칙은 <strong>전부 LAZY</strong>입니다.</p>
     </div>
   </div>
 </section>
@@ -753,32 +1167,63 @@ events.publishEvent(<span class="k">new</span> Ordered(id));
 <section class="slide">
   <h2>N+1: 쿼리 한 번이 N번을 부른다</h2>
   <div class="split split--wide-left">
-    <pre class="code" data-file="실행되는 SQL"><code>List&lt;Order&gt; orders = repo.findAll();
+    <pre class="code" data-file="주문 목록 화면"><code>List&lt;Order&gt; orders = orderRepo.findAll();
 <span class="k">for</span> (Order o : orders)
   o.getMember().getName();
 
-<span class="dim">-- 실제 로그</span>
+<span class="dim">-- 실제 SQL 로그</span>
 select * from orders                  <span class="c">-- 1번</span>
 <span class="hl">select * from member where id=?       <span class="c">-- N번</span></span>
 select * from member where id=?
 select * from member where id=?
 …</code></pre>
     <div class="prose">
-      <p>주문 100건을 조회하면 주문마다 회원 프록시가 초기화되어 SELECT가 100번 더 나갑니다. 이것이 <dfn title="N+1 problem">N+1 문제</dfn>입니다.</p>
-      <p>EAGER로 바꾸면 해결될까요? JPQL은 먼저 SQL로 번역되어 주문만 읽고, 그다음 EAGER를 채우려 다시 N번 조회합니다. <mark>로딩 시점만 바뀔 뿐 N+1은 그대로</mark>입니다.</p>
+      <p>주문 목록 화면에 주문자 이름을 함께 보여 준다고 합시다. 주문 100건을 읽으면, 반복문에서 주문마다 회원 프록시가 초기화되어 SELECT가 100번 더 나갑니다. 쿼리 1번이 N번을 부르는 이 현상이 <dfn title="N+1 problem">N+1 문제</dfn>입니다.</p>
+      <p>EAGER로 바꾸면 해결될까요? <code>findAll()</code>의 JPQL은 그대로 SQL로 번역되어 주문만 읽고, 그다음 EAGER를 채우려 다시 N번 조회합니다. <mark>로딩 시점만 앞당겨질 뿐 N+1은 그대로</mark>입니다.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <h2>N+1을 푸는 세 가지 방법</h2>
+  <h2>fetch join은 JOIN 한 번으로 함께 읽는다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="OrderRepository.java"><code><span class="k">@Query</span>(<span class="s">"select o from Order o"</span>
+     + <span class="s">" join fetch o.member"</span>)
+List&lt;Order&gt; findAllWithMember();
+
+<span class="hl"><span class="k">@EntityGraph</span>(attributePaths = <span class="s">"member"</span>)</span>
+List&lt;Order&gt; findByStatus(OrderStatus s);
+
+<span class="dim">-- 두 메서드 모두 SQL 한 번</span>
+select o.*, m.* from orders o
+  join member m on m.id = o.member_id</code></pre>
+    <div class="prose">
+      <p>N+1의 원인은 "회원이 필요하다"는 사실을 첫 쿼리가 몰랐다는 데 있습니다. <dfn>fetch join</dfn>은 JPQL에 <code>join fetch</code>로 그 사실을 알려, 4장의 JOIN 한 번으로 주문과 회원을 함께 읽고 회원 자리에 프록시 대신 실제 엔티티를 채웁니다.</p>
+      <p><code>@EntityGraph</code>는 같은 일을 어노테이션으로 하는 방법입니다. JPQL을 쓰지 않는 메서드 이름 쿼리에도 붙일 수 있습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>배치 크기는 N번을 IN 절 몇 번으로 묶는다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="application.yml과 실행 SQL"><code>spring.jpa.properties.hibernate:
+<span class="hl">  default_batch_fetch_size: <span class="n">100</span></span>
+
+<span class="dim">-- 주문 100건 + 회원 조회</span>
+select * from orders
+select * from member
+<span class="hl"> where id in (?, ?, ?, … 100개)</span></code></pre>
+    <div class="prose">
+      <p>세 번째 방법은 쿼리를 하나로 합치지 않고, 프록시를 초기화하는 쿼리를 모아 보내는 것입니다. 프록시 하나를 초기화할 때, 같은 영속성 컨텍스트에 아직 초기화되지 않은 회원 프록시가 더 있으면 최대 100개의 ID를 SQL의 <code>IN</code> 조건에 담아 한 번에 읽습니다.</p>
+      <p>주문 N건이면 쿼리는 1 + N/100번입니다. JOIN이 아니므로 행이 불어나지 않아, 다음 슬라이드에서 볼 fetch join의 한계에 걸리지 않습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>세 해법은 쿼리 수와 쓰는 자리가 다르다</h2>
   <div class="slide__body">
-    <pre class="code" data-file="해결 방법"><code><span class="c">// 1. fetch join: JOIN 한 번으로 함께 조회</span>
-<span class="k">@Query</span>(<span class="s">"select o from Order o join fetch o.member"</span>)
-<span class="c">// 2. @EntityGraph: 어노테이션으로 같은 효과</span>
-<span class="k">@EntityGraph</span>(attributePaths = <span class="s">"member"</span>)
-<span class="c">// 3. 배치 크기: 프록시 초기화를 IN 절로 묶음</span>
-spring.jpa.properties.hibernate.default_batch_fetch_size: <span class="n">100</span></code></pre>
     <table class="compare">
       <thead><tr><th scope="col">방법</th><th scope="col">쿼리 수</th><th scope="col">적합한 경우</th></tr></thead>
       <tbody>
@@ -787,23 +1232,26 @@ spring.jpa.properties.hibernate.default_batch_fetch_size: <span class="n">100</s
         <tr><th scope="row">배치 크기</th><td class="num">1 + N/100</td><td class="is-flow">컬렉션, 페이징이 필요한 조회</td></tr>
       </tbody>
     </table>
+    <div class="prose">
+      <p>표의 "ToOne"은 <code>@ManyToOne</code>과 <code>@OneToOne</code>처럼 상대가 하나인 연관을, "컬렉션"은 <code>@OneToMany</code>처럼 상대가 여럿인 연관을 말합니다. 이 구분이 왜 중요한지는 fetch join이 컬렉션을 만났을 때 생기는 일에서 드러납니다.</p>
+    </div>
   </div>
 </section>
 
 <section class="slide">
-  <h2>fetch join에는 두 가지 한계가 있다</h2>
-  <div class="prose">
-    <p><strong>컬렉션 fetch join과 페이징</strong>: 주문 하나에 상품이 3개면 JOIN 결과는 3행이 됩니다. 행 기준으로 LIMIT을 걸면 주문이 잘리므로, Hibernate는 <mark>전체를 메모리로 읽은 뒤 페이징</mark>하고 경고만 남깁니다. 데이터가 많으면 메모리가 터집니다.</p>
-    <p><strong>둘 이상의 컬렉션 fetch join</strong>: List 컬렉션 두 개를 동시에 fetch join하면 행이 곱으로 불어나고 어느 행이 어느 컬렉션 것인지 구분할 수 없어 <code>MultipleBagFetchException</code>이 납니다.</p>
-    <p>정석은 ToOne 관계만 fetch join으로 가져와 페이징하고, 컬렉션은 <code>default_batch_fetch_size</code>로 IN 절 조회에 맡기는 것입니다. 조회 전용 화면이라면 DTO로 필요한 열만 직접 조회하는 방법도 있습니다.</p>
+  <h2>fetch join은 컬렉션에서 두 가지 한계를 만난다</h2>
+  <div class="prose prose--cols">
+    <p><strong>컬렉션 fetch join과 페이징</strong>: 주문 하나에 상품이 3개면 주문과 주문 상품을 JOIN한 결과는 3행이 됩니다. 이 상태에서 "주문 20건씩"을 SQL의 <code>LIMIT</code>으로 자르면 행 기준으로 잘려 어떤 주문은 상품 일부만 남습니다. 그래서 Hibernate는 LIMIT을 SQL에 넣지 않고 <mark>전체를 메모리로 읽은 뒤 페이징</mark>하며 경고 로그만 남깁니다. 주문이 수십만 건이면 메모리가 바닥납니다.</p>
+    <p><strong>둘 이상의 컬렉션 fetch join</strong>: 주문 상품과 쿠폰 목록을 동시에 fetch join하면 행 수가 곱으로 불어납니다(상품 3 × 쿠폰 2 = 6행). 순서도 중복 구분도 없는 <code>List</code> 컬렉션, Hibernate 용어로 <dfn title="bag">Bag</dfn>은 어느 행이 어느 컬렉션 것인지 가려낼 수 없어 <code>MultipleBagFetchException</code>으로 막힙니다.</p>
+    <p>정석은 ToOne 관계만 fetch join으로 가져와 페이징하고, 컬렉션은 배치 크기에 맡겨 IN 절로 읽는 것입니다. 조회 전용 화면이라면 엔티티 대신 화면에 필요한 열만 담은 전달용 객체, 즉 <dfn title="Data Transfer Object">DTO</dfn>로 직접 조회하는 방법도 있습니다. DTO는 5부에서 다시 봅니다.</p>
   </div>
 </section>
 
-<!-- ===== 4부 실무 ================================================= -->
+<!-- ===== 5부 실무 ================================================= -->
 <section class="slide slide--divider" data-section="운영과 테스트" data-depth="practice">
-  <p class="divider__no">4부</p>
+  <p class="divider__no">5부</p>
   <h2>커넥션은 생각보다 빨리 바닥난다</h2>
-  <p class="lede">앞에서 본 원리들이 운영에서 어떤 장애로 나타나는지, 그리고 그것을 미리 잡아내는 테스트 전략을 봅니다.</p>
+  <p class="lede">2부에서 "트랜잭션 동안 커넥션 하나를 점유한다"는 사실을 봤습니다. 이 부는 그 한 문장이 주문 서버에서 어떤 장애로 번지는지, 그리고 앞의 원리로 생기는 실수를 배포 전에 잡아내는 테스트 구성을 봅니다.</p>
   <div class="depth-shift" aria-label="깊이 전환: 원리에서 실무로">
     <span class="depth-shift__step"><span class="depth" data-depth="core"><span class="depth__ticks" aria-hidden="true"><i></i><i></i><i></i></span></span>원리</span>
     <span class="depth-shift__line" aria-hidden="true"></span>
@@ -813,15 +1261,47 @@ spring.jpa.properties.hibernate.default_batch_fetch_size: <span class="n">100</s
 </section>
 
 <section class="slide">
+  <h2>커넥션을 쥐는 시간이 처리량을 정한다</h2>
+  <div class="prose">
+    <p>4장에서 본 HikariCP 커넥션 풀은 기본 10개이고, 빌리려는 요청은 <code>connectionTimeout</code>(기본 30초)까지 기다리다 실패합니다. 여기에 간단한 계산을 해 봅니다.</p>
+    <p>주문 트랜잭션 하나가 커넥션을 50밀리초 쥔다면, 커넥션 하나가 1초에 20건을 처리하므로 풀 전체로 초당 200건입니다. 같은 트랜잭션이 3초를 쥐면 초당 약 3건으로 떨어집니다. 3부에서 본 Tomcat 스레드 200개는 그 사이 커넥션을 기다리며 쌓이고, 커넥션과 무관한 조회 API까지 같은 풀을 기다리다 함께 느려집니다.</p>
+    <p>즉 <mark>처리량은 풀 크기를 커넥션 점유 시간으로 나눈 값</mark>입니다. 풀을 키우는 것은 DB 쪽 한계(4장) 때문에 오래 못 가고, 실무에서 고칠 수 있는 것은 점유 시간입니다. 이어지는 네 사례가 모두 이 시간을 늘리는 원인입니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>트랜잭션 안의 외부 호출이 풀을 말린다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="PaymentService.java"><code><span class="c">// 문제: 결제 API 3초 동안 커넥션 점유</span>
+<span class="k">@Transactional</span>
+<span class="k">public void</span> pay(Long id) {
+  Order o = orderRepo.findById(id).orElseThrow();
+<span class="hl">  pg.approve(o);  <span class="c">// 외부 결제 API</span></span>
+  o.markPaid();
+}
+
+<span class="c">// 개선: 외부 호출은 트랜잭션 밖에서</span>
+<span class="k">public void</span> pay(Long id) {
+  Approval a = pg.approve(orderQuery.get(id));
+  orderTx.markPaid(id, a); <span class="c">// 별도 Bean</span>
+}</code></pre>
+    <div class="prose">
+      <p>4장의 풀 고갈 사례가 Spring에서는 대개 이 모양입니다. 프록시가 메서드 전체를 트랜잭션으로 감싸므로, 안에서 결제 API를 기다리는 시간이 그대로 커넥션 점유 시간이 됩니다. 결제사가 평소 0.2초에서 3초로 느려지는 순간 앞 슬라이드의 계산이 현실이 됩니다.</p>
+      <p>해법은 경계를 쪼개는 것입니다. DB 갱신만 <strong>다른 Bean</strong>의 <code>@Transactional</code> 메서드로 옮깁니다. 같은 클래스에서 부르면 2부의 자기 호출이라 트랜잭션이 걸리지 않습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <h2>OSIV는 커넥션을 응답 끝까지 붙잡는다</h2>
   <div class="split split--center">
     <div class="prose">
-      <p><dfn title="Open Session In View">OSIV</dfn>는 영속성 컨텍스트를 요청 끝까지 열어 두어 컨트롤러에서도 지연 로딩이 되게 합니다. Spring Boot는 <code>spring.jpa.open-in-view=true</code>가 기본이고 기동 시 경고를 남깁니다.</p>
-      <p>편한 대가로 DB 커넥션을 <mark>응답이 끝날 때까지</mark> 놓지 않습니다. 끄면 서비스 밖 지연 로딩이 <code>LazyInitializationException</code>을 내므로, 필요한 데이터는 트랜잭션 안에서 DTO로 만들어 나와야 합니다.</p>
+      <p>4부의 <code>LazyInitializationException</code>을 피하려고 만든 장치가 <dfn title="Open Session In View">OSIV</dfn>입니다. 영속성 컨텍스트를 요청 끝까지 열어 두어 컨트롤러와 JSON 변환 중에도 지연 로딩이 되게 합니다. Spring Boot는 <code>spring.jpa.open-in-view=true</code>가 기본이고 기동 시 경고 로그를 남깁니다.</p>
+      <p>편한 대신 커넥션을 <mark>응답이 끝날 때까지</mark> 놓지 않습니다. 느린 모바일 회선으로 응답을 보내는 시간까지 점유 시간에 들어갑니다.</p>
     </div>
     <figure class="figure">
-      <svg class="dg" viewBox="0 0 760 380" role="img" aria-labelledby="f44t">
-        <title id="f44t">OSIV가 켜지면 커넥션을 요청 시작부터 응답 완료까지 점유하고, 꺼지면 서비스 트랜잭션 구간에서만 점유한다</title>
+      <svg class="dg" viewBox="0 0 760 380" role="img" aria-labelledby="f75t">
+        <title id="f75t">OSIV가 켜지면 커넥션을 요청 시작부터 응답 완료까지 점유하고, 꺼지면 서비스 트랜잭션 구간에서만 점유한다</title>
         <text class="dg-label--lg" x="40" y="40" text-anchor="start">OSIV 켬</text>
         <rect class="dg-box dg-box--key" x="60" y="60" width="660" height="56"/>
         <text class="dg-label--key" x="390" y="88" text-anchor="middle">커넥션 점유: 요청 시작부터 응답 완료까지</text>
@@ -839,28 +1319,98 @@ spring.jpa.properties.hibernate.default_batch_fetch_size: <span class="n">100</s
         <text class="dg-label--sm" x="720" y="336" text-anchor="end">응답 완료</text>
         <text class="dg-label--sm dg-label--muted" x="390" y="364" text-anchor="middle">컨트롤러 후처리, JSON 직렬화, 느린 네트워크 전송 구간</text>
       </svg>
-      <figcaption>트래픽이 많은 API 서버는 OSIV를 끄고 트랜잭션 안에서 응답 데이터를 완성하는 쪽을 권장합니다.</figcaption>
+      <figcaption>OSIV는 엄밀히는 첫 DB 접근 때 커넥션을 받지만, 한번 받으면 응답 완료까지 쥡니다.</figcaption>
     </figure>
   </div>
 </section>
 
 <section class="slide">
-  <h2>JPA 락: 4장의 락을 어노테이션으로</h2>
+  <h2>OSIV를 끄면 응답은 트랜잭션 안에서 완성한다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="OrderQueryService.java"><code><span class="k">@Transactional</span>(readOnly = <span class="k">true</span>)
+<span class="k">public</span> List&lt;OrderRes&gt; myOrders(Long memberId) {
+  <span class="k">return</span> orderRepo.findOfMemberWithItems(memberId)
+    .stream()
+<span class="hl">    .map(OrderRes::from)  <span class="c">// 지연 로딩도 여기서</span></span>
+    .toList();
+}
+<span class="c">// 컨트롤러는 완성된 OrderRes만 받는다</span></code></pre>
+    <div class="prose">
+      <p>트래픽이 많은 API 서버는 <code>open-in-view=false</code>로 끄는 쪽을 권장합니다. 끄면 컨트롤러에서 지연 로딩하던 코드가 예외를 내므로, 응답에 필요한 데이터를 서비스의 트랜잭션 안에서 모두 읽어 DTO로 바꿔 내보내야 합니다.</p>
+      <p>강조한 줄의 변환이 트랜잭션 안에서 실행되므로 지연 로딩이 안전합니다. 다만 변환 중 N+1이 생기지 않도록 4부의 fetch join이나 배치 크기를 함께 씁니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>REQUIRES_NEW는 풀 전체를 멈출 수 있다</h2>
+  <div class="split split--even">
+    <ol class="steps">
+      <li><b>요청 10개 동시 도착</b><p>주문 요청 10개가 각자 바깥 트랜잭션을 열어 커넥션 10개를 모두 가져갑니다.</p></li>
+      <li><b>감사 로그 호출</b><p>각 요청이 REQUIRES_NEW 메서드를 불러 두 번째 커넥션을 요청합니다.</p></li>
+      <li class="is-key"><b>아무도 못 받음</b><p>풀은 비었고, 반납할 수 있는 요청은 모두 두 번째를 기다리는 중입니다.</p></li>
+      <li><b>30초 뒤 일제히 실패</b><p>connectionTimeout이 지나 10개 요청이 모두 예외로 끝납니다.</p></li>
+    </ol>
+    <div class="prose">
+      <p>2부의 전파 그림에서 REQUIRES_NEW는 한 요청이 커넥션 두 개를 쥔다고 했습니다. 동시 요청 수가 풀 크기에 닿으면, 모두가 하나씩 쥔 채 서로의 반납을 기다리는 <strong>풀 데드락</strong>이 됩니다. 1장과 4장의 데드락 조건(점유한 채 대기, 순환 대기)이 커넥션 풀에서 그대로 성립합니다.</p>
+      <p>대응은 REQUIRES_NEW를 꼭 필요한 곳에만 쓰고, 쓴다면 풀 크기를 "동시 요청 수 × 2"를 견딜 만큼 잡거나 감사 로그를 이벤트로 빼는 것입니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>네 원인은 모두 점유 시간을 늘린다</h2>
+  <div class="slide__body">
+    <p class="lede">이 부의 사례에 4부의 N+1을 더해, 커넥션 점유 시간을 늘리는 원인을 정리합니다.</p>
+    <table class="compare">
+      <thead><tr><th scope="col">원인</th><th scope="col">증상</th><th scope="col">대응</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">트랜잭션 안 외부 호출</th><td>외부가 느려지면 풀 고갈</td><td>외부 호출을 트랜잭션 밖으로</td></tr>
+        <tr><th scope="row">OSIV 켬</th><td>느린 응답 전송까지 점유</td><td>OSIV 끄고 DTO로 반환</td></tr>
+        <tr><th scope="row">REQUIRES_NEW 남용</th><td class="is-key">모두 1개 쥔 채 2번째 대기</td><td>사용 최소화, 풀 크기 여유</td></tr>
+        <tr><th scope="row">N+1</th><td>쿼리 수백 개로 점유 연장</td><td>fetch join, 배치 크기</td></tr>
+      </tbody>
+    </table>
+    <p class="small">풀 크기를 정하는 원칙은 4장에서 다뤘고, 운영 중 풀 고갈을 지표와 스레드 덤프로 확정하는 절차는 18장에서 다룹니다.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>@Version은 4장의 낙관적 락을 자동으로 건다</h2>
   <div class="split split--wide-left">
     <pre class="code" data-file="Stock.java"><code><span class="k">@Entity</span>
 <span class="k">class</span> Stock {
-<span class="hl">  <span class="k">@Version</span> Long version;   <span class="c">// 낙관적 락</span></span>
+  <span class="k">@Id</span> Long itemId;
   <span class="k">int</span> quantity;
+<span class="hl">  <span class="k">@Version</span> Long version;</span>
 }
 
-<span class="k">interface</span> StockRepo <span class="k">extends</span> JpaRepository&lt;…&gt; {
-<span class="hl">  <span class="k">@Lock</span>(LockModeType.PESSIMISTIC_WRITE)</span>
-  <span class="k">@Query</span>(<span class="s">"select s from Stock s where s.id=:id"</span>)
-  Optional&lt;Stock&gt; findForUpdate(Long id);
-}</code></pre>
+<span class="dim">-- 변경 감지가 만드는 UPDATE</span>
+update stock set quantity=?, version=6
+<span class="hl"> where item_id=? and version=5</span>
+<span class="dim">-- 0행 갱신 → OptimisticLockException</span></code></pre>
     <div class="prose">
-      <p><code>@Version</code>은 UPDATE에 <code>where version=?</code>를 붙여, 그사이 누가 바꿨으면 0행이 갱신되고 예외가 납니다. 충돌이 드물 때 재시도와 함께 씁니다.</p>
-      <p><code>PESSIMISTIC_WRITE</code>는 4장의 <code>SELECT ... FOR UPDATE</code>를 냅니다. 충돌이 잦은 재고 차감에 맞지만, 락 대기 시간이 커넥션 점유 시간에 그대로 더해집니다.</p>
+      <p>두 요청이 같은 상품 재고를 동시에 읽고 각자 1을 빼면, 하나의 차감이 사라집니다. 4장에서 이를 막는 방법으로 낙관적 락(버전 열로 충돌 감지)과 비관적 락(<code>SELECT ... FOR UPDATE</code>로 미리 잠금)을 봤습니다.</p>
+      <p>JPA에서는 버전 필드에 <code>@Version</code>만 붙이면 변경 감지가 만드는 UPDATE에 버전 조건이 들어갑니다. 그사이 다른 트랜잭션이 바꿨다면 0행이 갱신되고 예외가 납니다. 충돌이 드물 때 맞고, 잡은 예외는 다시 읽어 재시도합니다.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>충돌이 잦으면 비관적 락으로 줄을 세운다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="StockRepository.java"><code><span class="k">interface</span> StockRepository
+    <span class="k">extends</span> JpaRepository&lt;Stock, Long&gt; {
+<span class="hl">  <span class="k">@Lock</span>(LockModeType.PESSIMISTIC_WRITE)</span>
+  <span class="k">@Query</span>(<span class="s">"select s from Stock s"</span>
+       + <span class="s">" where s.itemId = :id"</span>)
+  Optional&lt;Stock&gt; findForUpdate(Long id);
+}
+<span class="dim">-- select ... from stock where item_id=?</span>
+<span class="hl"><span class="dim">--   for update</span></span></code></pre>
+    <div class="prose">
+      <p>인기 상품 선착순 판매처럼 충돌이 잦으면 낙관적 락은 재시도만 폭증합니다. 이때는 <code>PESSIMISTIC_WRITE</code>로 4장의 <code>SELECT ... FOR UPDATE</code>를 내서, 먼저 온 트랜잭션이 커밋할 때까지 나머지를 줄 세웁니다.</p>
+      <p>대가는 이 부의 주제 그대로입니다. <mark>락을 기다리는 시간도 커넥션 점유 시간</mark>에 더해집니다. 락 구간을 짧게 두고, 여러 행을 잠글 때는 4장에서 본 대로 순서를 통일해 데드락을 줄입니다. 서버 여러 대가 DB 밖에서 함께 쓰는 분산 락은 8장에서 봅니다.</p>
     </div>
   </div>
 </section>
@@ -868,56 +1418,19 @@ spring.jpa.properties.hibernate.default_batch_fetch_size: <span class="n">100</s
 <section class="slide">
   <h2>엔티티를 API 응답으로 내보내지 않는다</h2>
   <div class="prose">
-    <p>엔티티를 컨트롤러에서 그대로 JSON으로 반환하면 여러 문제가 한꺼번에 생깁니다. 양방향 연관이 있으면 직렬화가 서로를 끝없이 따라가고, 지연 로딩 프록시를 건드려 <strong>숨은 쿼리</strong>가 나가며, 비밀번호 같은 내부 필드가 노출됩니다.</p>
-    <p>더 큰 문제는 결합입니다. 테이블 열 이름 하나를 바꾸면 API 응답 형식이 바뀌어 클라이언트가 깨집니다. <mark>엔티티는 DB 모델, DTO는 API 계약</mark>으로 나누고, 변환은 트랜잭션 안의 서비스 계층에서 합니다.</p>
-    <p>요청 쪽도 같습니다. 요청 DTO로 받아야 클라이언트가 보낸 값이 엔티티의 ID나 권한 필드를 덮어쓰는 일을 막을 수 있습니다.</p>
-  </div>
-</section>
-
-<section class="slide">
-  <h2>트랜잭션 범위가 곧 커넥션 점유 시간이다</h2>
-  <div class="split split--wide-left">
-    <pre class="code" data-file="PaymentService.java"><code><span class="c">// 문제: 외부 호출 3초 동안 커넥션 점유</span>
-<span class="k">@Transactional</span>
-<span class="k">public void</span> pay(Long id) {
-  Order o = repo.findById(id).orElseThrow();
-<span class="hl">  pg.approve(o);  <span class="c">// 외부 결제 API</span></span>
-  o.markPaid();
-}
-
-<span class="c">// 개선: 외부 호출은 트랜잭션 밖에서</span>
-<span class="k">public void</span> pay(Long id) {
-  Approval a = pg.approve(orderQuery.get(id));
-  orderTx.markPaid(id, a); <span class="c">// 별도 Bean</span>
-}</code></pre>
-    <div class="prose">
-      <p>4장에서 본 풀 고갈 사례가 Spring에서는 대개 이 모양으로 생깁니다. 프록시가 메서드 전체를 트랜잭션으로 감싸므로, 메서드 안의 외부 호출 시간이 그대로 커넥션 점유 시간이 됩니다.</p>
-      <p>해법은 경계를 쪼개는 것입니다. DB 갱신만 <strong>다른 Bean</strong>의 <code>@Transactional</code> 메서드로 옮깁니다. 같은 클래스에서 부르면 앞서 본 self-invocation 때문에 트랜잭션이 걸리지 않습니다.</p>
-    </div>
-  </div>
-</section>
-
-<section class="slide">
-  <h2>커넥션을 짧게 쥐는 것이 해결책이다</h2>
-  <div class="slide__body">
-    <table class="compare">
-      <thead><tr><th scope="col">원인</th><th scope="col">증상</th><th scope="col">대응</th></tr></thead>
-      <tbody>
-        <tr><th scope="row">트랜잭션 안 외부 호출</th><td>외부가 느려지면 풀 고갈</td><td>외부 호출을 트랜잭션 밖으로</td></tr>
-        <tr><th scope="row">OSIV 켬</th><td>느린 응답 전송까지 점유</td><td>OSIV 끄고 DTO로 반환</td></tr>
-        <tr><th scope="row">REQUIRES_NEW 남용</th><td class="is-key">모두 1개 쥔 채 2번째 대기</td><td>풀 크기 여유, 구조 분리</td></tr>
-        <tr><th scope="row">N+1</th><td>쿼리 수백 개로 점유 연장</td><td>fetch join, 배치 크기</td></tr>
-      </tbody>
-    </table>
-    <div class="prose">
-      <p>REQUIRES_NEW는 특히 위험합니다. 동시 요청 10개가 각자 커넥션 하나를 쥔 채 두 번째를 기다리면, 풀 10개가 모두 묶여 누구도 진행하지 못하는 <strong>풀 데드락</strong>이 됩니다. 풀 크기 원칙은 4장에서 다뤘고, 운영 중 고갈을 확정하는 절차는 18장에서 다룹니다.</p>
-    </div>
+    <p>OSIV를 끄며 만든 DTO에는 그 자체로 이유가 있습니다. 엔티티를 컨트롤러에서 그대로 JSON으로 반환하면 문제가 한꺼번에 생깁니다. 주문과 회원이 서로를 참조하면 Jackson이 둘을 끝없이 따라가고, 지연 로딩 프록시를 건드려 <strong>숨은 쿼리</strong>가 나가며, 비밀번호 같은 내부 필드가 노출됩니다.</p>
+    <p>더 큰 문제는 결합입니다. 테이블 열 이름 하나를 바꾸면 API 응답 형식이 따라 바뀌어 앱이 깨집니다. <mark>엔티티는 DB 모델, DTO는 API 계약</mark>으로 나누고, 변환은 트랜잭션 안의 서비스 계층에서 합니다.</p>
+    <p>요청 쪽도 같습니다. 3부의 <code>@RequestBody OrderReq</code>처럼 요청 DTO로 받아야, 클라이언트가 보낸 JSON이 엔티티의 ID나 상태 필드를 마음대로 덮어쓰는 일을 막을 수 있습니다.</p>
   </div>
 </section>
 
 <section class="slide">
   <h2>테스트 피라미드: 빠른 테스트를 많이</h2>
   <div class="split split--even">
+    <div class="prose">
+      <p>지금까지의 함정은 대부분 실행해 봐야 드러납니다. 테스트는 범위에 따라 나뉩니다. <dfn title="unit test">단위 테스트</dfn>는 클래스 하나를 컨테이너 없이, <dfn title="slice test">슬라이스 테스트</dfn>는 웹이나 JPA 같은 한 계층만 띄워서, <dfn title="integration test">통합 테스트</dfn>는 전체 컨텍스트와 실제 DB로, <dfn title="End-to-End">E2E</dfn> 테스트는 배포된 시스템에 실제 요청을 보내 확인합니다.</p>
+      <p>아래층일수록 빠르고 실패 원인이 좁으므로 많이 두고, 위층은 핵심 흐름만 둡니다. 이 모양을 테스트 피라미드라 합니다.</p>
+    </div>
     <table class="compare">
       <thead><tr><th scope="col">층</th><th scope="col">대상</th><th scope="col">속도</th></tr></thead>
       <tbody>
@@ -927,26 +1440,48 @@ spring.jpa.properties.hibernate.default_batch_fetch_size: <span class="n">100</s
         <tr><th scope="row">E2E</th><td>배포된 시스템 전체</td><td class="is-key">분 단위</td></tr>
       </tbody>
     </table>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>단위 테스트는 협력 객체를 가짜로 바꾼다</h2>
+  <div class="split split--wide-left">
+    <pre class="code" data-file="OrderServiceTest.java"><code><span class="k">@Test</span>
+<span class="k">void</span> 재고가_없으면_결제하지_않는다() {
+<span class="hl">  PaymentClient pay = mock(PaymentClient.<span class="k">class</span>);</span>
+  StockRepository stock = mock(StockRepository.<span class="k">class</span>);
+  when(stock.findForUpdate(<span class="n">7L</span>))
+      .thenReturn(Optional.of(<span class="k">new</span> Stock(<span class="n">7L</span>, <span class="n">0</span>)));
+
+<span class="hl">  <span class="k">var</span> svc = <span class="k">new</span> OrderService(pay, stock, …);</span>
+
+  assertThrows(OutOfStockException.<span class="k">class</span>,
+      () -&gt; svc.place(<span class="k">new</span> OrderReq(<span class="n">7L</span>, <span class="n">1</span>)));
+  verify(pay, never()).approve(any());
+}</code></pre>
     <div class="prose">
-      <p>아래층일수록 빠르고 실패 원인이 좁으므로 많이 둡니다. 위층은 느리고 깨지기 쉬워 핵심 흐름만 확인합니다.</p>
-      <p>생성자 주입을 쓴 서비스는 컨테이너 없이 가짜 객체를 넣어 단위 테스트할 수 있습니다. 1부의 설계 선택이 테스트 속도로 돌아오는 셈입니다.</p>
+      <p><dfn>Mock</dfn>은 정해 둔 값을 돌려주고 자신이 어떻게 불렸는지 기록하는 가짜 객체로, Mockito 라이브러리가 만들어 줍니다. 결제사 API를 실제로 부르지 않고도 "재고가 0이면 결제를 시도하지 않는다"를 밀리초 안에 확인합니다.</p>
+      <p>두 번째 강조 줄이 1부의 보답입니다. 생성자 주입을 썼기 때문에 컨테이너 없이 <code>new</code>로 가짜를 넣을 수 있습니다.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <h2>슬라이스 테스트와 Mock을 쓰는 기준</h2>
+  <h2>슬라이스 테스트는 필요한 계층만 띄운다</h2>
   <div class="slide__body">
+    <div class="prose">
+      <p>컨트롤러의 JSON 변환이나 JPA의 쿼리는 Spring이 있어야 확인됩니다. 그렇다고 매번 전체를 띄우면 느리므로, Spring Boot는 계층별로 필요한 Bean만 등록하는 테스트 어노테이션을 줍니다. 슬라이스 테스트에서 빠진 Bean은 <code>@MockitoBean</code>으로 가짜를 등록합니다(Spring Boot 3.4부터 <code>@MockBean</code>을 대신합니다).</p>
+    </div>
     <table class="compare">
-      <thead><tr><th scope="col">도구</th><th scope="col">띄우는 범위</th><th scope="col">용도</th></tr></thead>
+      <thead><tr><th scope="col">도구</th><th scope="col">띄우는 범위</th><th scope="col">확인하는 것</th></tr></thead>
       <tbody>
-        <tr><th scope="row"><code>@WebMvcTest</code></th><td>MVC 계층 Bean만</td><td>요청 매핑, 검증, 응답 형식</td></tr>
-        <tr><th scope="row"><code>@DataJpaTest</code></th><td>JPA 계층, 테스트마다 롤백</td><td>쿼리, 매핑, N+1 확인</td></tr>
+        <tr><th scope="row"><code>@WebMvcTest</code></th><td>MVC 계층 Bean만</td><td>요청 매핑, 검증, 응답 JSON</td></tr>
+        <tr><th scope="row"><code>@DataJpaTest</code></th><td>JPA 계층, 테스트마다 롤백</td><td>매핑, 쿼리, N+1 여부</td></tr>
         <tr><th scope="row"><code>@SpringBootTest</code></th><td>전체 컨텍스트</td><td>여러 계층에 걸친 흐름</td></tr>
       </tbody>
     </table>
     <div class="prose">
-      <p>Mock은 협력 객체를 가짜로 바꿔 대상만 검증하게 합니다. Spring Boot 3.4부터 <code>@MockBean</code> 대신 <code>@MockitoBean</code>을 씁니다. 다만 DB까지 Mock으로 바꾸면 쿼리 문제는 운영에서야 드러나므로, JPA 테스트는 Testcontainers로 실제 DB를 띄우는 편이 안전합니다.</p>
+      <p>DB까지 Mock으로 바꾸면 쿼리 문제는 운영에서야 드러납니다. JPA 테스트는 <dfn>Testcontainers</dfn>(테스트 중에 컨테이너 도구 Docker로 실제 MySQL을 띄워 주는 라이브러리, Docker는 9장)로 운영과 같은 DB에서 돌리는 편이 안전합니다.</p>
     </div>
   </div>
 </section>
@@ -954,13 +1489,13 @@ spring.jpa.properties.hibernate.default_batch_fetch_size: <span class="n">100</s
 <section class="slide">
   <h2>테스트의 @Transactional이 버그를 숨긴다</h2>
   <div class="prose">
-    <p>테스트 메서드에 <code>@Transactional</code>을 붙이면 테스트 전체가 한 트랜잭션이 되어 끝에 롤백됩니다. 정리가 편한 대신, 운영과 다른 조건이 생깁니다.</p>
+    <p>테스트 메서드에 <code>@Transactional</code>을 붙이면 테스트 전체가 한 트랜잭션이 되어 끝에 롤백됩니다(<code>@DataJpaTest</code>는 기본으로 그렇습니다). 데이터 정리가 편한 대신, 4부의 원리 때문에 운영과 다른 조건이 생깁니다.</p>
     <ul>
-      <li><strong>지연 로딩 예외가 안 난다</strong>: 영속성 컨텍스트가 테스트 끝까지 열려 있어 운영의 <code>LazyInitializationException</code>을 놓칩니다.</li>
-      <li><strong>flush가 안 일어난다</strong>: 롤백으로 끝나므로 UPDATE가 실행되지 않아 제약 조건 위반을 놓칠 수 있습니다.</li>
-      <li><strong>1차 캐시가 결과를 돌려준다</strong>: 저장 후 조회가 DB가 아니라 캐시를 읽습니다.</li>
+      <li><strong>지연 로딩 예외가 안 난다</strong>: 영속성 컨텍스트가 테스트 끝까지 열려 있어, OSIV를 끈 운영에서 날 <code>LazyInitializationException</code>을 놓칩니다.</li>
+      <li><strong>flush가 안 일어난다</strong>: 커밋 없이 롤백으로 끝나므로 쌓인 UPDATE가 DB에 가지 않아, 제약 조건 위반을 놓칠 수 있습니다.</li>
+      <li><strong>1차 캐시가 결과를 돌려준다</strong>: 저장 직후 조회가 DB가 아니라 캐시를 읽어, 매핑 오류가 가려집니다.</li>
     </ul>
-    <p>중요한 흐름은 <code>em.flush()</code>와 <code>em.clear()</code>를 넣어 DB를 실제로 거치게 하거나, 트랜잭션 없이 실행하고 직접 정리합니다.</p>
+    <p>중요한 흐름은 <code>em.flush()</code>로 SQL을 실제로 보내고 <code>em.clear()</code>로 1차 캐시를 비운 뒤 다시 조회하거나, 트랜잭션 없이 실행하고 직접 정리합니다.</p>
   </div>
 </section>
 
@@ -968,10 +1503,11 @@ spring.jpa.properties.hibernate.default_batch_fetch_size: <span class="n">100</s
 <section class="slide slide--summary" data-section="정리" data-depth="none">
   <h2>정리</h2>
   <ul class="summary">
-    <li><b>IoC 컨테이너가 객체를 만들고 연결합니다.</b> 생성자 주입은 불변, 누락 방지, 순환 참조 조기 발견, 테스트 용이성을 줍니다.</li>
+    <li><b>IoC 컨테이너가 객체를 만들고 연결합니다.</b> 생성자 주입은 불변, 누락 방지, 순환 참조 조기 발견, 컨테이너 없는 테스트를 줍니다.</li>
     <li><b>싱글톤 Bean은 무상태여야 합니다.</b> 모든 요청 스레드가 하나의 인스턴스를 동시에 쓰기 때문입니다.</li>
-    <li><b>AOP와 @Transactional은 프록시로 동작합니다.</b> 그래서 내부 호출과 private 메서드에는 적용되지 않고, 트랜잭션 동안 커넥션을 점유합니다.</li>
-    <li><b>영속성 컨텍스트는 쓰기 지연 캐시입니다.</b> 1차 캐시, 스냅샷 비교, flush가 SQL을 만들고, 지연 로딩 프록시가 N+1의 원인이 됩니다.</li>
+    <li><b>AOP와 @Transactional은 프록시로 동작합니다.</b> 그래서 자기 호출과 private 메서드에는 걸리지 않고, 트랜잭션 동안 커넥션을 점유합니다.</li>
+    <li><b>요청은 Tomcat 스레드 하나가 끝까지 맡습니다.</b> DispatcherServlet이 핸들러를 찾고, 메시지 컨버터가 JSON과 객체를 바꿉니다.</li>
+    <li><b>영속성 컨텍스트가 SQL을 만듭니다.</b> 1차 캐시, 스냅샷 비교, flush가 SQL을 만들고, 지연 로딩 프록시가 N+1의 원인이 됩니다.</li>
     <li><b>운영의 핵심은 커넥션 점유 시간입니다.</b> 외부 호출, OSIV, REQUIRES_NEW, N+1이 모두 풀 고갈로 이어집니다.</li>
   </ul>
 </section>
@@ -986,26 +1522,32 @@ spring.jpa.properties.hibernate.default_batch_fetch_size: <span class="n">100</s
       <div class="answer"><p>요청마다 Tomcat 스레드가 따로 있고, 요청별 값은 각 스레드 스택의 지역 변수에 놓이기 때문입니다. 컨트롤러가 변경 가능한 필드를 갖지 않는 한 공유되는 상태가 없습니다.</p></div></details></li>
     <li><details><summary>인터페이스가 없는 서비스 클래스에도 @Transactional이 동작하는 이유는?</summary>
       <div class="answer"><p>Spring Boot는 기본으로 CGLIB을 써서 클래스를 상속한 프록시를 만들기 때문입니다. 대신 final 클래스나 final 메서드면 가로챌 수 없습니다.</p></div></details></li>
-    <li><details><summary>같은 클래스의 @Transactional 메서드를 this로 부르면 왜 트랜잭션이 없나요?</summary>
-      <div class="answer"><p>트랜잭션 시작 코드는 프록시에 있는데 this는 프록시가 아닌 실제 객체를 가리키기 때문입니다. 메서드를 다른 Bean으로 분리해 프록시를 거치게 합니다.</p></div></details></li>
-    <li><details><summary>메서드가 IOException을 던졌는데 데이터가 커밋됐습니다. 왜일까요?</summary>
-      <div class="answer"><p>기본 롤백 규칙은 RuntimeException과 Error만 대상입니다. Checked 예외도 롤백하려면 rollbackFor를 지정합니다.</p></div></details></li>
   </ol>
 </section>
 
 <section class="slide" data-section="부록: 스스로 점검" data-depth="none">
   <h2>스스로 점검 (2)</h2>
   <ol class="selfcheck">
+    <li><details><summary>같은 클래스의 @Transactional 메서드를 this로 부르면 왜 트랜잭션이 없나요?</summary>
+      <div class="answer"><p>트랜잭션 시작 코드는 프록시에 있는데 this는 프록시가 아닌 실제 객체를 가리키기 때문입니다. 메서드를 다른 Bean으로 분리해 프록시를 거치게 합니다.</p></div></details></li>
+    <li><details><summary>안쪽 메서드의 예외를 바깥에서 잡았는데도 주문이 롤백됐습니다. 왜일까요?</summary>
+      <div class="answer"><p>REQUIRED로 참여한 안쪽은 바깥과 같은 물리 트랜잭션이라, 예외가 지나갈 때 롤백 전용 표시가 남습니다. 바깥이 커밋하려 할 때 이 표시를 보고 롤백하며 UnexpectedRollbackException을 냅니다.</p></div></details></li>
     <li><details><summary>save()를 부르지 않았는데 UPDATE가 나간 이유는?</summary>
       <div class="answer"><p>영속 상태 엔티티는 커밋 직전 flush에서 스냅샷과 비교되어, 달라진 값의 UPDATE가 자동으로 만들어지기 때문입니다.</p></div></details></li>
+  </ol>
+</section>
+
+<section class="slide" data-section="부록: 스스로 점검" data-depth="none">
+  <h2>스스로 점검 (3)</h2>
+  <ol class="selfcheck">
     <li><details><summary>연관을 EAGER로 바꾸면 N+1이 사라지나요?</summary>
       <div class="answer"><p>아닙니다. JPQL은 먼저 주 엔티티만 조회하고 EAGER를 채우려 다시 N번 조회합니다. fetch join이나 배치 크기로 해결합니다.</p></div></details></li>
-    <li><details><summary>주문과 상품 목록을 fetch join하고 페이징하면 무슨 일이 생기나요?</summary>
-      <div class="answer"><p>JOIN 행 단위로는 정확히 자를 수 없어 Hibernate가 전체를 메모리로 읽은 뒤 페이징합니다. 데이터가 많으면 메모리 부족이 납니다.</p></div></details></li>
-    <li><details><summary>외부 API가 느려지자 관계없는 조회 API까지 타임아웃이 났습니다. 원인은?</summary>
-      <div class="answer"><p>트랜잭션 안에서 외부 API를 기다리며 커넥션을 붙잡아 풀이 고갈된 것입니다. 같은 풀을 쓰는 모든 요청이 connectionTimeout까지 기다리다 실패합니다.</p></div></details></li>
+    <li><details><summary>주문과 주문 상품 목록을 fetch join하고 페이징하면 무슨 일이 생기나요?</summary>
+      <div class="answer"><p>JOIN 행 단위로는 주문을 정확히 자를 수 없어 Hibernate가 전체를 메모리로 읽은 뒤 페이징합니다. 데이터가 많으면 메모리 부족이 납니다.</p></div></details></li>
+    <li><details><summary>결제 API가 느려지자 관계없는 조회 API까지 타임아웃이 났습니다. 원인은?</summary>
+      <div class="answer"><p>트랜잭션 안에서 결제 API를 기다리며 커넥션을 붙잡아 풀이 고갈된 것입니다. 같은 풀을 쓰는 모든 요청이 connectionTimeout까지 기다리다 실패합니다.</p></div></details></li>
     <li><details><summary>OSIV를 끄면 어떤 코드가 깨지고, 어떻게 고치나요?</summary>
-      <div class="answer"><p>컨트롤러나 뷰에서 지연 로딩하던 코드가 LazyInitializationException을 냅니다. 필요한 데이터를 트랜잭션 안에서 조회해 DTO로 만들어 반환합니다.</p></div></details></li>
+      <div class="answer"><p>컨트롤러나 JSON 변환 중에 지연 로딩하던 코드가 LazyInitializationException을 냅니다. 필요한 데이터를 트랜잭션 안에서 조회해 DTO로 만들어 반환합니다.</p></div></details></li>
   </ol>
 </section>
 
@@ -1013,7 +1555,7 @@ spring.jpa.properties.hibernate.default_batch_fetch_size: <span class="n">100</s
 <section class="slide" data-section="다음 단계" data-depth="none">
   <h2>다음으로 올라갈 층</h2>
   <div class="slide__body">
-    <p class="lede">요청이 컨트롤러에 닿는 길을 따라왔습니다. 이제 그 요청을 받는 API를 어떻게 설계하고, 보낸 사람이 누구인지 어떻게 확인할지로 올라갑니다. Spring Security의 필터 체인도 거기서 봅니다.</p>
+    <p class="lede">주문 요청이 컨트롤러에 닿아 DB에 저장되기까지를 따라왔습니다. 이제 그 요청을 받는 API를 어떻게 설계하고, 보낸 사람이 누구인지 어떻게 확인할지로 올라갑니다. 3부에서 예고한 Spring Security의 Filter 묶음도 거기서 봅니다.</p>
     <div class="nav-pair">
       <a class="next" href="07-api-security.html">
         <span class="next__text">
